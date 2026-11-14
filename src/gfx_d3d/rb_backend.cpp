@@ -807,6 +807,14 @@ void R_ResolveIntZ_PC()
     else
 #endif
     {
+#ifdef KISAK_NX
+        constexpr DWORD resolveDepth = 0x7fa05000;
+        dx.device->SetTexture(0, gfxRenderTargets[R_RENDERTARGET_FLOAT_Z].image->texture.basemap);
+        dx.device->SetRenderState(D3DRS_POINTSIZE, 0);
+        dx.device->SetRenderState(D3DRS_POINTSIZE, resolveDepth);
+        dx.device->SetTexture(0, nullptr);
+        gfxCmdBufContext.state->samplerTexture[0] = nullptr;
+#else
         memset(dummy, 0, sizeof(dummy));
         dx.device->SetTexture(0, gfxRenderTargets[R_RENDERTARGET_FLOAT_Z].image->texture.basemap);
         dx.device->SetRenderState(D3DRS_POINTSIZE, 0);
@@ -817,6 +825,7 @@ void R_ResolveIntZ_PC()
         R_ClearAllStreamSources(&gfxCmdBufContext.state->prim);
         if (gfxCmdBufContext.state->prim.indexBuffer)
             R_ChangeIndices(&gfxCmdBufContext.state->prim, 0);
+#endif
     }
 }
 
@@ -4714,7 +4723,7 @@ void __cdecl RB_BeginFrame(GfxBackEndData *data)
     {
         if (!rg.renderHiResShot)
             ++r_glob.backEndFrameCount;
-        for (rt = 0; rt < 44; ++rt)
+        for (rt = 0; rt < R_RENDERTARGET_COUNT; ++rt)
             gfxRenderTargets[rt].cleared = 0;
         R_Cinematic_UpdateFrame(0);
         RB_UpdateBackEndDvarOptions();

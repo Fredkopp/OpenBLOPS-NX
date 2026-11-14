@@ -19,7 +19,7 @@ extern "C" bool NX_D3D_IsTexture(const void *p);   // nx_d3d9_null.cpp
 #include "rb_state.h"
 #include <qcommon/common.h>
 
-const char *g_imageProgNames[29] =
+const char *g_imageProgNames[] =
 {
   "$shadowmap_sun",
   "$shadowmap_spot",
@@ -49,7 +49,8 @@ const char *g_imageProgNames[29] =
   "$bloom_mip3",
   "$bloom_mip3_ping",
   "$bloom_mip3_pong",
-  "$bloom_streak1"
+  "$bloom_streak1",
+  "$bloom_applied"
 };
 
 
@@ -64,7 +65,7 @@ struct //$240FF632105687D15E57E43F247C9BAA // sizeof=0x2014
 } imageGlobals;
 
 int Image_TrackBytes;
-GfxImage g_imageProgs[29];
+GfxImage g_imageProgs[ARRAY_COUNT(g_imageProgNames)];
 
 void __cdecl Image_TrackTotalMemory(GfxImage *image, int platform, int memory)
 {
@@ -375,8 +376,6 @@ void __cdecl R_ShutdownImages()
 
 bool __cdecl Image_IsProg(GfxImage *image)
 {
-    // x86 confrontava con &g_imageProgs[30] su un array di 29: un elemento
-    // oltre la fine. Image_AllocProg indicizza solo 0..28.
     return image >= g_imageProgs && image < &g_imageProgs[ARRAY_COUNT(g_imageProgs)];
 }
 

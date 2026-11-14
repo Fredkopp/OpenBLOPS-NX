@@ -10,7 +10,7 @@
 
 ExtraCamSettings g_extraCamSettings;
 
-const char *s_renderTargetNames[44] =
+const char *s_renderTargetNames[R_RENDERTARGET_COUNT] =
 {
   "R_RENDERTARGET_NULL",
   "R_RENDERTARGET_SAVED_SCREEN",
@@ -55,7 +55,8 @@ const char *s_renderTargetNames[44] =
   "R_RENDERTARGET_SHADOWMAP_SPOT_2",
   "R_RENDERTARGET_SHADOWMAP_SPOT_3",
   "R_RENDERTARGET_SHADOWMAP_SPOT_HI_0",
-  "R_RENDERTARGET_SHADOWMAP_SPOT_HI_1"
+  "R_RENDERTARGET_SHADOWMAP_SPOT_HI_1",
+  "R_RENDERTARGET_BLOOM_APPLIED"
 };
 
 
@@ -135,6 +136,12 @@ void R_InitRenderTargets_PC()
                     &gfxRenderTargets[R_RENDERTARGET_FLOAT_Z]);
         }
         R_ShareRenderTarget(R_RENDERTARGET_RESOLVED_SCENE, R_RENDERTARGET_RESOLVED_POST_SUN);
+#ifdef KISAK_NX
+        if (dx.multiSampleType == D3DMULTISAMPLE_NONE && !r_reflectionProbeGenerate->current.enabled)
+            R_InitFullscreenRenderTargetImage(
+                29, FULLSCREEN_SCENE, 0, backBufferFormat, RENDERTARGET_USAGE_TEXTURE,
+                &gfxRenderTargets[R_RENDERTARGET_BLOOM_APPLIED]);
+#endif
         R_InitFullscreenRenderTargetImage(
             10,
             FULLSCREEN_SCENE,
@@ -478,14 +485,14 @@ void __cdecl R_InitRenderTargetImage(
         __debugbreak();
     }
     renderTargetId = renderTarget - gfxRenderTargets;
-    if ( renderTargetId >= 0x2C
+    if ( renderTargetId >= R_RENDERTARGET_COUNT
         && !Assert_MyHandler(
                     "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\r_rendertarget.cpp",
                     1336,
                     0,
                     "renderTargetId doesn't index R_RENDERTARGET_COUNT\n\t%i not in [0, %i)",
                     renderTargetId,
-                    44) )
+                    R_RENDERTARGET_COUNT) )
     {
         __debugbreak();
     }
@@ -1113,7 +1120,7 @@ void __cdecl R_ShutdownRenderTargets()
 {
     int renderTargetId; // [esp+0h] [ebp-4h]
 
-    for ( renderTargetId = 0; renderTargetId < 44; ++renderTargetId )
+    for ( renderTargetId = 0; renderTargetId < R_RENDERTARGET_COUNT; ++renderTargetId )
         R_ShutDownSingleRenderTarget(&gfxRenderTargets[renderTargetId]);
     dx.singleSampleDepthStencilSurface = 0;
 }

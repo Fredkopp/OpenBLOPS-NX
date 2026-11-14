@@ -13,7 +13,7 @@
 #include "r_reflection_probe.h"
 
 
-const GfxViewportBehavior s_viewportBehaviorForRenderTarget[44] =
+const GfxViewportBehavior s_viewportBehaviorForRenderTarget[R_RENDERTARGET_COUNT] =
 {
   GFX_USE_VIEWPORT_FULL,
   GFX_USE_VIEWPORT_FULL,
@@ -58,7 +58,8 @@ const GfxViewportBehavior s_viewportBehaviorForRenderTarget[44] =
   GFX_USE_VIEWPORT_FULL,
   GFX_USE_VIEWPORT_FULL,
   GFX_USE_VIEWPORT_FULL,
-  GFX_USE_VIEWPORT_FULL
+  GFX_USE_VIEWPORT_FULL,
+  GFX_USE_VIEWPORT_FOR_VIEW
 };
 
 
@@ -2796,7 +2797,7 @@ void R_SetRenderTargetSize(GfxCmdBufSourceState *source, GfxRenderTargetId newTa
         g_renderTargetIsOverridden = newTargetId != actualTargetId;
         newTargetId = actualTargetId;
     }
-    if (newTargetId >= 0x2Cu
+    if (newTargetId >= R_RENDERTARGET_COUNT
         && !Assert_MyHandler(
             "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\r_state.cpp",
             2834,
@@ -2849,7 +2850,7 @@ GfxViewportBehavior __cdecl R_ViewportBehaviorForRenderTarget(GfxRenderTargetId 
     {
         __debugbreak();
     }
-    if ( renderTargetId >= 0x2Cu
+    if ( renderTargetId >= R_RENDERTARGET_COUNT
         && !Assert_MyHandler(
                     "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\r_state.cpp",
                     2751,
