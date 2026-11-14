@@ -10,7 +10,9 @@
 #include "r_skybox.h"
 #include "r_warn.h"
 #include "r_debug.h"
+#include "r_draw_method.h"
 #include "r_model.h"
+#include "r_model_pose.h"
 #include "r_dpvs_entity.h"
 #include "r_dpvs_static.h"
 #include "r_bsp.h"
@@ -341,6 +343,114 @@ unsigned int __cdecl R_FindProbeFromVolume(const GfxWorldDraw *worldDraw, const 
     return bestProbe;
 }
 
+static bool R_IsModelBoundsBehindPlane(const float *mins, const float *maxs,
+    const float *plane, float distance)
+{
+    constexpr float boundsPadding = 4.0f;
+    const float x = plane[0] * (plane[0] > 0.0f ? maxs[0] : mins[0]);
+    const float y = plane[1] * (plane[1] > 0.0f ? maxs[1] : mins[1]);
+    const float z = plane[2] * (plane[2] > 0.0f ? maxs[2] : mins[2]);
+    const float tolerance = boundsPadding + 1.0e-6f * (fabsf(x) + fabsf(y) + fabsf(z) + fabsf(distance));
+    return x + y + z - distance < -tolerance;
+}
+
+static bool R_IsModelBoundsOccluded(const float *mins, const float *maxs,
+    const float (*planes)[4], int occluderCount)
+{
+    constexpr int planesPerOccluder = 5;
+    for (int occluder = 0; occluder < occluderCount; ++occluder, planes += planesPerOccluder)
+    {
+        int side = 0;
+        for (; side < planesPerOccluder; ++side)
+        {
+            if (!R_IsModelBoundsBehindPlane(mins, maxs, planes[side], planes[side][3]))
+                break;
+        }
+        if (side == planesPerOccluder)
+            return true;
+    }
+    return false;
+}
+
+static bool R_CullAnimatedModelForCamera(const GfxSceneEntityCull &bounds,
+    const GfxViewInfo *viewInfo, int occluderCount)
+{
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        if (!(bounds.mins[axis] <= bounds.maxs[axis]))
+            return false;
+    }
+    for (const auto &plane : viewInfo->frustumPlanes)
+    {
+        if (R_IsModelBoundsBehindPlane(bounds.mins, bounds.maxs, plane, -plane[3]))
+            return true;
+    }
+    return R_IsModelBoundsOccluded(bounds.mins, bounds.maxs, dpvsGlob.occluderPlanes, occluderCount);
+}
+
+static bool R_IsModelSphereOccluded(const float *origin, float radius, int occluderCount)
+{
+    if (!(radius > 0.0f))
+        return false;
+
+    const float mins[] = {origin[0] - radius, origin[1] - radius, origin[2] - radius};
+    const float maxs[] = {origin[0] + radius, origin[1] + radius, origin[2] + radius};
+    return R_IsModelBoundsOccluded(mins, maxs, dpvsGlob.occluderPlanes, occluderCount);
+}
+
+static bool R_ModelUsesSpecialCameraRendering(unsigned int gfxEntIndex)
+{
+    constexpr unsigned int specialRenderFlags = 0x200000 | 0x80 | 0x40 | 0x06;
+    return gfxEntIndex && (frontEndDataOut->gfxEnts[gfxEntIndex].renderFxFlags & specialRenderFlags);
+}
+
+static void R_BuildModelCameraVisibility(const GfxViewInfo *viewInfo, bool cullModels,
+    unsigned char *dobjVisibility, unsigned char *modelVisibility, unsigned char *dynModelVisibility)
+{
+    PROF_SCOPED("R_BuildModelCameraVisibility");
+    memcpy(dobjVisibility, scene.sceneDObjVisData[0], scene.sceneDObjCount);
+    memcpy(modelVisibility, scene.sceneModelVisData[0], scene.sceneModelCount);
+
+    const int occluderCount = cullModels ? dpvsGlob.numOccluders : 0;
+    const unsigned char *dynVisibility = rgp.world->dpvsDyn.dynEntVisData[0][0];
+    for (unsigned int index = 0; index < scene.sceneDynModelCount; ++index)
+    {
+        const unsigned int dynEntId = rgp.world->sceneDynModel[index].dynEntId;
+        dynModelVisibility[index] = dynVisibility[dynEntId];
+        if (dynModelVisibility[index] == 1 && occluderCount)
+        {
+            const DynEntityPose *pose = DynEnt_GetClientPose(dynEntId, DYNENT_DRAW_MODEL);
+            if (R_IsModelSphereOccluded(pose->pose.origin, pose->radius, occluderCount))
+                dynModelVisibility[index] = 0;
+        }
+    }
+
+    if (!cullModels)
+        return;
+
+    for (unsigned int index = 0; index < scene.sceneDObjCount; ++index)
+    {
+        const GfxSceneEntity &entity = scene.sceneDObj[index];
+        if (dobjVisibility[index] == 1 && entity.entnum != gfxCfg.entnumNone
+            && entity.cull.state >= CULL_STATE_BOUNDED && !R_ModelUsesSpecialCameraRendering(entity.gfxEntIndex)
+            && R_CullAnimatedModelForCamera(entity.cull, viewInfo, occluderCount))
+            dobjVisibility[index] = 0;
+    }
+
+    if (!occluderCount)
+        return;
+
+    const XModel *skyModel = R_MapGetSkyboxModel();
+    for (unsigned int index = 0; index < scene.sceneModelCount; ++index)
+    {
+        const GfxSceneModel &model = scene.sceneModel[index];
+        if (modelVisibility[index] == 1 && model.model != skyModel
+            && !R_ModelUsesSpecialCameraRendering(model.gfxEntIndex)
+            && R_IsModelSphereOccluded(model.placement.base.origin, model.radius, occluderCount))
+            modelVisibility[index] = 0;
+    }
+}
+
 void __cdecl R_AddAllSceneEntSurfacesCamera(const GfxViewInfo *viewInfo)
 {
     const GfxLight *v1; // [esp+A4h] [ebp-A4h]
@@ -380,6 +490,17 @@ void __cdecl R_AddAllSceneEntSurfacesCamera(const GfxViewInfo *viewInfo)
 
     PROF_SCOPED("R_AddAllSceneEntSurfacesCamera");
 
+    bool cullModels = false;
+#ifdef KISAK_NX
+    cullModels = !viewInfo->isMissileCamera && !r_lockPvs->current.enabled && !r_reflectionProbeGenerate->current.enabled
+        && !frontEndDataOut->emissiveSpotLightCount && gfxDrawMethod.drawScene == GFX_DRAW_SCENE_STANDARD;
+#endif
+    unsigned char dobjVisibility[sizeof(scene.sceneDObjVisData[0])];
+    unsigned char modelVisibility[sizeof(scene.sceneModelVisData[0])];
+    unsigned char dynModelVisibility[ARRAY_COUNT(lightingInfo)];
+    iassert(scene.sceneDynModelCount <= ARRAY_COUNT(dynModelVisibility));
+    R_BuildModelCameraVisibility(viewInfo, cullModels, dobjVisibility, modelVisibility, dynModelVisibility);
+
     drawSurfs[0] = scene.drawSurfs[2];
     lastDrawSurfs[0] = &scene.drawSurfs[2][scene.maxDrawSurfCount[2]];
     drawSurfs[1] = scene.drawSurfs[5];
@@ -394,14 +515,14 @@ void __cdecl R_AddAllSceneEntSurfacesCamera(const GfxViewInfo *viewInfo)
         PROF_SCOPED("sceneDObj lighting");
         visibleLightCount = viewInfo->visibleLightCount;
         visibleLights = viewInfo->visibleLights;
-        LaunchDobjLightingJobs(viewInfo, scene.sceneDObjCount, scene.sceneDObjVisData[0], lightingInfo);
+        LaunchDobjLightingJobs(viewInfo, scene.sceneDObjCount, dobjVisibility, lightingInfo);
         lightingInfoUsed = scene.sceneDObjCount;
         if ((unsigned int)(scene.sceneModelCount + scene.sceneDObjCount) > 0x400)
         {
             Sys_AssistAndWaitWorkerCmdInternal(&r_model_lightingWorkerCmd);
             FinishDobjLighting(
                 scene.sceneDObjCount,
-                scene.sceneDObjVisData[0],
+                dobjVisibility,
                 dobjLightingInfo,
                 drawSurfs,
                 lastDrawSurfs,
@@ -417,14 +538,14 @@ void __cdecl R_AddAllSceneEntSurfacesCamera(const GfxViewInfo *viewInfo)
 
     {
         PROF_SCOPED("sceneModel lighting");
-        LaunchModelLightingJobs(viewInfo, scene.sceneModelCount, scene.sceneModelVisData[0], modelLightingInfo);
+        LaunchModelLightingJobs(viewInfo, scene.sceneModelCount, modelVisibility, modelLightingInfo);
         lightingInfoUsed = scene.sceneModelCount + lightingInfoUsed;
         if (scene.sceneDynModelCount + lightingInfoUsed > 0x400)
         {
             Sys_AssistAndWaitWorkerCmdInternal(&r_model_lightingWorkerCmd);
             FinishModelLighting(
                 scene.sceneModelCount,
-                scene.sceneModelVisData[0],
+                modelVisibility,
                 modelLightingInfo,
                 drawSurfs,
                 lastDrawSurfs,
@@ -444,7 +565,7 @@ void __cdecl R_AddAllSceneEntSurfacesCamera(const GfxViewInfo *viewInfo)
         LaunchDynEntLightingJobs(
             viewInfo,
             scene.sceneDynModelCount,
-            rgp.world->dpvsDyn.dynEntVisData[0][0],
+            dynModelVisibility,
             dynentLightingInfo);
     }
 
@@ -456,7 +577,7 @@ void __cdecl R_AddAllSceneEntSurfacesCamera(const GfxViewInfo *viewInfo)
     if ( !dobjLightingFinished )
         FinishDobjLighting(
             scene.sceneDObjCount,
-            scene.sceneDObjVisData[0],
+            dobjVisibility,
             dobjLightingInfo,
             drawSurfs,
             lastDrawSurfs,
@@ -467,7 +588,7 @@ void __cdecl R_AddAllSceneEntSurfacesCamera(const GfxViewInfo *viewInfo)
     {
         FinishModelLighting(
             scene.sceneModelCount,
-            scene.sceneModelVisData[0],
+            modelVisibility,
             modelLightingInfo,
             drawSurfs,
             lastDrawSurfs,
@@ -477,7 +598,7 @@ void __cdecl R_AddAllSceneEntSurfacesCamera(const GfxViewInfo *viewInfo)
     }
     FinishDynEntLighting(
         scene.sceneDynModelCount,
-        rgp.world->dpvsDyn.dynEntVisData[0][0],
+        dynModelVisibility,
         dynentLightingInfo,
         drawSurfs,
         lastDrawSurfs,
@@ -909,7 +1030,7 @@ void __cdecl LaunchDynEntLightingJobs(
     for ( sceneEntIndex = 0; sceneEntIndex < sceneEntCount; ++sceneEntIndex )
     {
         dynEntId = rgp.world->sceneDynModel[sceneEntIndex].dynEntId;
-        if ( sceneEntVisData[dynEntId] == 1 )
+        if ( sceneEntVisData[sceneEntIndex] == 1 )
         {
             dynEntPose = DynEnt_GetClientPose(dynEntId, DYNENT_DRAW_MODEL);
             dynEntClient = DynEnt_GetClientEntity(dynEntId, DYNENT_DRAW_MODEL);
@@ -959,7 +1080,7 @@ void __cdecl FinishDynEntLighting(
     {
         sceneDynModel = &rgp.world->sceneDynModel[sceneEntIndex];
         dynEntId = sceneDynModel->dynEntId;
-        if ( sceneEntVisData[dynEntId] == 1 )
+        if ( sceneEntVisData[sceneEntIndex] == 1 )
         {
             dynEntPose = DynEnt_GetClientPose(dynEntId, DYNENT_DRAW_MODEL);
             burnVar = DynEntCl_GetBurnTime(dynEntId, DYNENT_DRAW_MODEL);
