@@ -3863,8 +3863,12 @@ void __cdecl UI_KeyEvent(int localClientNum, int key, int down)
             Menus_CloseAll(localClientNum, &uiInfo->uiDC);
         if ( UI_KeyEvent_AutoJoinButtonPressed(localClientNum, &uiInfo->uiDC, menu, inputKey, down) )
             Live_AcceptLastInvite_f();
-        if ( Key_IsCatcherActive(localClientNum, 336)
-            && !(down && controller && Directory_HandleControllerKey(localClientNum, &uiInfo->uiDC, menu, key)) )
+        if (Key_IsCatcherActive(localClientNum, 336)
+            && !(down && controller
+#ifdef KISAK_NX
+                && !UI_NX_IsServerBrowserMenu(menu)
+#endif
+                && Directory_HandleControllerKey(localClientNum, &uiInfo->uiDC, menu, key)))
             Menu_HandleKey(localClientNum, &uiInfo->uiDC, menu, key, down, inputKey);
         if ( !Menu_GetFocused(&uiInfo->uiDC) )
         {

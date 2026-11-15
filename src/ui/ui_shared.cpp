@@ -4256,6 +4256,25 @@ static bool UI_NX_IsServerBrowserTab(const itemDef_s *item)
         && UI_NX_ItemHasActionCommand(item, "openMenuImmediate ( server_browser_");
 }
 
+enum class ServerBrowserRegion { None, Columns, Servers, Footer };
+
+static ServerBrowserRegion UI_NX_ServerBrowserRegion(const itemDef_s *item)
+{
+    if (!item)
+        return ServerBrowserRegion::None;
+    if (item->type == 4 && item->window.name && !I_stricmp(item->window.name, "browser"))
+        return ServerBrowserRegion::Servers;
+    if (item->type == 3)
+    {
+        if (UI_NX_ItemHasActionCommand(item, "uiScript ServerSort "))
+            return ServerBrowserRegion::Columns;
+        if (UI_NX_ItemHasActionCommand(item, "open filter_window")
+            || UI_NX_ItemHasActionCommand(item, "open newframeserverinfo"))
+            return ServerBrowserRegion::Footer;
+    }
+    return ServerBrowserRegion::None;
+}
+
 static bool UI_NX_OpensSettingsCategory(const itemDef_s *item, const char *category)
 {
     char command[64];
@@ -4989,6 +5008,10 @@ int __cdecl Menus_OpenImmediateByName(int localClientNum, UiContext *dc, const c
     }
 }
 
+#ifdef KISAK_NX
+static void UI_NX_FocusServerBrowserStart(int localClientNum, UiContext *dc, menuDef_t *menu);
+#endif
+
 void    Menus_SetupOpenMenu(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
     itemDef_s item;
@@ -5007,7 +5030,8 @@ void    Menus_SetupOpenMenu(int localClientNum, UiContext *dc, menuDef_t *menu)
 #ifdef KISAK_NX
     const bool settingsPage = UI_NX_SettingsCategoryMenu(menu) != nullptr;
     const bool settingsRoot = UI_NX_IsSettingsRoot(menu);
-    if (!settingsPage && !settingsRoot && !killstreakList)
+    const bool serverBrowser = UI_NX_IsServerBrowserMenu(menu);
+    if (!settingsPage && !settingsRoot && !killstreakList && !serverBrowser)
 #endif
     {
         if (Menu_GetCursorItem(dc->contextIndex, menu) == -1)
@@ -5027,12 +5051,8 @@ void    Menus_SetupOpenMenu(int localClientNum, UiContext *dc, menuDef_t *menu)
         const rectDef_s &rect = killstreakList->window.rect;
         Item_SetFocus(localClientNum, dc, killstreakList, rect.x, rect.y);
     }
-    if (UI_NX_IsServerBrowserMenu(menu) && Menu_GetFocused(dc) == menu)
-    {
-        itemDef_s *list = Menu_FindItemByName(menu, "browser");
-        if (list && list->type == 4)
-            Item_SetFocus(localClientNum, dc, list, list->window.rect.x, list->window.rect.y);
-    }
+    if (serverBrowser && Menu_GetFocused(dc) == menu)
+        UI_NX_FocusServerBrowserStart(localClientNum, dc, menu);
     if ((settingsPage || settingsRoot) && Menu_GetFocused(dc) == menu)
     {
         Menu_ClearFocus(localClientNum, dc, menu);
@@ -5101,6 +5121,46 @@ static bool UI_NX_CanFocus(int localClientNum, UiContext *dc, itemDef_s *item)
     return focus && focus->onKey;
 }
 
+static bool UI_NX_FocusServerBrowserControl(int localClientNum, UiContext *dc, menuDef_t *menu,
+    ServerBrowserRegion region, const itemDef_s *from = nullptr, int direction = 0)
+{
+    const rectDef_s fromRect = from ? UI_NX_ScreenRect(dc, from) : rectDef_s{};
+    const float origin = fromRect.x + fromRect.w * 0.5f;
+    itemDef_s *target = nullptr;
+    float nearest = FLT_MAX;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *candidate = menu->items[i];
+        if (UI_NX_ServerBrowserRegion(candidate) != region || !UI_NX_CanFocus(localClientNum, dc, candidate))
+            continue;
+
+        const rectDef_s bounds = UI_NX_ScreenRect(dc, candidate);
+        const float x = bounds.x + bounds.w * 0.5f;
+        const float delta = x - origin;
+        const float distance = direction ? delta * direction : from ? fabsf(delta) : x;
+        if ((direction && distance <= 1.0f) || distance >= nearest)
+            continue;
+        target = candidate;
+        nearest = distance;
+    }
+    return target && Item_SetFocus(localClientNum, dc, target, target->window.rect.x, target->window.rect.y);
+}
+
+static bool UI_NX_FocusServerBrowserColumns(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    const itemDef_s *server = Menu_FindItemByName(menu, "server");
+    if (!server)
+        server = Menu_FindItemByName(menu, "header_server");
+    return UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Columns, server);
+}
+
+static void UI_NX_FocusServerBrowserStart(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    if (!UI_NX_FocusServerBrowserColumns(localClientNum, dc, menu)
+        && !UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Servers))
+        UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Footer);
+}
+
 static void UI_NX_EnsureMenuFocus(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
     if (Menu_GetFocused(dc) != menu)
@@ -5116,7 +5176,10 @@ static void UI_NX_EnsureMenuFocus(int localClientNum, UiContext *dc, menuDef_t *
 
     Menu_ClearFocus(localClientNum, dc, menu);
     Menu_SetCursorItem(dc->contextIndex, menu, -1);
-    Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 0);
+    if (UI_NX_IsServerBrowserMenu(menu))
+        UI_NX_FocusServerBrowserStart(localClientNum, dc, menu);
+    else
+        Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 0);
 }
 
 static bool UI_NX_RunBackPrompt(int localClientNum, UiContext *dc, menuDef_t *menu)
@@ -5600,23 +5663,66 @@ static bool UI_NX_HandleServerBrowserKey(int localClientNum, UiContext *dc, menu
         return false;
     if (key == K_BUTTON_LSHLDR || key == K_BUTTON_RSHLDR)
         return Menu_CheckOnKey(localClientNum, dc, menu, key == K_BUTTON_LSHLDR ? K_LEFTARROW : K_RIGHTARROW);
-    if (key == K_LEFTARROW || key == K_RIGHTARROW)
-        return true;
-    if (key != K_BUTTON_A && key != K_BUTTON_X)
+    if (key != K_LEFTARROW && key != K_RIGHTARROW && key != K_UPARROW && key != K_DOWNARROW
+        && key != K_BUTTON_A && key != K_BUTTON_X)
         return false;
+
+    const int context = dc->contextIndex;
+    const int cursor = Menu_GetCursorItem(context, menu);
+    itemDef_s *current = cursor >= 0 && cursor < menu->itemCount ? menu->items[cursor] : nullptr;
+    if (current && !UI_NX_CanFocus(localClientNum, dc, current))
+        current = nullptr;
+    const ServerBrowserRegion region = UI_NX_ServerBrowserRegion(current);
+
+    if (key == K_LEFTARROW || key == K_RIGHTARROW)
+    {
+        if (region == ServerBrowserRegion::Columns || region == ServerBrowserRegion::Footer)
+            UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, region, current, key == K_LEFTARROW ? -1 : 1);
+        return true;
+    }
+
+    if (key == K_UPARROW || key == K_DOWNARROW)
+    {
+        const bool up = key == K_UPARROW;
+        itemDef_s *browser = Menu_FindItemByName(menu, "browser");
+        listBoxDef_s *list = browser && UI_NX_ServerBrowserRegion(browser) == ServerBrowserRegion::Servers
+            && UI_NX_CanFocus(localClientNum, dc, browser) ? Item_GetListBoxDef(browser) : nullptr;
+        const int count = list ? UI_FeederCount(localClientNum, context, list->special, list) : 0;
+        if (region == ServerBrowserRegion::Servers)
+        {
+            if (count > 0 && (up ? list->cursorPos[context] > 0 : list->cursorPos[context] < count - 1))
+                Item_ListBox_HandleKey(localClientNum, dc, browser, key, 1, 1);
+            else if (up)
+                UI_NX_FocusServerBrowserColumns(localClientNum, dc, menu);
+            else
+                UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Footer);
+        }
+        else if ((region == ServerBrowserRegion::Columns && !up) || (region == ServerBrowserRegion::Footer && up))
+        {
+            if (count > 0 && Item_SetFocus(localClientNum, dc, browser, browser->window.rect.x, browser->window.rect.y))
+                UI_NX_SelectListBoxEdge(localClientNum, dc, browser, up);
+            else if (up)
+                UI_NX_FocusServerBrowserColumns(localClientNum, dc, menu);
+            else
+                UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Footer);
+        }
+        else if (region == ServerBrowserRegion::None)
+            UI_NX_FocusServerBrowserStart(localClientNum, dc, menu);
+        return true;
+    }
 
     if (key == K_BUTTON_A)
     {
-        itemDef_s *browser = Menu_FindItemByName(menu, "browser");
-        const int context = dc->contextIndex;
-        const int cursor = Menu_GetCursorItem(context, menu);
-        if (cursor >= 0 && cursor < menu->itemCount && menu->items[cursor] != browser
-            && Window_HasFocus(context, &menu->items[cursor]->window)
-            && UI_NX_CanFocus(localClientNum, dc, menu->items[cursor]))
-            return false;
-        if (!browser || browser->type != 4 || !Item_IsVisible(localClientNum, context, browser))
+        if (region == ServerBrowserRegion::Columns || region == ServerBrowserRegion::Footer)
+        {
+            Item_Action(localClientNum, dc, current);
+            if (region == ServerBrowserRegion::Columns && !UI_NX_CanFocus(localClientNum, dc, current))
+                UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, region, current);
             return true;
-        listBoxDef_s *list = Item_GetListBoxDef(browser);
+        }
+        if (region != ServerBrowserRegion::Servers)
+            return true;
+        listBoxDef_s *list = Item_GetListBoxDef(current);
         if (!list)
             return true;
         const int row = list->cursorPos[context];
@@ -10237,15 +10343,7 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     item->type,
                     item);
 #ifdef KISAK_NX
-                int button = UI_NX_ClassRotationButton(item);
-                const bool browserTab = UI_NX_IsServerBrowserTab(item);
-                if (browserTab)
-                {
-                    if (UI_NX_ItemHasActionCommand(item, "openMenuImmediate ( server_browser_ranked )"))
-                        button = K_BUTTON_LSHLDR;
-                    else if (UI_NX_ItemHasActionCommand(item, "openMenuImmediate ( server_browser_history )"))
-                        button = K_BUTTON_RSHLDR;
-                }
+                const int button = UI_NX_ClassRotationButton(item);
                 if (button && item->window.rect.w > 0.0f)
                 {
                     const rectDef_s &bounds = item->window.rect;
@@ -10255,10 +10353,8 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     char caption[4];
                     I_strncpyz(caption, Key_KeynumToString(button, 1), sizeof(caption));
                     const float width = UI_TextWidth(caption, 0, font, scale);
-                    const float x = browserTab ? bounds.x + (bounds.w - width) * 0.5f
-                        : button == K_BUTTON_LSHLDR ? bounds.x - 4.0f - width : bounds.x + bounds.w + 4.0f;
-                    const float y = browserTab ? bounds.y - 2.0f
-                        : bounds.y + (bounds.h + UI_TextHeight(font, scale)) * 0.5f;
+                    const float x = button == K_BUTTON_LSHLDR ? bounds.x - 4.0f - width : bounds.x + bounds.w + 4.0f;
+                    const float y = bounds.y + (bounds.h + UI_TextHeight(font, scale)) * 0.5f;
                     UI_DrawText(placement, caption, 0x7FFFFFFF, font, x, y, bounds.horzAlign,
                         bounds.vertAlign, scale, item->window.foreColor, 0);
                 }
@@ -10561,7 +10657,13 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
         const int classFooterSlot = UI_NX_ClassFooterSlot(item);
         const bool fitSettingsLabel = (item->type == 1 || item->type == 3) && UI_NX_IsSettingsMenu(item->parent);
         const bool fitPortLabel = textDefPtr->text && !strncmp(textDefPtr->text, "@OPENBLOPS_", 11);
-        if ((fitSettingsLabel || fitPortLabel || classFooterSlot >= 0)
+        const bool fitBotLabel =
+#ifdef KISAK_MP
+            item->type == 1 && UI_IsCustomBotMenu(item->parent);
+#else
+            false;
+#endif
+        if ((fitSettingsLabel || fitPortLabel || fitBotLabel || classFooterSlot >= 0)
             && !(item->window.staticFlags & 0x800000) && item->window.rect.w >= 32.0f)
         {
             Font_s *labelFont = Item_GetFont(dc->contextIndex, item);

@@ -116,7 +116,7 @@ namespace
         item = *source;
         item.parent = &botMenu;
         item.window.rect = item.window.rectClient;
-        item.window.dynamicFlags[0] = 4;
+        item.window.dynamicFlags[0] = (source->window.dynamicFlags[0] & 0x10000) | 4;
         item.onEvent = nullptr;
         item.animInfo = nullptr;
         item.ui3dWindowId = -1;
@@ -125,6 +125,7 @@ namespace
     void UngateBotItem(itemDef_s &item)
     {
         item.visibleExp = {};
+        item.forecolorAExp = {};
         item.showBits = 0;
         item.hideBits = ~0ULL;
         item.dvar = item.dvarTest = item.enableDvar = nullptr;
@@ -161,6 +162,10 @@ namespace
 
         itemDef_s &choice = row.layers[layersPerRow - 1];
         SetBotText(choice, row.valueText, nullptr);
+        const float labelWidth = row.valueText.textalignx - 18.0f;
+        for (int i = 0; i < layersPerRow - 1; ++i)
+            row.layers[i].window.rect.w = row.layers[i].window.rectClient.w = labelWidth;
+        memcpy(choice.window.foreColor, row.layers[2].window.foreColor, sizeof(choice.window.foreColor));
         row.valueFocus = {};
         row.valueFocus.focusTypeData.multi = values;
         row.valueText.textTypeData.focusItemDef = &row.valueFocus;
