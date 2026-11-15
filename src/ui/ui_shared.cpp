@@ -4036,9 +4036,14 @@ static bool UI_NX_IsClassListMenu(const menuDef_t *menu)
     return menu && menu->window.name && !I_stricmp(menu->window.name, "cac_main");
 }
 
+static bool UI_NX_IsWeaponMenu(const menuDef_t *menu)
+{
+    return menu && menu->window.name && !I_stricmp(menu->window.name, "cac_weapon");
+}
+
 static bool UI_NX_IsClassEditorMenu(const menuDef_t *menu)
 {
-    return UI_NX_IsCustomClassMenu(menu) || (menu && menu->window.name && !I_stricmp(menu->window.name, "cac_weapon"));
+    return UI_NX_IsCustomClassMenu(menu) || UI_NX_IsWeaponMenu(menu);
 }
 
 bool UI_NX_IsClassRotationMenu(const menuDef_t *menu)
@@ -4099,8 +4104,13 @@ bool UI_NX_IsHiddenClassFooter(int contextIndex, itemDef_s *item)
     const menuDef_t *menu = item->parent;
     if (UI_NX_IsClassListFaction(item))
         return !Window_HasFocus(contextIndex, &menu->window);
-    if (!UI_NX_IsCustomClassMenu(menu))
-        return UI_NX_IsClassEditorMenu(menu) && UI_NX_IsClassFactionButton(item);
+    if (UI_NX_IsWeaponMenu(menu))
+    {
+        if (UI_NX_IsClassFactionButton(item))
+            return true;
+        const textDef_s *label = item->type == 3 ? Item_GetTextDef(item) : nullptr;
+        return label && label->text && !I_stricmp(label->text, "@PLATFORM_CLEAR_ATTACHMENTS");
+    }
     if (UI_NX_ClassFooterSlot(item) < 0)
         return false;
     if (!Window_HasFocus(contextIndex, &menu->window))
@@ -5488,6 +5498,33 @@ static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_
     return true;
 }
 
+static bool UI_NX_IsWeaponStatsToggle(const itemDef_s *item)
+{
+    return item->type == 3 && UI_NX_IsWeaponMenu(item->parent)
+        && UI_NX_ItemHasActionCommand(item, "setDvar ui_cac_gun_attributes_vis ");
+}
+
+static void UI_NX_FocusWeaponStats(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *candidate = menu->items[i];
+        if (UI_NX_IsWeaponStatsToggle(candidate) && UI_NX_CanFocus(localClientNum, dc, candidate)
+            && Item_SetFocus(localClientNum, dc, candidate, candidate->window.rect.x, candidate->window.rect.y))
+            return;
+    }
+}
+
+static bool UI_NX_HandleAttachmentListRight(int localClientNum, UiContext *dc, itemDef_s *item, int key)
+{
+    if (key != K_RIGHTARROW || !item || item->type != 4 || !UI_NX_IsWeaponMenu(item->parent)
+        || !item->window.name || I_stricmp(item->window.name, "attachments_list"))
+        return false;
+
+    UI_NX_FocusWeaponStats(localClientNum, dc, item->parent);
+    return true;
+}
+
 static bool UI_NX_HandleKillstreakListKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key)
 {
     if (key != K_UPARROW && key != K_DOWNARROW)
@@ -5895,6 +5932,7 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
                     if (down && (UI_NX_HandleClassListFactionKey(localClientNum, dc, menu, key)
                         || UI_NX_HandleClassMenuKey(localClientNum, dc, item, key)
+                        || UI_NX_HandleAttachmentListRight(localClientNum, dc, item, key)
                         || UI_NX_HandleKillstreakListKey(localClientNum, dc, menu, key)))
                         return;
                     if (down && settingsMenu)
@@ -7790,13 +7828,6 @@ int __cdecl Item_Slider_HandleKey(UiContext *dc, itemDef_s *item, int key)
 }
 
 #ifdef KISAK_NX
-static bool UI_NX_IsWeaponStatsToggle(const itemDef_s *item)
-{
-    return item->type == 3 && item->parent && item->parent->window.name
-        && !I_stricmp(item->parent->window.name, "cac_weapon")
-        && UI_NX_ItemHasActionCommand(item, "setDvar ui_cac_gun_attributes_vis ");
-}
-
 static void UI_NX_RestoreWeaponStatsFocus(int localClientNum, UiContext *dc, itemDef_s *item)
 {
     menuDef_t *menu = item->parent;
@@ -7804,13 +7835,7 @@ static void UI_NX_RestoreWeaponStatsFocus(int localClientNum, UiContext *dc, ite
     if (!UI_NX_IsWeaponStatsToggle(item) || Menu_GetFocused(dc) != menu
         || !Window_HasFocus(context, &item->window) || Item_IsVisible(localClientNum, context, item))
         return;
-    for (int i = 0; i < menu->itemCount; ++i)
-    {
-        itemDef_s *candidate = menu->items[i];
-        if (candidate != item && UI_NX_IsWeaponStatsToggle(candidate) && UI_NX_CanFocus(localClientNum, dc, candidate)
-            && Item_SetFocus(localClientNum, dc, candidate, candidate->window.rect.x, candidate->window.rect.y))
-            return;
-    }
+    UI_NX_FocusWeaponStats(localClientNum, dc, menu);
 }
 #endif
 
