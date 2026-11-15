@@ -2092,25 +2092,7 @@ int __fastcall Path_GeneratePath(
     pPath->numReductions = 0;
     pPath->numIncreases = 0;
     if ( pPath->fLookaheadAmount == 0.0 )
-    {
-#ifdef KISAK_SP
-        if ( pPath->wNegotiationStartNode > 0 && pPath->wNegotiationStartNode < pPath->wPathLen )
-        {
-            Com_Printf(
-                15,
-                "ZM_BARRICADE path_generated time=%d path=%p flags=0x%X len=%d neg=%d lookahead=%d startNode=%d endNode=%d noLookahead=1\n",
-                level.time,
-                pPath,
-                pPath->flags,
-                pPath->wPathLen,
-                pPath->wNegotiationStartNode,
-                pPath->lookaheadNextNode,
-                pPath->pts[pPath->wNegotiationStartNode].iNodeNum,
-                pPath->pts[pPath->wNegotiationStartNode - 1].iNodeNum);
-        }
-#endif
         return 1;
-    }
     if ( (prevFlags & 0x180) != 0 )
     {
         if ( (prevFlags & 0x80) != 0 )
@@ -2202,22 +2184,6 @@ int __fastcall Path_GeneratePath(
     {
         __debugbreak();
     }
-#ifdef KISAK_SP
-    if ( pPath->wNegotiationStartNode > 0 && pPath->wNegotiationStartNode < pPath->wPathLen )
-    {
-        Com_Printf(
-            15,
-            "ZM_BARRICADE path_generated time=%d path=%p flags=0x%X len=%d neg=%d lookahead=%d startNode=%d endNode=%d noLookahead=0\n",
-            level.time,
-            pPath,
-            pPath->flags,
-            pPath->wPathLen,
-            pPath->wNegotiationStartNode,
-            pPath->lookaheadNextNode,
-            pPath->pts[pPath->wNegotiationStartNode].iNodeNum,
-            pPath->pts[pPath->wNegotiationStartNode - 1].iNodeNum);
-    }
-#endif
     return 1;
 }
 

@@ -3983,11 +3983,27 @@ void __cdecl ScrCmd_UseBy(scr_entref_t entref)
 
     pEnt = GetEntity(entref);
     pOther = Scr_GetEntity(0);
+#ifdef KISAK_SP
+    // Retail SP 0x007F43A0: using the turret a player is on makes the player dismount.
+    if ( pOther->active && pOther->client && pOther->client->ps.viewlocked_entNum == pEnt->s.number )
+    {
+        pOther->active = (pOther->client->ps.eFlags & 0x300) != 0 ? 2 : 0;
+        return;
+    }
+#endif
     Scr_AddEntity(pOther, SCRIPTINSTANCE_SERVER);
     Scr_Notify(pEnt, scr_const.trigger, 1u);
     use = entityHandlers[pEnt->handler].use;
     if ( use )
+    {
+#ifdef KISAK_SP
+        pEnt->scriptUse_SP = 1;
         use(pEnt, pOther, pOther);
+        pEnt->scriptUse_SP = 0;
+#else
+        use(pEnt, pOther, pOther);
+#endif
+    }
 }
 
 void __cdecl ScrCmd_IsTouching(scr_entref_t entref)
@@ -5818,31 +5834,7 @@ void __cdecl GScr_ConnectPaths(scr_entref_t entref)
         v2 = va("entity of type '%s' cannot connect paths \n\n", v1);
         Scr_Error(v2, 0);
     }
-#ifdef KISAK_SP
-    const int flagsBefore = ent->flags;
-    const unsigned int disconnectedLinksBefore = ent->disconnectedLinks;
-    Com_Printf(
-        15,
-        "ZM_BARRICADE connectpaths_begin ent=%d flags=0x%08X disconnected=%u\n",
-        ent->s.number,
-        flagsBefore,
-        disconnectedLinksBefore);
-#endif
     Path_ConnectPathsForEntity(ent);
-#ifdef KISAK_SP
-    // Behavior-neutral Zombies barricade probe. The shipped spawner script
-    // calls connectpaths() only after the board-tear animation finishes. This
-    // records whether that wrapper reached the native dynamic-path pipeline
-    // and whether it consumed the entity's disconnected-link chain.
-    Com_Printf(
-        15,
-        "ZM_BARRICADE connectpaths ent=%d flags=0x%08X->0x%08X disconnected=%u->%u\n",
-        ent->s.number,
-        flagsBefore,
-        ent->flags,
-        disconnectedLinksBefore,
-        ent->disconnectedLinks);
-#endif
 }
 
 // LWSS ADD

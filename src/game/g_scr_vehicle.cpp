@@ -9029,6 +9029,20 @@ unsigned __int16 __cdecl G_GetVehicleTypeString(int clientNum, int entityNum)
 
 void __cdecl Scr_Vehicle_Use(gentity_s *pEnt, gentity_s *pOther, gentity_s *__formal)
 {
+#ifdef KISAK_SP
+    // Retail SP 0x00474B40: no team check, and a player already in a vehicle gets out.
+    if ( !pOther->client || (pEnt->scr_vehicle->flags & 8) != 0 )
+        return;
+    if ( (pOther->client->ps.eFlags & 0x4000) != 0 )
+    {
+        VEH_UnlinkPlayer(pOther, 0, (char *)"Scr_Vehicle_Use");
+        return;
+    }
+    int entryPoint = -1;
+    const int seat = G_GetVehicleSeatToEnter(pEnt, pOther, pEnt->scriptUse_SP != 0, &entryPoint);
+    if ( seat != -1 )
+        VEH_LinkPlayer(pEnt, pOther, seat, 0);
+#else
     team_t vehicle_team; // [esp+0h] [ebp-Ch]
     int entryPoint; // [esp+4h] [ebp-8h] BYREF
     int seatIndex; // [esp+8h] [ebp-4h]
@@ -9051,6 +9065,7 @@ void __cdecl Scr_Vehicle_Use(gentity_s *pEnt, gentity_s *pOther, gentity_s *__fo
             }
         }
     }
+#endif
 }
 
 void __cdecl Scr_Vehicle_Die(

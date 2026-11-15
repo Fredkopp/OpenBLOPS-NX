@@ -258,17 +258,9 @@ void __cdecl SL_CheckLeaks(scriptInstance_t inst)
                     Com_PrintError(1, "leaked string = '%s', refcount = %i, i = %i\n", SL_DebugConvertToString(i, inst), v2, i);
                 }
             }
-            if ( gScrStringDebugGlob[inst]->totalRefCount
-                && !Assert_MyHandler(
-                            "C:\\projects_pc\\cod\\codsrc\\src\\clientscript\\cscr_stringlist.cpp",
-                            142,
-                            0,
-                            "%s\n\t(gScrStringDebugGlob[inst]->totalRefCount) = %i",
-                            "(!gScrStringDebugGlob[inst]->totalRefCount)",
-                            gScrStringDebugGlob[inst]->totalRefCount) )
-            {
-                __debugbreak();
-            }
+            // The debug build asserted on any leak here. Retail's release build has
+            // no leak check and keeps some references to process exit (vehicle switch
+            // nodes, for one), and an assert ends the Switch build, so only report.
         }
         Scr_ClearScrStringDebugGlob(inst);
     }

@@ -16,12 +16,6 @@
 #include "cg_drawtools.h"
 #include <gfx_d3d/rb_corona.h>
 #include <EffectsCore/fx_sprite.h>
-#ifdef KISAK_SP
-#include <clientscript/scr_const.h>
-#include <qcommon/dobj_management.h>
-#include <cgame_mp/cg_ents_mp.h>
-#include <cmath>
-#endif
 
 const dvar_t *waypointDebugDraw;
 const dvar_t *waypointIconWidth;
@@ -103,7 +97,11 @@ void __cdecl CG_HudElemRegisterDvars()
                                                                                             "Distance from the threshold over which offscreen objective icons lerp their alpha.");
     waypointOffscreenPadLeft = _Dvar_RegisterFloat(
                                                              "waypointOffscreenPadLeft",
+#ifdef KISAK_SP
+                                                             40.0,
+#else
                                                              103.0,
+#endif
                                                              0.0,
                                                              3.4028235e38,
                                                              0,
@@ -504,10 +502,34 @@ void __cdecl ParseDirective(char *directive, char *resultName, char *resultArg0)
     }
 }
 
+static char ProjectBehindViewToScreenEdge(const ScreenPlacement *scrPlace, const float *projections, float *outScreenPos)
+{
+    outScreenPos[0] = -projections[1];
+    outScreenPos[1] = -projections[2];
+    if (fabsf(outScreenPos[0]) < 0.001f && fabsf(outScreenPos[1]) < 0.001f)
+    {
+        outScreenPos[1] = scrPlace->realViewportSize[1] * 2.0f;
+        return 0;
+    }
+    if (fabsf(outScreenPos[0]) < 0.001f)
+        outScreenPos[0] = 0.001f;
+    if (fabsf(outScreenPos[1]) < 0.001f)
+        outScreenPos[1] = 0.001f;
+    while (scrPlace->realViewportSize[0] > fabsf(outScreenPos[0]))
+    {
+        outScreenPos[0] *= scrPlace->realViewportSize[0];
+        outScreenPos[1] *= scrPlace->realViewportSize[0];
+    }
+    while (scrPlace->realViewportSize[1] > fabsf(outScreenPos[1]))
+    {
+        outScreenPos[0] *= scrPlace->realViewportSize[1];
+        outScreenPos[1] *= scrPlace->realViewportSize[1];
+    }
+    return 0;
+}
+
 char __cdecl WorldPosToScreenPos(int localClientNum, const float *worldPos, float *outScreenPos)
 {
-    float v4; // [esp+0h] [ebp-4Ch]
-    float v5; // [esp+Ch] [ebp-40h]
     ScreenPlacement *scrPlace; // [esp+28h] [ebp-24h]
     const cg_s *cgameGlob; // [esp+2Ch] [ebp-20h]
     float projections[3]; // [esp+30h] [ebp-1Ch] BYREF
@@ -531,38 +553,7 @@ char __cdecl WorldPosToScreenPos(int localClientNum, const float *worldPos, floa
                                         + scrPlace->realViewportBase[1];
         return 1;
     }
-    else
-    {
-        //*(unsigned int *)outScreenPos = LODWORD(projections[1]) ^ _mask__NegFloat_;
-        outScreenPos[0] = -projections[1];
-        //*((unsigned int *)outScreenPos + 1) = LODWORD(projections[2]) ^ _mask__NegFloat_;
-        outScreenPos[1] = -projections[1];
-        if ( fabsf(*(unsigned int *)outScreenPos) >= 0.001
-            || fabsf((unsigned int)outScreenPos[1]) >= 0.001 )
-        {
-            if (fabsf(*(unsigned int *)outScreenPos) < 0.001 )
-                *outScreenPos = 0.001f;
-            if (fabsf((unsigned int)outScreenPos[1]) < 0.001 )
-                outScreenPos[1] = 0.001f;
-            while ( scrPlace->realViewportSize[0] > fabsf(*(unsigned int *)outScreenPos) )
-            {
-                v5 = scrPlace->realViewportSize[0];
-                *outScreenPos = v5 * *outScreenPos;
-                outScreenPos[1] = v5 * outScreenPos[1];
-            }
-            while ( scrPlace->realViewportSize[1] > fabsf((unsigned int)outScreenPos[1]) )
-            {
-                v4 = scrPlace->realViewportSize[1];
-                *outScreenPos = v4 * *outScreenPos;
-                outScreenPos[1] = v4 * outScreenPos[1];
-            }
-        }
-        else
-        {
-            outScreenPos[1] = scrPlace->realViewportSize[1] * 2.0;
-        }
-        return 0;
-    }
+    return ProjectBehindViewToScreenEdge(scrPlace, projections, outScreenPos);
 }
 
 void __cdecl GetViewAxisProjections(
@@ -587,8 +578,6 @@ void __cdecl GetViewAxisProjections(
 
 char __cdecl WorldPosToExtraCamScreenPos(int localClientNum, const float *worldPos, float *outScreenPos)
 {
-    float v4; // [esp+0h] [ebp-4Ch]
-    float v5; // [esp+Ch] [ebp-40h]
     ScreenPlacement *scrPlace; // [esp+28h] [ebp-24h]
     const cg_s *cgameGlob; // [esp+2Ch] [ebp-20h]
     float projections[3]; // [esp+30h] [ebp-1Ch] BYREF
@@ -616,38 +605,7 @@ char __cdecl WorldPosToExtraCamScreenPos(int localClientNum, const float *worldP
                                         + scrPlace->realViewportBase[1];
         return 1;
     }
-    else
-    {
-        //*(unsigned int *)outScreenPos = LODWORD(projections[1]) ^ _mask__NegFloat_;
-        outScreenPos[0] = -projections[1];
-        //*((unsigned int *)outScreenPos + 1) = LODWORD(projections[2]) ^ _mask__NegFloat_;
-        outScreenPos[1] = -projections[2];
-        if ( fabsf(*(unsigned int *)outScreenPos) >= 0.001
-            || fabsf((unsigned int)outScreenPos[1]) >= 0.001 )
-        {
-            if (fabsf(*(unsigned int *)outScreenPos) < 0.001 )
-                *outScreenPos = 0.001f;
-            if (fabsf((unsigned int)outScreenPos[1]) < 0.001 )
-                outScreenPos[1] = 0.001f;
-            while ( scrPlace->realViewportSize[0] > fabsf(*(unsigned int *)outScreenPos) )
-            {
-                v5 = scrPlace->realViewportSize[0];
-                *outScreenPos = v5 * *outScreenPos;
-                outScreenPos[1] = v5 * outScreenPos[1];
-            }
-            while ( scrPlace->realViewportSize[1] > fabsf((unsigned int)outScreenPos[1]) )
-            {
-                v4 = scrPlace->realViewportSize[1];
-                *outScreenPos = v4 * *outScreenPos;
-                outScreenPos[1] = v4 * outScreenPos[1];
-            }
-        }
-        else
-        {
-            outScreenPos[1] = scrPlace->realViewportSize[1] * 2.0;
-        }
-        return 0;
-    }
+    return ProjectBehindViewToScreenEdge(scrPlace, projections, outScreenPos);
 }
 
 bool __cdecl ClampScreenPosToEdges(
@@ -2325,87 +2283,177 @@ static hudelem_color_t CG_ReviveIndicatorColor_SP(int currentTime, const clientS
     return color;
 }
 
-void CG_DrawObjectiveMarkers_SP(int localClientNum)
+static void CG_ObjectiveIndicatorColor_SP(int color, float *out)
 {
-    if (zombiemode->current.enabled || !Dvar_GetBool("hud_showObjectives"))
+    static const float namedColors[5][4] = {
+        { 1.0f, 1.0f, 1.0f, 1.0f },
+        { 1.0f, 0.0f, 0.0f, 1.0f },
+        { 0.0f, 1.0f, 0.0f, 1.0f },
+        { 0.0f, 0.0f, 1.0f, 1.0f },
+        { 0.87843f, 0.95f, 0.9f, 1.0f },
+    };
+    if (color >= 1 && color <= 5)
+        Vec4Copy(namedColors[color - 1], out);
+    else
+        Vec4Copy(cg_objectiveIndicatorColor->current.vector, out);
+}
+
+// Retail SP 0x00643260, drawn by HUD ownerdraw 322.
+void CG_DrawObjectiveIndicators_SP(int localClientNum)
+{
+    if ((zombietron->current.enabled && localClientNum) || !hud_showObjectives->current.enabled)
         return;
 
-    const cg_s *cg = CG_GetLocalClientGlobals(localClientNum);
-    const ScreenPlacement &placement = scrPlaceView[localClientNum];
-    constexpr float textScale = 0.4f;
-    Font_s *font = nullptr;
-    for (const auto &objective : cg->objectives)
+    const cg_s *cgameGlob = CG_GetLocalClientGlobals(localClientNum);
+    const ScreenPlacement *scrPlace = &scrPlaceView[localClientNum];
+    Font_s *font = UI_GetFontHandle(scrPlace, 1, 1.0f);
+    const float scaleVirtualToRealAvg = (scrPlace->scaleVirtualToReal[0] + scrPlace->scaleVirtualToReal[1]) * 0.5f;
+    const float pointerWidth = waypointOffscreenPointerWidth->current.value * scrPlace->scaleVirtualToReal[0];
+    const float pointerHeight = waypointOffscreenPointerHeight->current.value * scrPlace->scaleVirtualToReal[1];
+    const float pointerDistance = waypointOffscreenPointerDistance->current.value * scaleVirtualToRealAvg;
+    float distanceThresholdAlpha = waypointOffscreenDistanceThresholdAlpha->current.value * scaleVirtualToRealAvg;
+    if (distanceThresholdAlpha < 0.1f)
+        distanceThresholdAlpha = 0.1f;
+    const float padding = 0.5f * pointerHeight + pointerDistance;
+    const float padLeft = waypointOffscreenPadLeft->current.value * scrPlace->scaleVirtualToReal[0] + padding;
+    const float padRight = waypointOffscreenPadRight->current.value * scrPlace->scaleVirtualToReal[0] + padding;
+    const float padTop = waypointOffscreenPadTop->current.value * scrPlace->scaleVirtualToReal[1] + padding;
+    const float padBottom = waypointOffscreenPadBottom->current.value * scrPlace->scaleVirtualToReal[1] + padding;
+
+    for (const clientObjective_t &objective : cgameGlob->objectives)
     {
-        if (!(objective.use3D & 1) || !objective.text3D[0]
-            || (objective.state != OBJST_CURRENT && objective.state != OBJST_ACTIVE))
+        if (!(objective.use3D & 1))
+            continue;
+        const int ui3dWindow = ((objective.use3D >> 1) & 15) - 1;
+        if (ui3dWindow >= 0 && ui3dWindow != R_UI3DStack_Top(R_GetUI3DStack()))
+            continue;
+        if (objective.state != OBJST_ACTIVE && objective.state != OBJST_CURRENT)
             continue;
 
-        char label[256]{};
-        CG_TranslateHudElemMessage(localClientNum, objective.text3D, "objective marker", label);
-        if (!label[0])
-            continue;
-        if (!font)
-            font = UI_GetFontHandle(&placement, 0, textScale);
-        if (!font)
-            return;
-
-        const float normalizedScale = R_NormalizedTextScale(font, textScale);
-        const float scaleX = normalizedScale * placement.scaleVirtualToReal[0];
-        const float scaleY = normalizedScale * placement.scaleVirtualToReal[1];
-        const float halfWidth = 0.5f * R_TextWidth(label, 0x7FFFFFFF, font) * scaleX;
-        float color[] = {1.0f, 1.0f, 1.0f, 1.0f};
-        if (objective.color & SP_OBJECTIVE_PACKED_RGB)
-        {
-            for (int i = 0; i < 3; ++i)
-                color[i] = ((objective.color >> (16 - i * 8)) & 255) / 255.0f;
-        }
-        else
-        {
-            switch (objective.color)
-            {
-            case 2: color[1] = color[2] = 0.0f; break;
-            case 3: color[0] = color[2] = 0.0f; break;
-            case 4: color[0] = color[1] = 0.0f; break;
-            case 5: color[0] = color[1] = 0.5f; break;
-            }
-        }
-        const float glow[] = {0.0f, 0.0f, 0.0f, 0.8f};
         for (unsigned i = 0; i < ARRAY_COUNT(objective.entNum); ++i)
         {
-            const int entityNum = objective.entNum[i];
-            if (entityNum < 0 || entityNum > ENTITYNUM_NONE)
-                continue;
-            float origin[3];
-            if (entityNum == ENTITYNUM_NONE)
-                Vec3Copy(objective.origin[i], origin);
+            const int entNum = objective.entNum[i];
+            float worldPos[3];
+            if (entNum == -1)
+            {
+                if (objective.origin[i][0] == 0.0f && objective.origin[i][1] == 0.0f && objective.origin[i][2] == 0.0f)
+                    continue;
+                Vec3Add(objective.origin[i], objective.offset, worldPos);
+            }
             else
             {
-                const centity_s *cent = CG_GetEntity(localClientNum, entityNum);
-                if (!(cent->clientFlags & 2) || (cent->nextState.lerp.eFlags & 0x20))
+                if (entNum < 0 || entNum >= MAX_GENTITIES)
                     continue;
-                Vec3Copy(cent->pose.origin, origin);
-                if (cent->nextState.eType == ET_ACTOR)
+                const centity_s *cent = CG_GetEntity(localClientNum, entNum);
+                Vec3Add(cent->pose.origin, objective.offset, worldPos);
+                if (cent->nextState.eType == ET_PLAYER || cent->nextState.eType == ET_ACTOR)
                 {
-                    DObj *object = Com_GetClientDObj(entityNum, localClientNum);
-                    if (!object || !CG_DObjGetWorldTagPos(&cent->pose, object, scr_const.j_head, origin))
-                        origin[2] += 72.0f;
-                    origin[2] += 10.0f;
+                    if (cent->currentState.eFlags & 8)
+                        worldPos[2] += waypointPlayerOffsetProne->current.value;
+                    else if (cent->currentState.eFlags & 4)
+                        worldPos[2] += waypointPlayerOffsetCrouch->current.value;
+                    else
+                        worldPos[2] += waypointPlayerOffsetStand->current.value;
                 }
             }
-            Vec3Add(origin, objective.offset, origin);
-            float projections[3];
-            GetViewAxisProjections(cg->refdef.vieworg, cg->refdef.viewaxis, origin, projections);
-            if (!(projections[0] > 0.001f))
+            if (worldPos[0] == 0.0f && worldPos[1] == 0.0f && worldPos[2] == 0.0f)
                 continue;
-            float screen[2];
-            if (!WorldPosToScreenPos(localClientNum, origin, screen)
-                || !std::isfinite(screen[0]) || !std::isfinite(screen[1])
-                || screen[0] < placement.realViewportBase[0] || screen[1] < placement.realViewportBase[1]
-                || screen[0] >= placement.realViewportBase[0] + placement.realViewportSize[0]
-                || screen[1] >= placement.realViewportBase[1] + placement.realViewportSize[1])
+
+            float color[4];
+            CG_ObjectiveIndicatorColor_SP(objective.color, color);
+            float pointerColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+            float screenPos[2];
+            if (ui3dWindow < 0)
+                WorldPosToScreenPos(localClientNum, worldPos, screenPos);
+            else
+                WorldPosToExtraCamScreenPos(localClientNum, worldPos, screenPos);
+
+            const float dist = Vec3Distance(cgameGlob->refdef.vieworg, worldPos);
+            float clampedDir[2];
+            float clampedDist;
+            if (ClampScreenPosToEdges(localClientNum, screenPos, padLeft, padRight, padTop, padBottom, clampedDir, &clampedDist)
+                && clampedDist > 0.0f)
+            {
+                if (distanceThresholdAlpha > clampedDist)
+                    color[3] = color[3] / distanceThresholdAlpha * clampedDist;
+                const float arrowX = pointerDistance * clampedDir[0] + screenPos[0];
+                const float arrowY = pointerDistance * clampedDir[1] + screenPos[1];
+                const float angle = RAD2DEG(atan2f(clampedDir[0], -clampedDir[1]));
+                CL_DrawStretchPicPhysicalRotateXYW(
+                    arrowX - 0.5f * pointerWidth,
+                    arrowY - 0.5f * pointerHeight,
+                    dist,
+                    pointerWidth,
+                    pointerHeight,
+                    0.0f,
+                    0.0f,
+                    1.0f,
+                    1.0f,
+                    angle,
+                    color,
+                    cgMedia.offscreenObjectivePointer);
                 continue;
-            CL_DrawTextPhysicalWithEffects(label, 0x7FFFFFFF, font, screen[0] - halfWidth,
-                screen[1], 1.0f, scaleX, scaleY, color, 3, glow, nullptr, nullptr, 0, 0, 0, 0);
+            }
+
+            char distanceText[32];
+            char *text = distanceText;
+            if (objective.text3D[0])
+            {
+                text = SEH_LocalizeTextMessage(objective.text3D, "objective text", LOCMSG_SAFE);
+                if (*text == '*')
+                    continue;
+            }
+            else
+            {
+                const float meters = dist * 0.0254f;
+                Com_sprintf(distanceText, sizeof(distanceText), meters < 10.0f ? "%0.1fm" : "%0.0fm", meters);
+            }
+
+            const float nearDist = cg_objectiveIndicatorNearDist->current.value;
+            const float nearFadeDist = cg_objectiveIndicatorNearFadeDist->current.value;
+            const float farFadeDist = cg_objectiveIndicatorFarFadeDist->current.value;
+            if (nearFadeDist > dist)
+                color[3] = pointerColor[3] = 1.0f - (nearDist - dist) / nearDist;
+            else if (dist > farFadeDist)
+                color[3] = pointerColor[3] = 1.0f - (dist - farFadeDist) / nearFadeDist;
+
+            float scale = 1.0f;
+            if (nearDist <= dist)
+            {
+                float frac = (dist - nearDist) / (cg_objectiveIndicatorFarDist->current.value - nearDist);
+                if (frac > 1.0f)
+                    frac = 1.0f;
+                if (frac < 0.0f)
+                    frac = 0.0f;
+                scale = cg_objectiveIndicatorFarScale->current.value * frac + (1.0f - frac);
+            }
+
+            const float textScale = R_NormalizedTextScale(font, cg_objectiveIndicatorSize->current.value * scale);
+            const float textScaleX = textScale * scrPlace->scaleRealToVirtual[1] * scrPlace->scaleVirtualToReal[0];
+            CL_DrawStretchPicPhysicalW(
+                screenPos[0] - 7.5f,
+                screenPos[1],
+                dist,
+                15.0f,
+                15.0f,
+                0.0f,
+                0.0f,
+                1.0f,
+                1.0f,
+                pointerColor,
+                cgMedia.onscreenObjectivePointer);
+            CL_DrawTextPhysical(
+                text,
+                0x7FFFFFFF,
+                font,
+                screenPos[0] - R_TextWidth(text, 0x7FFFFFFF, font) * textScaleX * 0.5f,
+                screenPos[1],
+                dist,
+                textScaleX,
+                textScale,
+                color,
+                3);
         }
     }
 }

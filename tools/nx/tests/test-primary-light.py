@@ -17,13 +17,15 @@ code=r"""
 #define __debugbreak() assert(false)
 using byte=unsigned char;
 struct trajectory_t{};
+constexpr int MAX_GENTITIES=1024;
+struct LerpEntityStatePrimaryLight{byte colorAndExp[4];float intensity,radius,cosHalfFovOuter,cosHalfFovInner;};
 union LightUnion{
- struct{byte colorAndExp[4];float intensity,radius,cosHalfFovOuter,cosHalfFovInner;}primaryLight;
+ LerpEntityStatePrimaryLight primaryLight;
  struct{float gunAngles[3];int ownerNum;float heatVal;}turret;
  LightUnion(){std::memset(this,0,sizeof(*this));}
 };
 struct LerpState{LightUnion u;trajectory_t apos,pos;};
-struct centity_s{struct{int eType=10;struct{unsigned brushmodel=1;}index;LerpState lerp;}nextState;LerpState currentState;};
+struct centity_s{struct{int number=0,eType=10;struct{unsigned brushmodel=1;}index;LerpState lerp;}nextState;LerpState currentState;};
 struct GfxLight{float color[3]{},diffuseColor[4]{},specularColor[4]{},dir[3]{},angles[3]{},origin[3]{},radius=0,cosHalfFovOuter=0,cosHalfFovInner=0;int exponent=0;struct{float m[4][4];}viewMatrix;};
 struct ComPrimaryLight{float rotationLimit=1,translationLimit=0;}reference;
 struct snapshot_s{int serverTime=0;};
@@ -56,6 +58,11 @@ int main(){
  game.time=1050;CG_SetFrameInterpolation(0);CG_PrimaryLight(0,&entity);
  assert(light.radius==150&&light.color[0]==1.5f&&light.exponent==6);
  assert(std::abs(light.cosHalfFovInner-.9995f)<.00001f);
+ old.colorAndExp[3]=8;next.colorAndExp[3]=3;CG_PrimaryLight(0,&entity);
+ assert(light.exponent==6);
+ entity.nextState.number=MAX_GENTITIES;CG_PrimaryLight(0,&entity);
+ assert(light.radius==next.radius&&light.exponent==next.colorAndExp[3]);
+ entity.nextState.number=0;
  // Quantization can reverse nearly equal cone endpoints. Repair even on PC.
  old.cosHalfFovInner=next.cosHalfFovInner=.97f;CG_PrimaryLight(0,&entity);
  assert(light.cosHalfFovOuter>0&&light.cosHalfFovOuter<light.cosHalfFovInner&&light.cosHalfFovInner<=1);

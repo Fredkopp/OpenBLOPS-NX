@@ -10,21 +10,7 @@
 
 bool __fastcall Actor_Negotiation_Start(actor_s *pSelf, ai_state_t ePrevState)
 {
-    const bool hasNegotiationNode = Path_HasNegotiationNode(&pSelf->Path);
-#ifdef KISAK_SP
-    Com_Printf(
-        15,
-        "ZM_BARRICADE negotiation_start time=%d ent=%d species=%d hasNode=%d flags=0x%X neg=%d len=%d prevState=%d\n",
-        level.time,
-        pSelf->ent->s.number,
-        pSelf->species,
-        hasNegotiationNode,
-        pSelf->Path.flags,
-        pSelf->Path.wNegotiationStartNode,
-        pSelf->Path.wPathLen,
-        ePrevState);
-#endif
-    if ( !hasNegotiationNode )
+    if ( !Path_HasNegotiationNode(&pSelf->Path) )
         return 0;
     Actor_SetOrientMode(pSelf, AI_ORIENT_DONT_CHANGE);
     pSelf->eTraverseMode = AI_TRAVERSE_NOGRAVITY;
@@ -41,10 +27,6 @@ actor_think_result_t __fastcall Actor_Negotiation_Think(actor_s *pSelf)
     ai_animmode_t eAnimMode; // [esp+34h] [ebp-4h]
 
     PROF_SCOPED("negotiationthink");
-
-#ifdef KISAK_SP
-    const bool firstDispatch = !pSelf->pszDebugInfo || I_strcmp(pSelf->pszDebugInfo, "negotiation") != 0;
-#endif
 
     eAnimMode = AI_ANIM_USE_BOTH_DELTAS_NOGRAVITY;
     if ( pSelf->eTraverseMode == AI_TRAVERSE_GRAVITY )
@@ -76,27 +58,7 @@ actor_think_result_t __fastcall Actor_Negotiation_Think(actor_s *pSelf)
     }
     Actor_AnimSpecific(pSelf, &pSelf->AnimScriptSpecific, eAnimMode, 1);
     pSelf->pushable = 0;
-    const bool animScriptAlive = Actor_IsAnimScriptAlive(pSelf);
-#ifdef KISAK_SP
-    if ( firstDispatch )
-    {
-        Com_Printf(
-            15,
-            "ZM_BARRICADE negotiation_think_first time=%d ent=%d species=%d script=%s func=0x%08X handle=%u traverse=%d animMode=%d alive=%d\n",
-            level.time,
-            pSelf->ent->s.number,
-            pSelf->species,
-            pSelf->AnimScriptSpecific.name
-                ? SL_ConvertToString(pSelf->AnimScriptSpecific.name, SCRIPTINSTANCE_SERVER)
-                : "<none>",
-            pSelf->AnimScriptSpecific.func,
-            pSelf->AnimScriptHandle,
-            pSelf->eTraverseMode,
-            eAnimMode,
-            animScriptAlive);
-    }
-#endif
-    if ( animScriptAlive )
+    if ( Actor_IsAnimScriptAlive(pSelf) )
     {
         pSelf->pszDebugInfo = "negotiation";
         Actor_PreThink(pSelf);
@@ -109,17 +71,6 @@ actor_think_result_t __fastcall Actor_Negotiation_Think(actor_s *pSelf)
     }
     else
     {
-#ifdef KISAK_SP
-        Com_Printf(
-            15,
-            "ZM_BARRICADE negotiation_cleanup time=%d ent=%d species=%d hasNode=%d neg=%d len=%d\n",
-            level.time,
-            pSelf->ent->s.number,
-            pSelf->species,
-            Path_HasNegotiationNode(&pSelf->Path),
-            pSelf->Path.wNegotiationStartNode,
-            pSelf->Path.wPathLen);
-#endif
         if ( Path_HasNegotiationNode(&pSelf->Path) )
         {
             if ( pSelf->Path.wNegotiationStartNode >= pSelf->Path.wPathLen

@@ -63,7 +63,7 @@ template<class V>void ActorFields(V& v,actor_s& actor){
     for(auto& info:actor.sentientInfo)v.Ref("last_known_node",info.pLastKnownNode,checkpoint::ResourceKind::PathNode);
     for(auto& suppression:actor.suppression)v.Ref("suppressor",suppression.suppressor,checkpoint::ResourceKind::Sentient);
     v.StringId("damage_hit_location",actor.damageHitLoc);v.StringId("damage_weapon",actor.damageWeapon);v.StringId("damage_mod",actor.damageMod);
-    v.StringId("weapon",actor.weaponName);v.StringId("primary_weapon",actor.primaryWeaponName);
+    v.StringId("name",actor.name);v.StringId("weapon",actor.weaponName);v.StringId("primary_weapon",actor.primaryWeaponName);
     v.StringId("secondary_weapon",actor.secondaryWeaponName);v.StringId("sidearm",actor.sidearmName);
     v.StringId("grenade_toss_method",actor.GrenadeTossMethod);v.StringId("script_state",actor.scriptState);
     v.StringId("last_script_state",actor.lastScriptState);v.StringId("state_change_reason",actor.stateChangeReason);v.StringId("pose",actor.animPose);

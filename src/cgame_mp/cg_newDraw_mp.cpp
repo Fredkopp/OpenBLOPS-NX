@@ -703,6 +703,11 @@ void __cdecl CG_OwnerDraw(
                 if ( Dvar_GetBool("compassGridEnabled") )
                     CG_CompassDrawPlayerMap(localClientNum, COMPASS_TYPE_PARTIAL, &parentRect, &rect, material, color, 1);
                 break;
+#ifdef KISAK_SP
+            case 322:
+                CG_DrawObjectiveIndicators_SP(localClientNum);
+                break;
+#endif
             case 324:
                 CG_CompassDrawScrambler(localClientNum, COMPASS_TYPE_PARTIAL, &parentRect, &rect, material, color);
                 break;
@@ -4158,6 +4163,169 @@ void __cdecl CG_DrawGuidedMissileFuel(int localClientNum, const rectDef_s *rect,
     }
 }
 
+#ifdef KISAK_SP
+// Retail SP 0x00783360: the line of an objective that fits in maxChars
+// characters and wrapWidth pixels, broken after the last space (anywhere in
+// Asian languages). Returns where the next line starts, or NULL at the end of
+// the text.
+static const char *CG_ObjectiveListNextLine(
+    const char *text,
+    Font_s *font,
+    float scale,
+    int maxChars,
+    int wrapWidth,
+    int *lineChars)
+{
+    const char *parsePos = text;
+    const char *breakPos = text;
+    int charCount = 0;
+    int breakCount = 0;
+    int width = 0;
+    while (*parsePos)
+    {
+        const char *letterPos = parsePos;
+        const unsigned int letter = SEH_ReadCharFromString(&parsePos, 0);
+        if (letter == '\n')
+        {
+            *lineChars = charCount;
+            return parsePos;
+        }
+        ++charCount;
+        if (font)
+            width = UI_TextWidth(text, charCount, font, scale);
+        if (letter > ' ')
+        {
+            if (charCount > maxChars || (font && width > wrapWidth))
+            {
+                if (breakCount)
+                {
+                    *lineChars = breakCount;
+                    return breakPos;
+                }
+                *lineChars = charCount - 1;
+                return letterPos;
+            }
+            if (!Language_IsAsian())
+            {
+                if (!*parsePos)
+                    breakCount = charCount;
+                continue;
+            }
+        }
+        breakPos = parsePos;
+        breakCount = charCount;
+    }
+    *lineChars = breakCount;
+    return nullptr;
+}
+
+// Retail SP 0x0057D240 (owner draw 100): the objectiveinfo menu's objective
+// list. It shows while the scores button is held and fades out over 300 ms
+// after release. Retail's default state icons are never registered, so only
+// objectives given an icon by script draw one.
+static void CG_DrawObjectiveList_SP(
+    int localClientNum,
+    const rectDef_s *rect,
+    Font_s *font,
+    float scale,
+    const float *color,
+    int textStyle)
+{
+    if (!cg_drawpaused->current.enabled)
+        return;
+
+    const cg_s *cgameGlob = CG_GetLocalClientGlobals(localClientNum);
+    float alpha = 1.0f;
+    if (!cgameGlob->objectiveDisplayActive_SP)
+    {
+        const float *fade = CG_FadeColor(cgameGlob->hudTime, cgameGlob->objectiveFadeTime_SP, 300, 300);
+        if (!fade || fade[3] == 0.0f)
+            return;
+        alpha = fade[3];
+    }
+    const float activeColor[4] = { 0.6f, 0.6f, 0.6f, alpha };
+    const float currentColor[4] = { 1.0f, 1.0f, 1.0f, alpha };
+    const float doneColor[4] = { 0.35f, 0.35f, 0.35f, alpha };
+    const float failedColor[4] = { 0.4f, 0.3f, 0.3f, alpha };
+    const float shadowColor[4] = { 0.0f, 0.0f, 0.0f, alpha };
+
+    const ScreenPlacement *scrPlace = &scrPlaceView[localClientNum];
+    const float textHeight = static_cast<float>(UI_TextHeight(font, scale));
+    const float rowHeight = textHeight > rect->h ? textHeight : rect->h;
+    const float top = rect->y - textHeight;
+    const int wrapWidth = CG_GetLocalClientStaticGlobals(localClientNum)->viewAspect > 4.0f / 3.0f
+        ? cg_objectiveListWrapCountWidescreen->current.integer
+        : cg_objectiveListWrapCountStandard->current.integer;
+    float y = rect->y;
+    float lastY = 0.0f;
+
+    for (const clientObjective_t &objective : cgameGlob->objectives)
+    {
+        Material *icon = nullptr;
+        switch (objective.state)
+        {
+        case OBJST_ACTIVE:
+            if (objective.icon)
+                icon = CG_ObjectiveIcon(localClientNum, objective.icon, 0);
+            color = activeColor;
+            break;
+        case OBJST_INVISIBLE:
+            y += rowHeight + 4.0f;
+            continue;
+        case OBJST_DONE:
+            color = doneColor;
+            break;
+        case OBJST_CURRENT:
+            if (objective.icon)
+                icon = CG_ObjectiveIcon(localClientNum, objective.icon, 0);
+            color = currentColor;
+            break;
+        case OBJST_FAILED:
+            color = failedColor;
+            break;
+        default:
+            continue;
+        }
+
+        if (icon)
+        {
+            lastY = y - rect->h;
+            CL_DrawStretchPic(scrPlace, rect->x, lastY, rect->w, rect->h, rect->horzAlign, rect->vertAlign,
+                0.0f, 0.0f, 1.0f, 1.0f, color, icon);
+        }
+
+        const float textX = rect->x + rect->w + 12.0f;
+        const char *text = SEH_LocalizeTextMessage(objective.text, "objective text", LOCMSG_SAFE);
+        while (text)
+        {
+            int lineChars;
+            const char *next = CG_ObjectiveListNextLine(text, font, scale, 52, wrapWidth, &lineChars);
+            if (lineChars)
+            {
+                lastY = y + (textHeight - rect->h) * 0.5f;
+                UI_DrawText(scrPlace, const_cast<char *>(text), lineChars, font, textX, lastY,
+                    rect->horzAlign, rect->vertAlign, scale, color, textStyle);
+                y += rowHeight + 4.0f;
+            }
+            text = next;
+        }
+    }
+
+    // A one pixel divider between the icons and the text, with a shadow.
+    if (lastY == 0.0f)
+        return;
+    const float height = lastY - top;
+    if (height == 0.0f)
+        return;
+    const float lineWidth = static_cast<float>(static_cast<int>(ScrPlace_HiResGetScale() * scrPlace->scaleVirtualToReal[0]));
+    const float lineX = static_cast<float>(
+        ScrPlace_ApplyX(scrPlace, (12.0f - lineWidth) * 0.5f + rect->w + rect->x, rect->horzAlign));
+    // Horizontal alignment 5 places x and width in real pixels.
+    UI_FillRect(scrPlace, lineX + lineWidth, top + 1.0f, 1.0f, height, 5, rect->vertAlign, shadowColor);
+    UI_FillRect(scrPlace, lineX, top, lineWidth, height, 5, rect->vertAlign, color);
+}
+#endif
+
 void __cdecl CG_OwnerDrawText(
                 int localClientNum,
                 rectDef_s parentRect,
@@ -4350,6 +4518,9 @@ LABEL_59:
                 CG_DrawCenterString(localClientNum, &rect, font, scale, color, textStyle);
                 break;
 #ifdef KISAK_SP
+            case 100:
+                CG_DrawObjectiveList_SP(localClientNum, &rect, font, scale, color, textStyle);
+                break;
             case 97: // Death quote in the campaign HUD's deadscreen menu.
             {
                 if (cl_paused->current.integer || !cgameGlob->deathQuoteTime

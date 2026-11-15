@@ -269,18 +269,15 @@ void CG_ParseObjective_SP(int localClientNum, int configStringIndex)
                 objective->entNum[i] = -1;
                 if (*value)
                 {
-                    if (sscanf(value, "%f %f %f", &objective->origin[i][0],
-                        &objective->origin[i][1], &objective->origin[i][2]) == 3)
-                        objective->entNum[i] = ENTITYNUM_NONE; // Fixed world position.
+                    sscanf(value, "%f %f %f", &objective->origin[i][0],
+                        &objective->origin[i][1], &objective->origin[i][2]);
                 }
                 else
                 {
                     sprintf(key, "ent%d", i);
                     value = Info_ValueForKey(config, key);
-                    int entityNum;
-                    if (*value && sscanf(value, "%i", &entityNum) == 1
-                        && entityNum >= 0 && entityNum < ENTITYNUM_NONE)
-                        objective->entNum[i] = entityNum;
+                    if (*value)
+                        sscanf(value, "%i", &objective->entNum[i]);
                 }
             }
             int oldRing = objective->ring;

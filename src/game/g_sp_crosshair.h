@@ -7,7 +7,6 @@ struct scr_entref_t;
 
 // Reconstruction names for the retail SP look-at subsystem; not recovered symbols.
 void G_SPInitLookAt();
-void G_SPFreeActorName(gentity_s *ent);
 void G_SPSetActorName(gentity_s *ent);
 void G_SPGetActorName(gentity_s *ent);
 void G_SPShutdownLookAt();

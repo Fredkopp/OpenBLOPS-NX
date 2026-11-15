@@ -1497,8 +1497,6 @@ char __cdecl MSG_WriteDeltaField(
                 int skippedFieldBits,
                 bool sendSkippedFields)
 {
-    const char *EntityTypeString; // eax
-    const char *v14; // [esp+0h] [ebp-14h]
     int zeroVal; // [esp+4h] [ebp-10h] BYREF
     const int *realFromF; // [esp+8h] [ebp-Ch]
     const int *toF; // [esp+Ch] [ebp-8h]
@@ -1542,20 +1540,18 @@ char __cdecl MSG_WriteDeltaField(
         {
             __debugbreak();
         }
+#ifndef KISAK_SP
+        // Retail SP has no copy of this message.
         if ( field->changeHints == 1 && (!snapInfo->fromBaseline || fieldNum) )
         {
-            if ( snapInfo->packetEntityTypeArchived )
-                v14 = "archived";
-            else
-                v14 = "unarchived";
-            EntityTypeString = SV_GetEntityTypeString(snapInfo->packetEntityType);
             Com_PrintError(
                 15,
                 "Field %s changed for %s eType %s when we thought it never would\n",
                 field->name,
-                v14,
-                EntityTypeString);
+                snapInfo->packetEntityTypeArchived ? "archived" : "unarchived",
+                SV_GetEntityTypeString(snapInfo->packetEntityType));
         }
+#endif
         MSG_EncodeSkippedFields(snapInfo, msg, fieldNum - lastChangedField, skippedFieldBits);
     }
     return MSG_WriteDeltaField_Internal(snapInfo, msg, time, from, to, field, fieldNum, fromF, toF);

@@ -723,7 +723,7 @@ void __cdecl R_RegisterDvars()
                                                     0.0,
                                                     1u,
                                                     "Offset bias for decal polygons; bigger values z-fight less but poke through walls more");
-    // Switch: texture quality "Normal" (the options menu's Low/Normal/High/Extra
+    // Switch: texture quality "High" (the options menu's Low/Normal/High/Extra
     // are picmip 3/2/1/0, set for color, normal and specular maps together).
     r_picmip_manual = _Dvar_RegisterBool(
                                             "r_picmip_manual",
@@ -737,7 +737,7 @@ void __cdecl R_RegisterDvars()
     r_picmip = _Dvar_RegisterInt(
                              "r_picmip",
 #ifdef KISAK_NX
-                             2,
+                             1,
 #else
                              0,
 #endif
@@ -748,7 +748,7 @@ void __cdecl R_RegisterDvars()
     r_picmip_bump = _Dvar_RegisterInt(
                                         "r_picmip_bump",
 #ifdef KISAK_NX
-                                        2,
+                                        1,
 #else
                                         0,
 #endif
@@ -759,7 +759,7 @@ void __cdecl R_RegisterDvars()
     r_picmip_spec = _Dvar_RegisterInt(
                                         "r_picmip_spec",
 #ifdef KISAK_NX
-                                        2,
+                                        1,
 #else
                                         0,
 #endif
@@ -1351,13 +1351,9 @@ void __cdecl R_RegisterDvars()
                              1,
                              0x20u,
                              "Allocate a float z buffer (required for effects such as floatz, dof, and laser light)");
-#ifdef KISAK_NX
-    // Switch: off by default. The frame is bound by draw calls, and the prepass
-    // draws most of the scene a second time (README-SWITCH.md).
+    // Retail SP registers it off. On the Switch the frame is bound by draw calls,
+    // and the prepass draws most of the scene a second time.
     r_depthPrepass = _Dvar_RegisterBool("r_depthPrepass", 0, 1u, "Enable depth prepass (usually improves performance)");
-#else
-    r_depthPrepass = _Dvar_RegisterBool("r_depthPrepass", 1, 1u, "Enable depth prepass (usually improves performance)");
-#endif
     r_highLodDist = _Dvar_RegisterFloat(
                                         "r_highLodDist",
                                         -1.0,
@@ -2843,7 +2839,11 @@ void __cdecl R_RegisterDvars()
     r_sky_intensity_useDebugValues = _Dvar_RegisterBool(
                                                                          "r_sky_intensity_useDebugValues",
                                                                          0,
+#ifdef KISAK_SP
+                                                                         0x5000u,
+#else
                                                                          0x80u,
+#endif
                                                                          "use dvar values for sky intensity");
     r_sky_intensity_angle0 = _Dvar_RegisterFloat(
                                                          "r_sky_intensity_angle0",
@@ -2864,7 +2864,11 @@ void __cdecl R_RegisterDvars()
                                                             1.0,
                                                             0.0,
                                                             10.0,
+#ifdef KISAK_SP
+                                                            0x5000u,
+#else
                                                             0x80u,
+#endif
                                                             "angle0 of sky intensity");
     r_sky_intensity_factor1 = _Dvar_RegisterFloat(
                                                             "r_sky_intensity_factor1",

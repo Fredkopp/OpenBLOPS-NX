@@ -348,7 +348,17 @@ const dvar_s *cg_overheadNamesSize;
 #ifdef KISAK_SP
 const dvar_s *cg_drawHUD;
 const dvar_s *hud_drawHUD;
+const dvar_s *hud_showObjectives;
 const dvar_s *cg_drawOverheadNames;
+const dvar_s *cg_objectiveIndicatorColor;
+const dvar_s *cg_objectiveIndicatorNearFadeDist;
+const dvar_s *cg_objectiveIndicatorFarFadeDist;
+const dvar_s *cg_objectiveIndicatorNearDist;
+const dvar_s *cg_objectiveIndicatorFarDist;
+const dvar_s *cg_objectiveIndicatorFarScale;
+const dvar_s *cg_objectiveIndicatorSize;
+const dvar_s *cg_objectiveListWrapCountStandard;
+const dvar_s *cg_objectiveListWrapCountWidescreen;
 #endif
 const dvar_s *cg_overheadIconSize;
 const dvar_s *cg_overheadRankSize;
@@ -685,6 +695,11 @@ void __cdecl CG_RegisterDvars()
                                                         1,
                                                         0x81u,
                                                         "Draw the name of an enemy under the crosshair");
+#ifdef KISAK_SP
+    // Read by the HUD menus; level scripts set them with SetSavedDvar.
+    _Dvar_RegisterBool("cg_hideWeaponHeat", 0, 0x1000u, "");
+    _Dvar_RegisterBool("cg_drawWeaponHeatVertical", 0, 0x1000u, "");
+#endif
     cg_drawCrosshairNamesPosX = _Dvar_RegisterInt(
                                                                 "cg_drawCrosshairNamesPosX",
                                                                 300,
@@ -1587,6 +1602,17 @@ void __cdecl CG_RegisterDvars()
                                                     0,
                                                     0x80u,
                                                     "Whether to draw friendly names through walls or not");
+#ifdef KISAK_SP
+    cg_objectiveIndicatorColor = _Dvar_RegisterVec4("cg_objectiveIndicatorColor", 1.0f, 0.94f, 0.0f, 1.0f, 0.0f, 1.0f, 0x80u, "");
+    cg_objectiveIndicatorNearFadeDist = _Dvar_RegisterFloat("cg_objectiveIndicatorNearFadeDist", 256.0f, 0.0f, 3.4028235e38f, 0x1000u, "");
+    cg_objectiveIndicatorFarFadeDist = _Dvar_RegisterFloat("cg_objectiveIndicatorFarFadeDist", 8192.0f, 0.0f, 3.4028235e38f, 0x1000u, "");
+    cg_objectiveIndicatorNearDist = _Dvar_RegisterFloat("cg_objectiveIndicatorNearDist", 256.0f, 0.0f, 3.4028235e38f, 0x1000u, "");
+    cg_objectiveIndicatorFarDist = _Dvar_RegisterFloat("cg_objectiveIndicatorFarDist", 512.0f, 0.0f, 3.4028235e38f, 0x1000u, "");
+    cg_objectiveIndicatorFarScale = _Dvar_RegisterFloat("cg_objectiveIndicatorFarScale", 0.5f, 0.0f, 3.4028235e38f, 0x1000u, "");
+    cg_objectiveIndicatorSize = _Dvar_RegisterFloat("cg_objectiveIndicatorSize", 0.8f, 0.0f, 100.0f, 0x1000u, "");
+    cg_objectiveListWrapCountStandard = _Dvar_RegisterInt("cg_objectiveListWrapCountStandard", 600, 100, 640, 0, "");
+    cg_objectiveListWrapCountWidescreen = _Dvar_RegisterInt("cg_objectiveListWrapCountWidescreen", 530, 100, 640, 0, "");
+#endif
     cg_playerHighlightTargetSize = _Dvar_RegisterFloat(
                                                                      "cg_playerHighlightTargetSize",
                                                                      750.0,
@@ -2035,7 +2061,7 @@ void __cdecl CG_RegisterDvars()
     // Retail SP CG_RegisterDvars registers this saved HUD group together. These
     // dvars are consumed by server-side SetSavedDvar calls in the SP scripts.
     _Dvar_RegisterBool("hud_showTextNoAmmo", 1, 0x1000u, "");
-    _Dvar_RegisterBool("hud_showObjectives", 1, 0x1000u, "");
+    hud_showObjectives = _Dvar_RegisterBool("hud_showObjectives", 1, 0x1000u, "");
     _Dvar_RegisterBool("hud_showStance", 1, 0x1000u, "");
 #ifdef KISAK_SP
     hud_drawHUD = _Dvar_RegisterBool("hud_drawHUD", 1, 0x1000u, "");
@@ -3785,6 +3811,9 @@ void __cdecl CG_RegisterGraphics(int localClientNum, const char *mapname)
     cgMedia.grenadeIconThrowBack = Material_RegisterHandle("hud_grenadethrowback", 7);
     cgMedia.grenadePointer = Material_RegisterHandle("hud_grenadepointer", 7);
     cgMedia.offscreenObjectivePointer = Material_RegisterHandle("hud_offscreenobjectivepointer", 7);
+#ifdef KISAK_SP
+    cgMedia.onscreenObjectivePointer = Material_RegisterHandle("hud_onscreenobjectivepointer", 7);
+#endif
     cgMedia.demoTimelineFaded = Material_RegisterHandle("demo_timeline_faded", 7);
     cgMedia.demoTimelineSolid = Material_RegisterHandle("demo_timeline_solid", 7);
     cgMedia.demoTimelineCursor = Material_RegisterHandle("demo_timeline_arrow", 7);

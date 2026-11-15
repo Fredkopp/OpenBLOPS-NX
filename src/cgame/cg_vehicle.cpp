@@ -462,7 +462,7 @@ void    CG_Vehicle_PreControllers(
                 gunnerIndex = ps->vehiclePos - 1;
                 index = 0;
                 DObjGetBoneIndex(obja, *gunnerViewTags[gunnerIndex], &index, -1);
-                DObjGetBasePoseMatrix(obja, 0, &animMat);
+                DObjGetBasePoseMatrix(obja, index, &animMat);
                 QuatToAxis(animMat.quat, tagAxis);
                 AxisToAngles(tagAxis, tagAngles);
                 v163 = ps->viewangles[0] + tagAngles[0];
@@ -874,13 +874,12 @@ void    CG_Vehicle_PreControllers(
             }
             if (info->type == 1)
             {
-                static int dword_F5C5D8 = SL_GetLowercaseString("tag_steering_wheel", 0, SCRIPTINSTANCE_SERVER);
-                //if ((_S1_2 & 2) == 0)
-                //{
-                //    _S1_2 |= 2u;
-                //    dword_F5C5D8 = SL_GetLowercaseString("tag_steering_wheel", 0, SCRIPTINSTANCE_SERVER);
-                //}
-                if (!DObjGetBoneIndex(obj, dword_F5C5D8, &cent->pose.vehicle.wheelBoneIndex[1], -1)
+                // Retail keeps a reference to this name for the whole process, which the
+                // script string leak check at quit reports. The model holds the name
+                // while it is loaded, so look it up without taking a reference.
+                const unsigned int steeringWheelTag = SL_FindString("tag_steering_wheel", SCRIPTINSTANCE_SERVER);
+                if (!steeringWheelTag
+                    || !DObjGetBoneIndex(obj, steeringWheelTag, &cent->pose.vehicle.wheelBoneIndex[1], -1)
                     || cgameGlob->predictedPlayerState.viewlocked_entNum == cent->nextState.number)
                 {
                     cent->pose.vehicle.wheelBoneIndex[1] = -2;

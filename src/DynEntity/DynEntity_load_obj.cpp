@@ -1931,7 +1931,14 @@ unsigned __int16 __cdecl DynEnt_GetAbsId(const DynEntityDef *dynEntDef)
     {
         __debugbreak();
     }
-    absId = dynEntDef - cm.dynEntDefList[0];
+    // Retail subtracts the model list base from any def, relying on the brush list
+    // directly following it in the zone. The 64-bit load does not keep the two
+    // lists adjacent, so a brush def is indexed past the model list explicitly.
+    if ( cm.dynEntDefList[1] && dynEntDef >= cm.dynEntDefList[1]
+        && dynEntDef < cm.dynEntDefList[1] + cm.dynEntCount[1] )
+        absId = cm.dynEntCount[0] + (dynEntDef - cm.dynEntDefList[1]);
+    else
+        absId = dynEntDef - cm.dynEntDefList[0];
     if ( absId >= 0x1000u
         && !Assert_MyHandler(
                     "C:\\projects_pc\\cod\\codsrc\\src\\DynEntity\\DynEntity_load_obj.cpp",

@@ -40,7 +40,7 @@ struct PlayerLookAt
 {
     EntHandle target;
 };
-struct EntityLookAt { unsigned short text[2]; unsigned short actorName; };
+struct EntityLookAt { unsigned short text[2]; };
 PlayerLookAt players[CLIENT_COUNT];
 EntityLookAt entities[ENTITY_COUNT];
 
@@ -100,7 +100,6 @@ void G_SPFreeEntityLookAt(gentity_s *ent)
     if (!ValidEntity(index)) return;
     Scr_SetString(&entities[index].text[0], 0, SCRIPTINSTANCE_SERVER);
     Scr_SetString(&entities[index].text[1], 0, SCRIPTINSTANCE_SERVER);
-    G_SPFreeActorName(ent);
     if (ent->client) G_SPClearClientLookAt(ent->client);
 }
 
@@ -110,28 +109,19 @@ void G_SPShutdownLookAt()
     // string references while both registries are alive.
     for (auto &player : players) player.target.setEnt(nullptr);
     for (auto &entity : entities)
-    {
         for (auto &text : entity.text) Scr_SetString(&text, 0, SCRIPTINSTANCE_SERVER);
-        Scr_SetString(&entity.actorName, 0, SCRIPTINSTANCE_SERVER);
-    }
 }
 
-void G_SPFreeActorName(gentity_s *ent)
-{
-    if (ValidEntity(ent->s.number))
-        Scr_SetString(&entities[ent->s.number].actorName, 0, SCRIPTINSTANCE_SERVER);
-}
-
+// The name lives on the actor (retail actor+0xC94), so it is freed with the
+// actor's other strings and saved with it in checkpoints.
 void G_SPSetActorName(gentity_s *ent)
 {
-    Scr_SetString(&entities[ent->s.number].actorName,
-        Scr_GetConstStringIncludeNull(0, SCRIPTINSTANCE_SERVER), SCRIPTINSTANCE_SERVER);
+    Scr_SetString(&ent->actor->name, Scr_GetConstStringIncludeNull(0, SCRIPTINSTANCE_SERVER), SCRIPTINSTANCE_SERVER);
 }
 
 void G_SPGetActorName(gentity_s *ent)
 {
-    const unsigned short name = entities[ent->s.number].actorName;
-    if (name) Scr_AddConstString(name, SCRIPTINSTANCE_SERVER);
+    if (ent->actor->name) Scr_AddConstString(ent->actor->name, SCRIPTINSTANCE_SERVER);
 }
 
 void G_SPSetLookAtText(scr_entref_t entref)
@@ -294,11 +284,11 @@ void G_SPPublishLookAt(gentity_s *player)
     EntHandle &look = players[player->s.number].target;
     if (!look.isDefined()) { SetText(clientNum, 0, 0); return; }
     gentity_s *hit = look.ent();
-    if (hit->actor && entities[hit->s.number].actorName)
+    if (hit->actor && hit->actor->name)
     {
         if (!player->sentient || !hit->sentient
             || player->sentient->eTeam != hit->sentient->eTeam) return;
-        SetText(clientNum, 0, entities[hit->s.number].actorName);
+        SetText(clientNum, 0, hit->actor->name);
         const unsigned int weapon = G_GetWeaponIndexForName(
             SL_ConvertToString(hit->actor->weaponName, SCRIPTINSTANCE_SERVER));
         SV_SetConfigstring(CS_SP_LOOKAT_TEXT + clientNum * 2 + 1,

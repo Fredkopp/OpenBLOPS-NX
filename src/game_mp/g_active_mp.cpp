@@ -1497,7 +1497,11 @@ void __cdecl ClientThink_real(gentity_s *ent, usercmd_s *ucmd)
                 if ( client->latched_button_bits.testBit(0x32u) )
                     Scr_Notify(ent, scr_const.doubletap_detonate, 0);
                 ClientVehicleInteraction(ent);
+#ifndef KISAK_SP
+                // Retail SP has no vehicle jump-off, and its 0x200000 pm flag is low
+                // ready: standing on the Khe Sanh jeep would lower the gun for good.
                 ClientVehicleJumpOff(ent);
+#endif
                 if ( client->ps.locationSelectionInfo )
                 {
                     for ( mm = 0; mm < 2; ++mm )

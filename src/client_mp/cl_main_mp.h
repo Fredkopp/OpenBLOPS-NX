@@ -110,6 +110,14 @@ struct outPacket_t // sizeof=0xC
         int p_realtime;
 };
 
+// Retail SP (CL_AllocSkelMemory 0x004D97F0) gives skeletons twice the MP budget;
+// busy scenes like the Hue City opening need it.
+#ifdef KISAK_SP
+#define CL_SKEL_MEMORY_SIZE 0x80000
+#else
+#define CL_SKEL_MEMORY_SIZE 0x40000
+#endif
+
 struct clientActive_t // sizeof=0x1A6100
 {
         bool usingAds;
@@ -172,7 +180,7 @@ struct clientActive_t // sizeof=0x1A6100
         float viewangles[3];
         int skelTimeStamp;
         volatile unsigned int skelMemPos;
-        char skelMemory[262144];
+        char skelMemory[CL_SKEL_MEMORY_SIZE];
         char *skelMemoryStart;
         bool allowedAllocSkel;
         // padding byte

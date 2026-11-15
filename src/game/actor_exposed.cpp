@@ -785,6 +785,7 @@ static bool Actor_Human_FixedGoalSafe_SP(actor_s *self)
     return false;
 }
 
+// Retail 0x0046C830, used for fixed goals, cover selection and UseCoverNode.
 static bool Actor_Human_FindPathToNode_SP(actor_s *self, pathnode_t *node)
 {
     const bool hadPath = Actor_HasPath(self);
@@ -793,7 +794,11 @@ static bool Actor_Human_FindPathToNode_SP(actor_s *self, pathnode_t *node)
         Actor_ClearPileUp(self);
         return false;
     }
-    const bool validPath = Actor_FindPathToNode(self, node, 1, 0);
+    // Retail paths to the node's position, which starts from the actor's
+    // nearest node even when none is visible (as after a scripted vault that
+    // leaves the actor inside monster clip); Actor_FindPathToNode needs a
+    // visible start node.
+    const bool validPath = Actor_FindPath(self, node->constant.vOrigin, 1, false);
     if ( !Actor_HasPath(self) )
     {
         Actor_ClearPileUp(self);

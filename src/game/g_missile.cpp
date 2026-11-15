@@ -950,6 +950,10 @@ void __cdecl G_UnlinkPlayerToRocket(gentity_s *ent)
         if ( (client->ps.eFlags & 0x300) == 0 )
             client->ps.viewlocked_entNum = 1023;
         client->ps.weapFlags &= ~0x200u;
+#ifdef KISAK_SP
+        // Retail SP 0x007E4420.
+        client->ps.eFlags2 &= ~0x10040000u;
+#endif
     }
 }
 
@@ -5953,9 +5957,15 @@ void __cdecl G_LinkPlayerToRocket(gentity_s *ent, gentity_s *player)
     AssignToSmallerType<short>(&client->ps.viewlocked_entNum, ent->s.number);
     client->ps.weapFlags |= 0x200u;
     client->ps.weapFlags &= ~0x100000u;
+#ifdef KISAK_SP
+    // Retail SP 0x007E76C0 puts the view on the missile (CG_CalcMissileViewValues
+    // runs while 0x10000000 is set) and hands the sticks to it (0x40000).
+    client->ps.eFlags2 |= 0x10040000u;
+#else
     client->ps.linkAngles[0] = client->ps.viewangles[0];
     client->ps.linkAngles[1] = client->ps.viewangles[1];
     client->ps.linkAngles[2] = client->ps.viewangles[2];
+#endif
 }
 
 void __cdecl InitRocketTimer(gentity_s *bolt, const WeaponDef *weapDef)

@@ -989,42 +989,20 @@ void __cdecl G_DamageNotify(
         Scr_AddConstString(partName, SCRIPTINSTANCE_SERVER);
     else
         Scr_AddString((char *)"", SCRIPTINSTANCE_SERVER);
-    if ( !modelIndex || targ->destructible )
+    // Retail only names the attachment when its slot has a tag; a missile hitting a
+    // vehicle can report a modelIndex for an empty slot, which gets empty strings.
+    const unsigned int attachmentIndex = modelIndex - 1;
+    if ( modelIndex && attachmentIndex < ARRAY_COUNT(targ->attachTagNames) && targ->attachTagNames[attachmentIndex]
+        && !targ->destructible )
     {
-        Scr_AddString((char *)"", SCRIPTINSTANCE_SERVER);
-        Scr_AddString((char *)"", SCRIPTINSTANCE_SERVER);
+        modelName = G_ModelName(targ->attachModelNames[attachmentIndex]);
+        Scr_AddConstString(targ->attachTagNames[attachmentIndex], SCRIPTINSTANCE_SERVER);
+        Scr_AddConstString(modelName, SCRIPTINSTANCE_SERVER);
     }
     else
     {
-        const unsigned int attachmentIndex = modelIndex - 1;
-        if ( attachmentIndex >= ARRAY_COUNT(targ->attachModelNames)
-            && !Assert_MyHandler(
-                        "C:\\projects_pc\\cod\\codsrc\\src\\game_mp\\g_combat_mp.cpp",
-                        756,
-                        0,
-                        "%s",
-                        "modelIndex - 1 < ARRAY_COUNT( targ->attachModelNames )") )
-        {
-            __debugbreak();
-        }
-        if ( !targ->attachTagNames[attachmentIndex]
-            && !Assert_MyHandler(
-                        "C:\\projects_pc\\cod\\codsrc\\src\\game_mp\\g_combat_mp.cpp",
-                        756,
-                        0,
-                        "%s",
-                        "targ->attachTagNames[modelIndex - 1]") )
-        {
-            __debugbreak();
-        }
-        modelName = G_ModelName(targ->attachModelNames[attachmentIndex]);
-        if ( !modelName
-            && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\game_mp\\g_combat_mp.cpp", 759, 1, "%s", "modelName") )
-        {
-            __debugbreak();
-        }
-        Scr_AddConstString(targ->attachTagNames[attachmentIndex], SCRIPTINSTANCE_SERVER);
-        Scr_AddConstString(modelName, SCRIPTINSTANCE_SERVER);
+        Scr_AddString((char *)"", SCRIPTINSTANCE_SERVER);
+        Scr_AddString((char *)"", SCRIPTINSTANCE_SERVER);
     }
     Scr_AddConstString(*modNames[mod], SCRIPTINSTANCE_SERVER);
     Scr_AddVector(point ? point : (float *)vec3_origin, SCRIPTINSTANCE_SERVER);

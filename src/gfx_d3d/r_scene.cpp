@@ -5028,7 +5028,7 @@ void R_SetDLightsConstants(
     float reds[4]         = {};  // omni -1/r^2
     float greens[4]       = {};  // omni R-diffuse scaled
     float blues[4]        = {};  // omni G-diffuse scaled
-    float diffuseColor[4] = {};  // [0]=spot lightDef ptr (alias), [1..3]=omni B-diffuse
+    float diffuseColor[4] = {};  // [1..3]=omni B-diffuse
 
     // ---- Spot-light scratch (only populated if a spot is processed) ----
     float lightAttentuation[4] = {};                          // [0]=L.attenuation[3], [1..3]=pos view-rel
@@ -5050,6 +5050,9 @@ void R_SetDLightsConstants(
     float falloffParams[4]    = {};  // = L.falloff[0..3]
 
     const GfxSpotShadow *spotShadow = nullptr;
+    // Retail keeps the spot light def in diffuseColor[0], which only fits a
+    // 32-bit pointer; omni lights then overwrite the next slot.
+    const GfxLightDef *spotDef = nullptr;
 
     // ===== Accumulate per-light data =====
     // IDA original uses `ys[i + 1]` etc. — indexed by the visible-light index. That's a
@@ -5085,9 +5088,7 @@ void R_SetDLightsConstants(
         {
             iassert(L.type == GFX_LIGHT_TYPE_SPOT);
 
-            // Stash spot lightDef pointer bit-aliased into diffuseColor[0]. The non-null
-            // check below is what triggers the spot's attenuation-image binding.
-            *(const GfxLightDef **)&diffuseColor[0] = L.def;
+            spotDef = L.def;
 
             lightAttentuation[1] = L.origin[0] - viewInfo->cullViewInfo.viewParms.origin[0];
             lightAttentuation[2] = L.origin[1] - viewInfo->cullViewInfo.viewParms.origin[1];
@@ -5159,9 +5160,8 @@ void R_SetDLightsConstants(
                            diffuseColor[1], diffuseColor[2], diffuseColor[3], blues[0]);
 
     // ===== Bind spot attenuation image (codeImages[17]) =====
-    if (*(uint32_t *)&diffuseColor[0])
+    if (spotDef)
     {
-        const GfxLightDef *spotDef = *(const GfxLightDef **)&diffuseColor[0];
         input->codeImages[TEXTURE_SRC_CODE_DLIGHT_ATTENUATION] = spotDef->attenuation.image;
         R_SetInputCodeImageSamplerState(input, 0x11u, spotDef->attenuation.samplerState);
     }

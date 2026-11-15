@@ -2102,7 +2102,11 @@ void G_RegisterDvars()
 #endif
                                                  0.0,
                                                  15000.0,
+#ifdef KISAK_SP
+                                                 0x3080u,
+#else
                                                  0x80u,
+#endif
                                                  "Maximum range for disabling fire at a friendly");
     g_friendlyNameDist = _Dvar_RegisterFloat(
                                                  "g_friendlyNameDist",

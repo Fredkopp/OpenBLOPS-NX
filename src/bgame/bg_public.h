@@ -363,6 +363,7 @@ struct gentity_s // sizeof=0x2F8
     float angleLerpRate;
     ScriptedAnimRecord_SP *scriptedAnim_SP;
     unsigned __int8 noBaseline_SP;
+    unsigned __int8 scriptUse_SP;
     unsigned __int16 script_linkname;
 #endif
 };

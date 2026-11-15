@@ -2628,8 +2628,8 @@ void __cdecl CG_PrimaryLight(int localClientNum, centity_s *cent)
         + (nextLight.cosHalfFovOuter - currentLight.cosHalfFovOuter) * lightFraction;
     light->cosHalfFovInner = currentLight.cosHalfFovInner
         + (nextLight.cosHalfFovInner - currentLight.cosHalfFovInner) * lightFraction;
-    light->exponent = static_cast<int>(currentLight.colorAndExp[3]
-        + (nextLight.colorAndExp[3] - currentLight.colorAndExp[3]) * lightFraction);
+    light->exponent = static_cast<int>((nextLight.colorAndExp[3] - currentLight.colorAndExp[3]) * lightFraction)
+        + currentLight.colorAndExp[3];
     // Apply the existing quantization repair on every platform.
     // The inner cone travels in u.turret.heatVal, which the entity net fields
     // send as MSG_FIELD_0TO1_P2 -- quantized -- while the outer one is a full
@@ -5148,8 +5148,12 @@ void __cdecl CG_mg42(int localClientNum, centity_s *cent)
             {
                 CG_mg42_PreControllers(obj, cent);
                 CG_mg42_OverheatUpdate(localClientNum, obj, cent);
+                // Retail SP 0x00777027 hides the scoped turret in use without a third-person
+                // test. Levels like Khe Sanh render the player for its shadow (TP_FOR_SHADOW).
                 if ( !CG_PlayerUsingScopedTurret(localClientNum)
+#ifndef KISAK_SP
                     || CG_GetLocalClientGlobals(localClientNum)->renderingThirdPerson
+#endif
                     || (LocalClientGlobals = CG_GetLocalClientGlobals(localClientNum),
                             p_predictedPlayerState = &LocalClientGlobals->predictedPlayerState,
                             LocalClientGlobals->predictedPlayerState.viewlocked_entNum != ns->number) )

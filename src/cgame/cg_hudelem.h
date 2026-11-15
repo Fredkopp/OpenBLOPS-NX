@@ -166,5 +166,5 @@ extern const dvar_t *waypointPlayerOffsetRevive;
 extern game_hudelem_s g_hudelems[1024];
 #ifdef KISAK_SP
 void CG_DrawReviveIndicators_SP(int localClientNum);
-void CG_DrawObjectiveMarkers_SP(int localClientNum);
+void CG_DrawObjectiveIndicators_SP(int localClientNum);
 #endif

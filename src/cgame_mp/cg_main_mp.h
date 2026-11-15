@@ -342,7 +342,17 @@ extern const dvar_s *cg_overheadNamesSize;
 #ifdef KISAK_SP
 extern const dvar_s *cg_drawHUD;
 extern const dvar_s *hud_drawHUD;
+extern const dvar_s *hud_showObjectives;
 extern const dvar_s *cg_drawOverheadNames;
+extern const dvar_s *cg_objectiveIndicatorColor;
+extern const dvar_s *cg_objectiveIndicatorNearFadeDist;
+extern const dvar_s *cg_objectiveIndicatorFarFadeDist;
+extern const dvar_s *cg_objectiveIndicatorNearDist;
+extern const dvar_s *cg_objectiveIndicatorFarDist;
+extern const dvar_s *cg_objectiveIndicatorFarScale;
+extern const dvar_s *cg_objectiveIndicatorSize;
+extern const dvar_s *cg_objectiveListWrapCountStandard;
+extern const dvar_s *cg_objectiveListWrapCountWidescreen;
 #endif
 extern const dvar_s *cg_overheadIconSize;
 extern const dvar_s *cg_overheadRankSize;

@@ -1505,17 +1505,10 @@ void __cdecl R_DrawAllSceneEnt(const GfxViewInfo *viewInfo)
                         sceneEntVisData[viewIndex][sceneEntIndex] = scene.dpvs.entVisData[viewIndex][entnum];
                         visData |= sceneEntVisData[viewIndex++][sceneEntIndex];
                     }
-                    if ( (visData & 1) != 0
-                        && sceneEnt->cull.state < 2
-                        && !Assert_MyHandler(
-                                    "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\r_dpvs.cpp",
-                                    2302,
-                                    0,
-                                    "sceneEnt->cull.state >= CULL_STATE_BOUNDED\n\t%i, %i",
-                                    sceneEnt->cull.state,
-                                    2) )
+                    if ( (visData & 1) != 0 && sceneEnt->cull.state < 2 && !R_SkinAndBoundSceneEnt(sceneEnt) )
                     {
-                        __debugbreak();
+                        for ( viewIndex = 0; viewIndex < 7; ++viewIndex )
+                            sceneEntVisData[viewIndex][sceneEntIndex] = 0;
                     }
                     continue;
                 }
@@ -1605,17 +1598,12 @@ LABEL_65:
             sceneEntVisData[viewIndex][sceneEntIndex] = scene.dpvs.entVisData[viewIndex][entnum];
             visData |= sceneEntVisData[viewIndex++][sceneEntIndex];
         }
-        if ( (visData & 1) != 0
-            && sceneEnt->cull.state < 2
-            && !Assert_MyHandler(
-                        "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\r_dpvs.cpp",
-                        2369,
-                        0,
-                        "sceneEnt->cull.state >= CULL_STATE_BOUNDED\n\t%i, %i",
-                        sceneEnt->cull.state,
-                        2) )
+        // The entity pass left this visible entity unbounded (retail has no check
+        // here). Bound it like an unprocessed entity, and hide it if that fails.
+        if ( (visData & 1) != 0 && sceneEnt->cull.state < 2 && !R_SkinAndBoundSceneEnt(sceneEnt) )
         {
-            __debugbreak();
+            for ( viewIndex = 0; viewIndex < 7; ++viewIndex )
+                sceneEntVisData[viewIndex][sceneEntIndex] = 0;
         }
     }
     for ( viewIndex = 0; viewIndex < 7; ++viewIndex )

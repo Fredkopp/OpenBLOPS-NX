@@ -539,8 +539,6 @@ void __cdecl CG_Draw2DInternal(int localClientNum)
                     if ( drawHud )
                     {
                         CG_DrawGenericOverlay(1, localClientNum);
-                        if (ps->pm_type < 9)
-                            CG_DrawObjectiveMarkers_SP(localClientNum);
                         CG_CheckTimedMenus(localClientNum);
                         CG_Draw2dHudElems(localClientNum, 0);
                     }

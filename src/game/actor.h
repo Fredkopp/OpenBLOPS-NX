@@ -287,9 +287,14 @@ struct actor_s // sizeof=0x2780
     bool delayedDeath;
     bool provideCoveringFire;
     int lastShotTime;
+#ifdef KISAK_SP
+    unsigned __int16 name;              // retail SP actor+0xC94, script field "name"
+    unsigned __int16 weaponName;
+#else
     unsigned __int16 weaponName;
     // padding byte
     // padding byte
+#endif
     float fLookPitch;
     float fLookYaw;
     float vLookForward[3];

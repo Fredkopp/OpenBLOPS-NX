@@ -466,7 +466,7 @@ void __cdecl Scr_FreeFields(const actor_field_t *fields, unsigned __int8 *base)
 }
 
 #ifdef KISAK_SP
-const actor_field_t actorFields_0[14] =
+const actor_field_t actorFields_0[15] =
 #else
 const actor_field_t actorFields_0[10] =
 #endif
@@ -477,6 +477,7 @@ const actor_field_t actorFields_0[10] =
   { offsetof(actor_s, damageMod), { 2 }, AF_STRING },
   { offsetof(actor_s, weaponName), { 2 }, AF_STRING },
 #ifdef KISAK_SP
+  { offsetof(actor_s, name), { 2 }, AF_STRING },
   { offsetof(actor_s, primaryWeaponName), { 2 }, AF_STRING },
   { offsetof(actor_s, secondaryWeaponName), { 2 }, AF_STRING },
   { offsetof(actor_s, sidearmName), { 2 }, AF_STRING },
@@ -491,8 +492,6 @@ const actor_field_t actorFields_0[10] =
   { 0, { 0 }, AF_NONE }
 };
 
-#include <game/g_sp_crosshair.h>
-
 void __cdecl Scr_FreeActorFields(actor_s *pActor)
 {
 #ifdef KISAK_SP
@@ -503,9 +502,6 @@ void __cdecl Scr_FreeActorFields(actor_s *pActor)
     pActor->fixedNodeSafeVolume.setEnt(NULL);
 #endif
     Scr_FreeFields(actorFields_0, (unsigned __int8 *)pActor);
-#ifdef KISAK_SP
-    G_SPFreeActorName(pActor->ent);
-#endif
 }
 
 #ifdef KISAK_SP
@@ -4917,37 +4913,6 @@ bool __fastcall Actor_SkipPathEndActions(actor_s *self)
 
     if ( !self && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\game_mp\\actor_mp.cpp", 4768, 0, "%s", "self") )
         __debugbreak();
-#ifdef KISAK_SP
-    if ( self->Path.wNegotiationStartNode > 0
-        && self->Path.wNegotiationStartNode < self->Path.wPathLen
-        && level.time % 1000 == 0 )
-    {
-        const pathpoint_t &negotiationPoint = self->Path.pts[self->Path.wNegotiationStartNode];
-        const float deltaX = negotiationPoint.vOrigPoint[0] - self->ent->r.currentOrigin[0];
-        const float deltaY = negotiationPoint.vOrigPoint[1] - self->ent->r.currentOrigin[1];
-        const float velocityBudget =
-            (self->Physics.vVelocity[0] * self->Physics.vVelocity[0]
-             + self->Physics.vVelocity[1] * self->Physics.vVelocity[1]
-             + self->Physics.vVelocity[2] * self->Physics.vVelocity[2])
-            * 0.0049999999f + 0.000001f;
-        Com_Printf(
-            15,
-            "ZM_BARRICADE path_end_gate time=%d ent=%d species=%d path=%p pathEnd=%d ground=%d groundEnt=%d flags=0x%X neg=%d len=%d lookahead=%d budget=%g deltaSq=%g\n",
-            level.time,
-            self->ent->s.number,
-            self->species,
-            &self->Path,
-            self->Path.iPathEndTime,
-            self->Physics.bHasGroundPlane,
-            self->Physics.groundEntNum,
-            self->Path.flags,
-            self->Path.wNegotiationStartNode,
-            self->Path.wPathLen,
-            self->Path.lookaheadNextNode,
-            velocityBudget,
-            deltaX * deltaX + deltaY * deltaY);
-    }
-#endif
     if ( self->Path.iPathEndTime )
         return 0;
     if ( !self->Physics.bHasGroundPlane && self->Physics.groundEntNum == 1023 )
@@ -4965,39 +4930,13 @@ bool __fastcall Actor_SkipPathEndActions(actor_s *self)
                                              * 0.0049999999)
                              + 0.000001) >= (float)((float)(vGoalDelta * vGoalDelta) + (float)(vGoalDelta_4 * vGoalDelta_4)) )
         {
-            const bool pushed = Actor_PushState(self, AIS_NEGOTIATION);
-            if ( pushed )
+            if ( Actor_PushState(self, AIS_NEGOTIATION) )
             {
                 Path_GetObstacleNegotiationScript(&self->Path, &self->AnimScriptSpecific);
                 self->Physics.vWishDelta[0] = vGoalDelta;
                 self->Physics.vWishDelta[1] = vGoalDelta_4;
                 self->Physics.vWishDelta[2] = vGoalDelta_8;
             }
-#ifdef KISAK_SP
-            if ( pushed )
-            {
-                Com_Printf(
-                    15,
-                    "ZM_BARRICADE negotiation_push time=%d ent=%d pushed=1 script=%s func=0x%08X wish=(%g,%g,%g)\n",
-                    level.time,
-                    self->ent->s.number,
-                    self->AnimScriptSpecific.name
-                        ? SL_ConvertToString(self->AnimScriptSpecific.name, SCRIPTINSTANCE_SERVER)
-                        : "<none>",
-                    self->AnimScriptSpecific.func,
-                    self->Physics.vWishDelta[0],
-                    self->Physics.vWishDelta[1],
-                    self->Physics.vWishDelta[2]);
-            }
-            else
-            {
-                Com_Printf(
-                    15,
-                    "ZM_BARRICADE negotiation_push time=%d ent=%d pushed=0\n",
-                    level.time,
-                    self->ent->s.number);
-            }
-#endif
         }
         return 1;
     }

@@ -376,6 +376,14 @@ void __cdecl Bullet_Fire(
         range = sv_bullet_range->current.value;
     }
 #ifdef KISAK_SP
+    // Retail SP 0x004625C0: the shooter's own lean box is not solid to its shots.
+    gentity_s *leanEntity = attacker->client ? attacker->client->leanEntity : nullptr;
+    int leanContents = 0;
+    if ( leanEntity )
+    {
+        leanContents = leanEntity->r.contents;
+        leanEntity->r.contents = 0;
+    }
     if (attacker->client)
         G_MarkWeaponUsed_SP(attacker->client->ps.clientNum, BG_GetWeaponIndex(wp->weapVariantDef));
 #endif
@@ -405,6 +413,10 @@ void __cdecl Bullet_Fire(
         else
             Bullet_FireExtended(&v9, wp->weapVariantDef, attacker, gameTime);
     }
+#ifdef KISAK_SP
+    if ( leanEntity )
+        leanEntity->r.contents = leanContents;
+#endif
     G_AntiLag_RestoreClientPos(&antilagClients);
 }
 

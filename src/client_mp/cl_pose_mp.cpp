@@ -15,7 +15,7 @@ char *__cdecl CL_AllocSkelMemory(unsigned int size)
     if ( !size && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\client_mp\\cl_pose_mp.cpp", 33, 0, "%s", "size") )
         __debugbreak();
     sizea = (size + 15) & 0xFFFFFFF0;
-    if ( sizea > 0x3FFF0
+    if ( sizea > CL_SKEL_MEMORY_SIZE - 16
         && !Assert_MyHandler(
                     "C:\\projects_pc\\cod\\codsrc\\src\\client_mp\\cl_pose_mp.cpp",
                     36,
@@ -40,10 +40,10 @@ char *__cdecl CL_AllocSkelMemory(unsigned int size)
     {
         g_maxSkelMemUsed = sizea + skelMemPos;
         if ( showUsage )
-            Com_PrintWarning(14, "CL_AllocSkelMemory(): %i max used out of %i total\n", sizea + skelMemPos, 262128);
+            Com_PrintWarning(14, "CL_AllocSkelMemory(): %i max used out of %i total\n", sizea + skelMemPos, CL_SKEL_MEMORY_SIZE - 16);
     }
     result = &clients[R_GetLocalClientNum()].skelMemoryStart[skelMemPos];
-    if ( sizea + skelMemPos > 0x3FFF0 )
+    if ( sizea + skelMemPos > CL_SKEL_MEMORY_SIZE - 16 )
         return 0;
     if ( !result
         && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\client_mp\\cl_pose_mp.cpp", 63, 0, "%s", "result") )

@@ -563,11 +563,16 @@ sentient_s *__fastcall Sentient_NextSentient(sentient_s *pPrevSentient, int iTea
     return 0;
 }
 
+#ifdef KISAK_SP
+// Retail SP table (0x00B77A04): SP sentients also use neutral and dead (SENTIENT_TEAM_DEAD).
+const char *pszTeamName[6] = { "invalid", "axis", "allies", "neutral", "spectator", "dead" };
+#else
 const char *pszTeamName[4] = { "free", "axis", "allies", "spectator" };
+#endif
 
 const char *__fastcall Sentient_NameForTeam(unsigned int eTeam)
 {
-    if ( eTeam >= 4
+    if ( eTeam >= ARRAY_COUNT(pszTeamName)
         && !Assert_MyHandler(
                     "C:\\projects_pc\\cod\\codsrc\\src\\game\\sentient.cpp",
                     744,

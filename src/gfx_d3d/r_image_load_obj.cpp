@@ -9,6 +9,7 @@
 #include "rb_resource.h"
 #include "r_pixelcost_load_obj.h"
 #include "r_outdoor.h"
+#include "r_dvars.h"
 
 const BuiltinImageConstructorTable constructorTable[12] =
 {
@@ -936,7 +937,10 @@ static bool Image_NX_ReadFileWith(GfxImage *image, NxImageFileData *out, NxImage
         return false;
     }
     reader.close();
-    unsigned __int8 streamedMipLevels = Image_GetPcStreamedMips(&fileHeader);
+    // Streamed images load cut down to 128 texels and wait for the streamer to
+    // bring the high mips in. With r_stream 0 nothing streams, so load every mip
+    // now and let picmip choose the quality, as the texture menu intends.
+    unsigned __int8 streamedMipLevels = r_stream->current.integer ? Image_GetPcStreamedMips(&fileHeader) : 0;
     image->streaming = streamedMipLevels != 0;
     if ( image->streaming )
     {

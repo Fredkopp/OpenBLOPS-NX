@@ -1296,6 +1296,9 @@ struct cgMedia_t // sizeof=0x31BC
         Material *offscreenObjectivePointer;
                                                                                 // XREF: DrawOffscreenViewableWaypoint+7BE/r
                                                                                 // CG_RegisterGraphics+579/w
+#ifdef KISAK_SP
+        Material *onscreenObjectivePointer;
+#endif
         Material *demoTimelineFaded;                // XREF: CG_RegisterGraphics+58D/w
                                                                                 // CG_DrawDemoControls+4A2/r
         Material *demoTimelineSolid;                // XREF: CG_RegisterGraphics+5A1/w
