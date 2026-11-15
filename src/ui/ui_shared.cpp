@@ -2171,6 +2171,11 @@ void __cdecl Script_FocusFirstInMenu(int localClientNum, UiContext *dc, itemDef_
 
 itemDef_s *__cdecl Menu_FocusFirstSelectableItem(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
+#ifdef KISAK_NX
+    Menu_ClearFocus(localClientNum, dc, menu);
+    Menu_SetCursorItem(dc->contextIndex, menu, -1);
+    return Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 0);
+#else
     unsigned int cursor; // [esp+8h] [ebp-4h]
     int cursora; // [esp+8h] [ebp-4h]
 
@@ -2203,6 +2208,7 @@ itemDef_s *__cdecl Menu_FocusFirstSelectableItem(int localClientNum, UiContext *
         Menu_SetCursorItem(dc->contextIndex, menu, 0);
         return 0;
     }
+#endif
 }
 
 int __cdecl Menu_GetCursorItem(int contextIndex, menuDef_t *menu)
@@ -4173,6 +4179,30 @@ static bool UI_NX_IsPointerOnly(itemDef_s *item)
 }
 #endif
 
+#ifdef KISAK_NX
+static bool UI_NX_SelectListBoxEdge(int localClientNum, UiContext *dc, itemDef_s *item, bool last, bool refresh = false)
+{
+    listBoxDef_s *list = Item_GetListBoxDef(item);
+    if (!list || list->notselectable)
+        return false;
+
+    const int context = dc->contextIndex;
+    const int count = UI_FeederCount(localClientNum, context, list->special, list);
+    if (count <= 0)
+        return false;
+
+    const int view = last ? std::max(1, Item_ListBox_Viewmax(localClientNum, context, item)) : 0;
+    const int row = last ? count - 1 : 0;
+    const int start = last ? std::max(0, count - view) : 0;
+    if (refresh || list->cursorPos[context] != row || list->startPos[context] != start)
+    {
+        list->startPos[context] = start;
+        Item_ListBox_SetCursorPos(localClientNum, context, item, count - 1, view, row, false);
+    }
+    return true;
+}
+#endif
+
 int __cdecl Item_SetFocus(int localClientNum, UiContext *dc, itemDef_s *item, float x, float y)
 {
     const char *v6; // eax
@@ -4269,6 +4299,10 @@ int __cdecl Item_SetFocus(int localClientNum, UiContext *dc, itemDef_s *item, fl
     }
     if ( item->type == 4 )
     {
+#ifdef KISAK_NX
+        if (Item_IsModal(item) && UI_NX_SelectListBoxEdge(localClientNum, dc, item, false, true))
+            return 1;
+#endif
         listPtr = Item_GetListBoxDef(item);
         if ( !listPtr && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\ui\\ui_shared.cpp", 4961, 0, "%s", "listPtr") )
             __debugbreak();
@@ -4680,6 +4714,19 @@ void __cdecl Menus_Open(int localClientNum, UiContext *dc, menuDef_t *menu)
         }
     }
     Menus_SetupOpenMenu(localClientNum, dc, menu);
+#ifdef KISAK_NX
+    if (Menu_GetFocused(dc) == menu)
+    {
+        const int cursor = Menu_GetCursorItem(dc->contextIndex, menu);
+        if (cursor >= 0 && cursor < menu->itemCount)
+        {
+            itemDef_s *selected = menu->items[cursor];
+            if (selected->type == 4 && !Item_IsModal(selected)
+                && Window_HasFocus(dc->contextIndex, &selected->window))
+                UI_NX_SelectListBoxEdge(localClientNum, dc, selected, false);
+        }
+    }
+#endif
     if ( dc->openMenuCount > 0 && dc->Menus[2 * dc->openMenuCount + 599] != menu )
     {
         Menu_LoseFocusDueToOpen(localClientNum, dc, menu);
@@ -5001,6 +5048,39 @@ static itemDef_s *UI_NX_MoveClassVerticalFocus(int localClientNum, UiContext *dc
     return nullptr;
 }
 
+static itemDef_s *UI_NX_MoveFocusInScreenOrder(int localClientNum, UiContext *dc, menuDef_t *menu, int step)
+{
+    struct Row
+    {
+        itemDef_s *item;
+        rectDef_s rect;
+    };
+    std::vector<Row> rows;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if (UI_NX_CanFocus(localClientNum, dc, item))
+            rows.push_back({item, UI_NX_ScreenRect(dc, item)});
+    }
+    std::stable_sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
+        return a.rect.y != b.rect.y ? a.rect.y < b.rect.y : a.rect.x < b.rect.x;
+    });
+
+    const auto focused = std::find_if(rows.begin(), rows.end(), [dc](const Row &row) {
+        return Window_HasFocus(dc->contextIndex, &row.item->window);
+    });
+    const int count = static_cast<int>(rows.size());
+    int index = focused != rows.end() ? static_cast<int>(focused - rows.begin()) : (step > 0 ? -1 : count);
+    for (int visited = 0; visited < count; ++visited)
+    {
+        index = (index + step + count) % count;
+        itemDef_s *item = rows[index].item;
+        if (Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
+            return item;
+    }
+    return nullptr;
+}
+
 static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef_t *menu, int step)
 {
     const int count = menu->itemCount;
@@ -5008,13 +5088,17 @@ static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef
         return nullptr;
     const int cursor = Menu_GetCursorItem(dc->contextIndex, menu);
     const bool hasCursor = cursor >= 0 && cursor < count;
+    const bool settingsPage = UI_NX_SettingsCategoryMenu(menu) != nullptr;
+    if ((!hasCursor && !settingsPage) || (menu->window.name
+        && (!I_stricmp(menu->window.name, "basictraining_settings") || !I_stricmp(menu->window.name, "server_settings"))))
+        return UI_NX_MoveFocusInScreenOrder(localClientNum, dc, menu, step);
+
     if (hasCursor && UI_NX_IsCustomClassMenu(menu)
         && Window_HasFocus(dc->contextIndex, &menu->items[cursor]->window))
     {
         if (itemDef_s *item = UI_NX_MoveClassVerticalFocus(localClientNum, dc, menu, menu->items[cursor], step))
             return item;
     }
-    const bool settingsPage = UI_NX_SettingsCategoryMenu(menu) != nullptr;
     const bool onCategories = settingsPage && hasCursor && UI_NX_IsSettingsCategoryItem(menu->items[cursor]);
     int index = hasCursor ? cursor : (step > 0 ? -1 : count);
     for (int visited = 0; visited < count; ++visited)
@@ -5025,7 +5109,11 @@ static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef
             continue;
         if (UI_NX_CanFocus(localClientNum, dc, item)
             && Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
+        {
+            if (hasCursor && index != cursor && item->type == 4 && !Item_IsModal(item))
+                UI_NX_SelectListBoxEdge(localClientNum, dc, item, step < 0);
             return item;
+        }
     }
     return nullptr;
 }
@@ -5791,7 +5879,7 @@ int __cdecl Item_ListBox_HandleKey(int localClientNum, UiContext *dc, itemDef_s 
     max = (int)Item_ListBox_MaxScroll(localClientNum, dc->contextIndex, item);
     viewmax = Item_ListBox_Viewmax(localClientNum, dc->contextIndex, item);
 #ifdef KISAK_NX
-    if (!force && !Item_IsModal(item))
+    if (!force)
     {
         const bool horizontal = Window_IsHorizontal(&item->window);
         const bool previous = key == (horizontal ? K_LEFTARROW : K_UPARROW);
@@ -5800,7 +5888,26 @@ int __cdecl Item_ListBox_HandleKey(int localClientNum, UiContext *dc, itemDef_s 
             : listPtr->cursorPos[dc->contextIndex];
         const int end = listPtr->notselectable ? max : lastIndex;
         if ((previous && cursor <= 0) || (next && cursor >= end))
-            return 0;
+        {
+            const bool modal = Item_IsModal(item);
+            if (!modal)
+            {
+                const menuDef_t *menu = item->parent;
+                const bool otherControl = std::any_of(menu->items, menu->items + menu->itemCount, [&](itemDef_s *other) {
+                    return other != item && UI_NX_CanFocus(localClientNum, dc, other);
+                });
+                if (listPtr->notselectable || otherControl)
+                    return 0;
+            }
+            if (!listPtr->notselectable)
+            {
+                if (!horizontal && UI_OverrideKeyPress(localClientNum, dc->contextIndex, item, key))
+                    return 1;
+                if (lastIndex > 0)
+                    UI_NX_SelectListBoxEdge(localClientNum, dc, item, previous);
+                return 1;
+            }
+        }
     }
 #endif
     if ( Window_IsHorizontal(&item->window) )

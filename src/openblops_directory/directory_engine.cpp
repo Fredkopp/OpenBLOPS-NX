@@ -1,7 +1,6 @@
 #include "directory_engine.h"
 #if defined(OPENBLOPS_NO_STEAM_AUTH)
 #include "directory_client.h"
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <client/cl_main.h>
@@ -323,46 +322,6 @@ bool Directory_HandleControllerKey(int localClientNum, UiContext *dc, menuDef_t 
     // with a controller nothing focused its items, so A did nothing. Up/down
     // move between them and A runs the focused one; left/right stay native
     // (MAX PLAYERS cycles its values).
-#ifdef KISAK_NX
-    // MP host settings: the native up/down walks the item list in index order,
-    // and the password row (a copy placed where the stock VAC row was drawn,
-    // PatchServerSettings) was never reached with a controller. Move by screen
-    // position between the visible, selectable items instead.
-    if (!I_stricmp(name, "server_settings")
-        && (key == K_UPARROW || key == K_DPAD_UP || key == K_APAD_UP
-            || key == K_DOWNARROW || key == K_DPAD_DOWN || key == K_APAD_DOWN))
-    {
-        const bool down = key == K_DOWNARROW || key == K_DPAD_DOWN || key == K_APAD_DOWN;
-        std::vector<int> order;
-        for (int i = 0; i < menu->itemCount; ++i)
-        {
-            itemDef_s *item = menu->items[i];
-            if (!item || (item->window.staticFlags & 0x100000) || !Window_IsVisible(dc->contextIndex, &item->window)
-                || !Item_IsVisible(localClientNum, dc->contextIndex, item))
-                continue;
-            if (!item->onEvent && !Item_IsTextField(item) && item->type != 10)
-                continue;
-            order.push_back(i);
-        }
-        std::stable_sort(order.begin(), order.end(), [menu](int a, int b) {
-            const auto &ra = menu->items[a]->window.rect, &rb = menu->items[b]->window.rect;
-            return ra.y != rb.y ? ra.y < rb.y : ra.x < rb.x;
-        });
-        if (order.empty())
-            return false;
-        int at = -1;
-        for (int i = 0; i < int(order.size()); ++i)
-            if (Window_HasFocus(dc->contextIndex, &menu->items[order[i]]->window))
-                at = i;
-        const int count = int(order.size());
-        const int next = at < 0 ? 0 : (at + (down ? 1 : count - 1)) % count;
-        itemDef_s *target = menu->items[order[next]];
-        Menu_ClearFocus(localClientNum, dc, menu);
-        Menu_SetCursorItem(dc->contextIndex, menu, order[next]);
-        Item_SetFocus(localClientNum, dc, target, target->window.rect.x + 1, target->window.rect.y + 1);
-        return true;
-    }
-#endif
     // Switch only; the PC keeps its mouse/native handling.
 #ifdef KISAK_NX
     const bool zombieHost = !I_stricmp(name, "openblops_zombie_host");
