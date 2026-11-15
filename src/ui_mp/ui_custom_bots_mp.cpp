@@ -163,7 +163,7 @@ namespace
         itemDef_s &choice = row.layers[layersPerRow - 1];
         SetBotText(choice, row.valueText, nullptr);
         const float labelWidth = row.valueText.textalignx - 18.0f;
-        for (int i = 0; i < layersPerRow - 1; ++i)
+        for (int i = 2; i < layersPerRow - 1; ++i)
             row.layers[i].window.rect.w = row.layers[i].window.rectClient.w = labelWidth;
         memcpy(choice.window.foreColor, row.layers[2].window.foreColor, sizeof(choice.window.foreColor));
         row.valueFocus = {};

@@ -135,6 +135,10 @@ int __cdecl Item_IsVisible(int localClientNum, int contextIndex, itemDef_s *item
 #endif
     if ( !Window_IsVisible(contextIndex, &item->window) )
         return 0;
+#ifdef KISAK_NX
+    if (UI_NX_IsHiddenClassFooter(contextIndex, item))
+        return 0;
+#endif
     if ( (item->dvarFlags & 0xC) != 0 && !Item_EnableShowViaDvar(item, 4) )
         return 0;
     if ((sharedUiInfo.visibilityBits[localClientNum] & LODWORD(item->showBits)) != LODWORD(item->showBits)

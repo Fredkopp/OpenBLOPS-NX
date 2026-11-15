@@ -1271,6 +1271,7 @@ void __cdecl UI_DrawWrappedTextSubtitled(
 char __cdecl UI_GetSticksTranslatedString(int localClientNum, const char *command, char *keys);
 #ifdef KISAK_NX
 bool UI_NX_IsClassRotationMenu(const menuDef_t *menu);
+bool UI_NX_IsHiddenClassFooter(int contextIndex, itemDef_s *item);
 bool UI_NX_IsServerBrowserMenu(const menuDef_t *menu);
 bool UI_NX_ReplaceControlPrompt(const char *label, const char *binding, char *buffer, int size,
     const char *expected = nullptr);

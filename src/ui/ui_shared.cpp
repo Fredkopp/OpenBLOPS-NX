@@ -4094,6 +4094,22 @@ static int UI_NX_ClassFooterSlot(itemDef_s *item)
     return -1;
 }
 
+bool UI_NX_IsHiddenClassFooter(int contextIndex, itemDef_s *item)
+{
+    const menuDef_t *menu = item->parent;
+    if (UI_NX_IsClassListFaction(item))
+        return !Window_HasFocus(contextIndex, &menu->window);
+    if (!UI_NX_IsCustomClassMenu(menu))
+        return UI_NX_IsClassEditorMenu(menu) && UI_NX_IsClassFactionButton(item);
+    if (UI_NX_ClassFooterSlot(item) < 0)
+        return false;
+    if (!Window_HasFocus(contextIndex, &menu->window))
+        return true;
+
+    const auto *dropdown = UILocalVar_Find(UI_UIContext_GetLocalVarsContext(contextIndex), "ui_inside_dropdown");
+    return dropdown && UILocalVar_GetBool(&dropdown->table[0]);
+}
+
 static void UI_NX_LayoutClassFooter(menuDef_t *menu)
 {
     if (!UI_NX_IsCustomClassMenu(menu) || !menu->itemCount)
@@ -5441,7 +5457,7 @@ static bool UI_NX_HandleClassListFactionKey(int localClientNum, UiContext *dc, m
 
 static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_s *item, int key)
 {
-    if (!item || !UI_NX_IsClassEditorMenu(item->parent) || !UI_NX_CanFocus(localClientNum, dc, item))
+    if (!item || !UI_NX_IsCustomClassMenu(item->parent) || !UI_NX_CanFocus(localClientNum, dc, item))
         return false;
 
     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
@@ -5464,7 +5480,7 @@ static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_
         }
     }
 
-    if ((key == K_UPARROW || key == K_DOWNARROW) && UI_NX_IsCustomClassMenu(item->parent))
+    if (key == K_UPARROW || key == K_DOWNARROW)
         return UI_NX_MoveClassVerticalFocus(localClientNum, dc, item->parent, item, key == K_DOWNARROW ? 1 : -1) != nullptr;
     if (!horizontal || (!faction && UI_NX_ClassFooterSlot(item) < 0))
         return false;
@@ -10652,6 +10668,11 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
         if ( SEH_ReplaceDirectiveInStringWithBinding(localClientNum, textPtr, textWithBinding) )
             textPtr = textWithBinding;
         Item_TextColor(dc, item, (float (*)[4])color);
+#ifdef KISAK_MP
+        const bool botChoice = item->type == 10 && UI_IsCustomBotMenu(item->parent);
+        if (botChoice && Window_HasFocus(dc->contextIndex, &item->window))
+            color[0] = color[1] = color[2] = 0.0f;
+#endif
 #ifdef KISAK_NX
         const float originalScale = textDefPtr->textscale;
         const int classFooterSlot = UI_NX_ClassFooterSlot(item);
@@ -10659,7 +10680,7 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
         const bool fitPortLabel = textDefPtr->text && !strncmp(textDefPtr->text, "@OPENBLOPS_", 11);
         const bool fitBotLabel =
 #ifdef KISAK_MP
-            item->type == 1 && UI_IsCustomBotMenu(item->parent);
+            botChoice || (item->type == 1 && UI_IsCustomBotMenu(item->parent));
 #else
             false;
 #endif
@@ -10668,6 +10689,10 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
         {
             Font_s *labelFont = Item_GetFont(dc->contextIndex, item);
             float padding = fabsf(textDefPtr->textalignx) + 3.0f;
+#ifdef KISAK_MP
+            if (botChoice)
+                padding += UI_TextHeight(labelFont, originalScale) + 3.0f;
+#endif
             if (classFooterSlot >= 0)
             {
                 padding = 12.0f;
@@ -10712,8 +10737,7 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
             }
             float textX = textRect->x;
 #ifdef KISAK_NX
-            if (UI_NX_IsClassFactionButton(item) && UI_NX_IsClassEditorMenu(item->parent)
-                && s_nxClassFactionEditMenu != item->parent)
+            if (classFooterSlot == 0 && s_nxClassFactionEditMenu != item->parent)
                 drawArrows = false;
             if (UI_NX_IsClassListFaction(item))
                 drawArrows = true;
