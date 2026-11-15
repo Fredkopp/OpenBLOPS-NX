@@ -4141,6 +4141,41 @@ static bool UI_NX_IsFriendsShortcut(itemDef_s *item)
     return label && label->text && !I_stricmp(label->text, "@PLATFORM_PARTY_INVITE");
 }
 
+static bool UI_NX_IsFriendsMenu(const menuDef_t *menu)
+{
+    const char *name = menu ? menu->window.name : nullptr;
+    return name && (!I_stricmp(name, "menu_friends") || !I_stricmp(name, "menu_players")
+        || !I_stricmp(name, "menu_invites"));
+}
+
+static bool UI_NX_IsFriendsTab(itemDef_s *item)
+{
+    if (item->type != 3 || !UI_NX_IsFriendsMenu(item->parent))
+        return false;
+
+    const textDef_s *label = Item_GetTextDef(item);
+    if (!label)
+        return false;
+
+    const char *reference = label->text;
+    if (!reference && label->textExpData)
+    {
+        const auto &expression = label->textExpData->textExp;
+        for (int i = 0; expression.rpn && i < expression.numRpn; ++i)
+        {
+            const auto &part = expression.rpn[i];
+            if (part.type == 0 && part.data.constant.dataType == VAL_STRING)
+            {
+                reference = part.data.constant.internals.string;
+                break;
+            }
+        }
+    }
+    return reference && (!I_stricmp(reference, "@MENU_FRIENDS_CAPS")
+        || !I_stricmp(reference, "@MENU_TAB_PLAYERS_CAPS")
+        || !I_stricmp(reference, "@MENU_TAB_GAME_INVITES_CAPS"));
+}
+
 static bool UI_NX_IsTitlePrompt(itemDef_s *item)
 {
     const textDef_s *label = Item_GetTextDef(item);
@@ -4178,7 +4213,7 @@ static const char *UI_NX_SettingsDestination(const itemDef_s *item)
 
 static bool UI_NX_IsPointerOnly(itemDef_s *item)
 {
-    if (UI_NX_IsBackPrompt(item) || UI_NX_IsFriendsShortcut(item) || UI_NX_ClassRotationButton(item)
+    if (UI_NX_IsBackPrompt(item) || UI_NX_IsFriendsShortcut(item) || UI_NX_IsFriendsTab(item) || UI_NX_ClassRotationButton(item)
         || (item->window.name && !I_stricmp(item->window.name, "ExitFlyoutButton")))
         return true;
 
@@ -5463,6 +5498,24 @@ int    Menu_CheckOnKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
 }
 
 #ifdef KISAK_NX
+static bool UI_NX_HandleFriendsTabKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down)
+{
+    if (!down || !UI_NX_IsFriendsMenu(menu))
+        return false;
+
+    switch (key)
+    {
+    case K_LEFTARROW:
+    case K_BUTTON_LSHLDR:
+        return Menu_CheckOnKey(localClientNum, dc, menu, K_LEFTARROW);
+    case K_RIGHTARROW:
+    case K_BUTTON_RSHLDR:
+        return Menu_CheckOnKey(localClientNum, dc, menu, K_RIGHTARROW);
+    default:
+        return false;
+    }
+}
+
 static bool UI_NX_HandleTitleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down)
 {
     if (!menu->window.name || I_stricmp(menu->window.name, "main_lockout"))
@@ -5517,7 +5570,8 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
         return;
     }
 #ifdef KISAK_NX
-    if (UI_NX_HandleTitleKey(localClientNum, dc, menu, key, down))
+    if (UI_NX_HandleTitleKey(localClientNum, dc, menu, key, down)
+        || UI_NX_HandleFriendsTabKey(localClientNum, dc, menu, key, down))
         return;
     if ((key == K_BUTTON_LSHLDR || key == K_BUTTON_RSHLDR) && UI_NX_IsClassRotationMenu(menu))
         return;
