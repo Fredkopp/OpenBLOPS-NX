@@ -4036,6 +4036,14 @@ bool UI_NX_IsClassRotationMenu(const menuDef_t *menu)
     return UI_NX_IsCustomClassMenu(menu) || (menu && menu->window.name && !I_stricmp(menu->window.name, "cac_main"));
 }
 
+static itemDef_s *UI_NX_KillstreakList(menuDef_t *menu)
+{
+    if (!menu->window.name || I_stricmp(menu->window.name, "menu_xboxlive_killstreaks"))
+        return nullptr;
+    itemDef_s *list = Menu_FindItemByName(menu, "killstreaks");
+    return list && list->type == 4 ? list : nullptr;
+}
+
 static int UI_NX_ClassRotationButton(const itemDef_s *item)
 {
     if (!UI_NX_IsClassRotationMenu(item->parent) || !item->window.name)
@@ -4887,13 +4895,21 @@ void    Menus_SetupOpenMenu(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
     itemDef_s item;
 
+#ifdef KISAK_NX
+    itemDef_s *killstreakList = UI_NX_KillstreakList(menu);
+    if (killstreakList)
+    {
+        Menu_ClearFocus(localClientNum, dc, menu);
+        Menu_SetCursorItem(dc->contextIndex, menu, -1);
+    }
+#endif
     Window_AddDynamicFlags(dc->contextIndex, &menu->window, 6);
     Menu_CallOnFocusDueToOpen(localClientNum, dc, menu);
 
 #ifdef KISAK_NX
     const bool settingsPage = UI_NX_SettingsCategoryMenu(menu) != nullptr;
     const bool settingsRoot = UI_NX_IsSettingsRoot(menu);
-    if (!settingsPage && !settingsRoot)
+    if (!settingsPage && !settingsRoot && !killstreakList)
 #endif
     {
         if (Menu_GetCursorItem(dc->contextIndex, menu) == -1)
@@ -4908,6 +4924,11 @@ void    Menus_SetupOpenMenu(int localClientNum, UiContext *dc, menuDef_t *menu)
     }
 
 #ifdef KISAK_NX
+    if (killstreakList && Menu_GetFocused(dc) == menu)
+    {
+        const rectDef_s &rect = killstreakList->window.rect;
+        Item_SetFocus(localClientNum, dc, killstreakList, rect.x, rect.y);
+    }
     if ((settingsPage || settingsRoot) && Menu_GetFocused(dc) == menu)
     {
         Menu_ClearFocus(localClientNum, dc, menu);
@@ -5093,12 +5114,6 @@ static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef
         && (!I_stricmp(menu->window.name, "basictraining_settings") || !I_stricmp(menu->window.name, "server_settings"))))
         return UI_NX_MoveFocusInScreenOrder(localClientNum, dc, menu, step);
 
-    if (hasCursor && UI_NX_IsCustomClassMenu(menu)
-        && Window_HasFocus(dc->contextIndex, &menu->items[cursor]->window))
-    {
-        if (itemDef_s *item = UI_NX_MoveClassVerticalFocus(localClientNum, dc, menu, menu->items[cursor], step))
-            return item;
-    }
     const bool onCategories = settingsPage && hasCursor && UI_NX_IsSettingsCategoryItem(menu->items[cursor]);
     int index = hasCursor ? cursor : (step > 0 ? -1 : count);
     for (int visited = 0; visited < count; ++visited)
@@ -5194,13 +5209,11 @@ static void UI_NX_MoveHorizontalFocus(int localClientNum, UiContext *dc, menuDef
         Item_SetFocus(localClientNum, dc, closest, closest->window.rect.x, closest->window.rect.y);
 }
 
-static bool UI_NX_HandleClassFooterKey(int localClientNum, UiContext *dc, itemDef_s *item, int key)
+static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_s *item, int key)
 {
-    if (!item)
+    if (!item || !UI_NX_IsCustomClassMenu(item->parent) || !UI_NX_CanFocus(localClientNum, dc, item))
         return false;
     const int slot = UI_NX_ClassFooterSlot(item);
-    if (slot < 0 || !UI_NX_CanFocus(localClientNum, dc, item))
-        return false;
 
     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
     if (slot == 0)
@@ -5221,10 +5234,25 @@ static bool UI_NX_HandleClassFooterKey(int localClientNum, UiContext *dc, itemDe
         }
     }
 
-    if (!horizontal)
+    if (key == K_UPARROW || key == K_DOWNARROW)
+        return UI_NX_MoveClassVerticalFocus(localClientNum, dc, item->parent, item, key == K_DOWNARROW ? 1 : -1) != nullptr;
+    if (slot < 0 || !horizontal)
         return false;
     UI_NX_MoveHorizontalFocus(localClientNum, dc, item->parent, item, key == K_LEFTARROW ? -1 : 1);
     return true;
+}
+
+static bool UI_NX_HandleKillstreakListKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key)
+{
+    if (key != K_UPARROW && key != K_DOWNARROW)
+        return false;
+    itemDef_s *list = UI_NX_KillstreakList(menu);
+    if (!list || !UI_NX_CanFocus(localClientNum, dc, list))
+        return false;
+
+    const rectDef_s &rect = list->window.rect;
+    return Item_SetFocus(localClientNum, dc, list, rect.x, rect.y)
+        && Item_ListBox_HandleKey(localClientNum, dc, list, key, 1, 0);
 }
 #endif
 
@@ -5511,7 +5539,8 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                     const bool settingsMenu = UI_NX_IsSettingsMenu(menu);
                     const char *settingsCategory = UI_NX_SettingsCategoryMenu(menu);
                     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
-                    if (down && UI_NX_HandleClassFooterKey(localClientNum, dc, item, key))
+                    if (down && (UI_NX_HandleClassMenuKey(localClientNum, dc, item, key)
+                        || UI_NX_HandleKillstreakListKey(localClientNum, dc, menu, key)))
                         return;
                     if (down && settingsMenu)
                     {
@@ -5564,7 +5593,7 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                     if (!item && down && key == K_BUTTON_A)
                     {
                         item = UI_NX_MoveMenuFocus(localClientNum, dc, menu, 1);
-                        if (UI_NX_HandleClassFooterKey(localClientNum, dc, item, key))
+                        if (UI_NX_HandleClassMenuKey(localClientNum, dc, item, key))
                             return;
                     }
                     if (down && key == K_BUTTON_Y && item && item->type == 4 && menu->window.name
