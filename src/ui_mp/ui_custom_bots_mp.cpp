@@ -5,37 +5,34 @@
 #include <ui/ui_feeders.h>
 #include <ui/ui_main.h>
 #include <qcommon/common.h>
+#include <database/db_registry.h>
 #include <cmath>
 #include <list>
 #include <vector>
 
 namespace
 {
+    constexpr int panelLayers = 6;
+    constexpr int layersPerRow = 5;
+
+    struct BotRow
+    {
+        itemDef_s layers[layersPerRow]{};
+        textDef_s labels[2]{};
+        textDef_s valueText{};
+        focusItemDef_s valueFocus{};
+    };
+
     menuDef_t botMenu;
-    itemDef_s botItems[8];
-    itemDef_s *botItemPointers[8];
-    textDef_s botText[8];
-    focusItemDef_s botFocus[8];
-    multiDef_s botCount;
-    multiDef_s botDifficulty;
-    multiDef_s friendlyCount;
-    multiDef_s enemyCount;
-    char friendlyLabels[18][80];
-    char enemyLabels[18][80];
-    char botCountLabels[18][80];
-    char difficultyLabels[4][96];
-    GenericEventScript closeScript;
-    GenericEventHandler closeEvent;
-    GenericEventScript openScript;
-    GenericEventHandler openEvent;
-    GenericEventScript focusScript;
-    GenericEventHandler focusEvent;
-    GenericEventScript leaveFocusScript;
-    GenericEventHandler leaveFocusEvent;
-    GenericEventScript menuCloseScript;
-    GenericEventHandler menuCloseEvent;
-    ItemKeyHandler escapeKey;
-    bool initialized;
+    itemDef_s botPanel[panelLayers];
+    itemDef_s botTitle, botHint;
+    textDef_s titleText, hintText;
+    BotRow botRows[3];
+    itemDef_s *botItemPointers[panelLayers + 2 + ARRAY_COUNT(botRows) * layersPerRow];
+    multiDef_s botCount, botDifficulty, friendlyCount, enemyCount;
+    char numberLabels[18][3];
+    GenericEventScript openScript, closeScript, escapeScript, focusScript, changeScript;
+    GenericEventHandler openEvent, closeEvent, escapeEvent, focusEvent, changeEvent;
 
     struct LobbyButton
     {
@@ -68,195 +65,186 @@ namespace
         return false;
     }
 
-    void InitBotMenu(const itemDef_s *button)
+    void InitBotMenu()
     {
-        if (initialized)
+        if (botMenu.window.name)
             return;
-        initialized = true;
         botMenu.window.name = "openblops_bot_settings";
-        botMenu.window.rect = {-200.0f, -142.0f, 400.0f, 284.0f, 2, 2};
-        botMenu.window.rectClient = botMenu.window.rect;
-        botMenu.initialRectInfo = botMenu.window.rect;
-        botMenu.ui3dWindowId = -1;
-        botMenu.hideBits = ~0ULL;
-        botMenu.window.style = 1;
-        botMenu.window.modal = 1;
-        botMenu.window.backColor[0] = 0.06f;
-        botMenu.window.backColor[1] = 0.06f;
-        botMenu.window.backColor[2] = 0.06f;
-        botMenu.window.backColor[3] = 0.92f;
-        botMenu.window.border = 1;
-        botMenu.window.borderSize = 1.0f;
-        for (int c = 0; c < 3; ++c)
-            botMenu.window.borderColor[c] = 0.5f;
-        botMenu.window.borderColor[3] = 0.55f;
-        botMenu.openSlideSpeed = botMenu.closeSlideSpeed = -1;
-        botMenu.openSlideDirection = botMenu.closeSlideDirection = -1;
-        botMenu.openFadingTime = botMenu.closeFadingTime = -1;
-        botMenu.fadeTimeCounter = botMenu.slideTimeCounter = -1;
-        for (int c = 0; c < 4; ++c)
-            botMenu.window.foreColor[c] = 1.0f;
-        botMenu.fadeClamp = 1.0f;
-        botMenu.focusColor[0] = 1.0f;
-        botMenu.focusColor[1] = 0.65f;
-        botMenu.focusColor[2] = 0.2f;
-        botMenu.focusColor[3] = 1.0f;
-        botMenu.itemCount = ARRAY_COUNT(botItems);
-        botMenu.items = botItemPointers;
-        botMenu.cursorItem[0] = -1;
-        botMenu.imageTrack = button->imageTrack;
-
-        const char *names[] = {"bots_title", "bots_count", "bots_difficulty", "bots_hint", "bots_done", "bots_enemies", "bots_accent", "bots_divider"};
-        const char *labels[] = {"@OPENBLOPS_BOT_SETTINGS", "", "", "@OPENBLOPS_BOTS_TEAM_HINT", "@PLATFORM_DONE", "", "", ""};
-        const float positions[] = {16.0f, 68.0f, 148.0f, 190.0f, 238.0f, 108.0f, 52.0f, 226.0f};
-        for (int i = 0; i < ARRAY_COUNT(botItems); ++i)
-        {
-            itemDef_s &item = botItems[i];
-            item.window.name = names[i];
-            item.window.rectClient = {20.0f, positions[i], 360.0f, 30.0f, 2, 2};
-            item.window.rect = item.window.rectClient;
-            item.window.dynamicFlags[0] = 4;
-            for (int c = 0; c < 4; ++c)
-                item.window.foreColor[c] = 1.0f;
-            item.type = item.dataType = (i == 1 || i == 2 || i == 5) ? 10 : (i == 4 ? 3 : (i >= 6 ? 0 : 1));
-            item.imageTrack = button->imageTrack;
-            item.parent = &botMenu;
-            item.ui3dWindowId = -1;
-            item.hideBits = ~0ULL;
-            if (i == 0 || i == 3 || i >= 6)
-                item.window.staticFlags |= 0x100000;
-            if (i == 3)
-                item.window.staticFlags |= 0x800000;
-            item.typeData.textDef = &botText[i];
-            botText[i] = *button->typeData.textDef;
-            botText[i].text = labels[i];
-            botText[i].textExpData = nullptr;
-            botText[i].textalignx = (i == 1 || i == 2 || i == 4 || i == 5) ? 10.0f : 0.0f;
-            botText[i].textscale = i == 3 ? 0.3f : 0.4f;
-            botText[i].textTypeData.focusItemDef = &botFocus[i];
-            if (i == 1 || i == 2 || i == 4 || i == 5)
-            {
-                item.window.style = 1;
-                item.window.border = 1;
-                item.window.borderSize = 1.0f;
-                item.window.backColor[3] = 0.3f;
-                for (int c = 0; c < 3; ++c)
-                    item.window.borderColor[c] = 0.8f;
-                item.window.borderColor[3] = 0.2f;
-            }
-            if (i >= 6)
-            {
-                item.window.style = 1;
-                item.window.rectClient.h = item.window.rect.h = i == 6 ? 2.0f : 1.0f;
-                item.window.backColor[0] = 0.953f;
-                item.window.backColor[1] = 0.722f;
-                item.window.backColor[2] = 0.212f;
-                item.window.backColor[3] = i == 6 ? 1.0f : 0.35f;
-            }
-            botItemPointers[i] = &item;
-        }
-        // Keep keyboard navigation in the same order as the visual rows.
-        botItemPointers[2] = &botItems[5];
-        botItemPointers[3] = &botItems[2];
-        botItemPointers[4] = &botItems[3];
-        botItemPointers[5] = &botItems[4];
-        botItems[1].dvar = "scr_num_bots";
-        // Text painting uses foreColor even when focused; focusColor alone has no effect.
-        focusScript.action = "play uin_navigation_over ; setcolor forecolor .953 .722 .212 1 ; setcolor bordercolor .953 .722 .212 .9 ; setcolor backcolor .18 .15 .08 .85 ;";
-        leaveFocusScript.action = "setcolor forecolor 1 1 1 1 ; setcolor bordercolor .8 .8 .8 .2 ; setcolor backcolor 0 0 0 .3 ;";
-        leaveFocusEvent.name = "leaveFocus";
-        leaveFocusEvent.eventScript = &leaveFocusScript;
+        openScript.action = "activateBlur ; play uin_navigation_menu_lg_open ; setfocus bots_count ;";
+        closeScript.action = "deactivateBlur ;";
+        escapeScript.action = "play uin_navigation_menu_lg_close ; close self ;";
+        focusScript.action = "play uin_navigation_over ;";
+        changeScript.action = "play uin_mouse_click_t ;";
+        openEvent.name = "onOpen";
+        openEvent.eventScript = &openScript;
+        openEvent.next = &escapeEvent;
+        escapeEvent.name = "onESC";
+        escapeEvent.eventScript = &escapeScript;
+        escapeEvent.next = &closeEvent;
+        closeEvent.name = "onClose";
+        closeEvent.eventScript = &closeScript;
         focusEvent.name = "onFocus";
         focusEvent.eventScript = &focusScript;
-        focusEvent.next = &leaveFocusEvent;
-        botItems[1].onEvent = &focusEvent;
-        botItems[2].onEvent = &focusEvent;
-        botItems[5].onEvent = &focusEvent;
-        botItems[5].dvar = "scr_num_bots_enemy";
-        botFocus[5].focusTypeData.multi = &enemyCount;
-        friendlyCount.count = 9; // Eight bots plus the host fill a nine-player team.
+        focusEvent.next = &changeEvent;
+        changeEvent.name = "action";
+        changeEvent.eventScript = &changeScript;
+
+        botCount.count = ARRAY_COUNT(numberLabels);
+        friendlyCount.count = 9;
         enemyCount.count = 10;
-        botFocus[1].focusTypeData.multi = &botCount;
-        botCount.count = 18;
-        for (int i = 0; i < 18; ++i)
+        for (int i = 0; i < ARRAY_COUNT(numberLabels); ++i)
         {
-            botCount.dvarList[i] = botCountLabels[i];
-            botCount.dvarValue[i] = (float)i;
-            friendlyCount.dvarList[i] = friendlyLabels[i];
-            enemyCount.dvarList[i] = enemyLabels[i];
-            friendlyCount.dvarValue[i] = enemyCount.dvarValue[i] = (float)i;
+            Com_sprintf(numberLabels[i], sizeof(numberLabels[i]), "%d", i);
+            botCount.dvarList[i] = friendlyCount.dvarList[i] = enemyCount.dvarList[i] = numberLabels[i];
+            botCount.dvarValue[i] = friendlyCount.dvarValue[i] = enemyCount.dvarValue[i] = static_cast<float>(i);
         }
-        botItems[2].dvar = "scr_bot_difficulty";
-        botFocus[2].focusTypeData.multi = &botDifficulty;
+        botCount.dvarList[0] = "@MENU_OFF_CAPS";
+
         botDifficulty.count = 4;
         botDifficulty.strDef = 1;
         const char *values[] = {"easy", "normal", "hard", "fu"};
-        for (int i = 0; i < 4; ++i)
+        const char *labels[] = {"@MENU_RECRUIT_CAPS", "@MENU_REGULAR_CAPS", "@MENU_HARDENED_CAPS", "@MENU_VETERAN_CAPS"};
+        for (int i = 0; i < botDifficulty.count; ++i)
         {
             botDifficulty.dvarStr[i] = values[i];
-            botDifficulty.dvarList[i] = difficultyLabels[i];
+            botDifficulty.dvarList[i] = labels[i];
         }
-        closeScript.action = "play uin_navigation_menu_lg_close ; close self ;";
-        closeEvent.name = "action";
-        closeEvent.eventScript = &closeScript;
-        closeEvent.next = &focusEvent;
-        botItems[4].onEvent = &closeEvent;
-        openScript.action = "activateBlur ; play uin_navigation_menu_lg_open ; setfocus bots_count ;";
-        openEvent.name = "onOpen";
-        openEvent.eventScript = &openScript;
-        menuCloseScript.action = "deactivateBlur ;";
-        menuCloseEvent.name = "onClose";
-        menuCloseEvent.eventScript = &menuCloseScript;
-        openEvent.next = &menuCloseEvent;
-        botMenu.onEvent = &openEvent;
-        escapeKey.key = 27;
-        escapeKey.keyScript = &closeScript;
-        botMenu.onKey = &escapeKey;
+    }
+
+    void CopyBotItem(itemDef_s &item, const itemDef_s *source)
+    {
+        item = *source;
+        item.parent = &botMenu;
+        item.window.rect = item.window.rectClient;
+        item.window.dynamicFlags[0] = 4;
+        item.onEvent = nullptr;
+        item.animInfo = nullptr;
+        item.ui3dWindowId = -1;
+    }
+
+    void UngateBotItem(itemDef_s &item)
+    {
+        item.visibleExp = {};
+        item.showBits = 0;
+        item.hideBits = ~0ULL;
+        item.dvar = item.dvarTest = item.enableDvar = nullptr;
+        item.dvarFlags = 0;
+        item.rectExpData = nullptr;
+    }
+
+    void SetBotText(itemDef_s &item, textDef_s &text, const char *label)
+    {
+        text = *item.typeData.textDef;
+        memset(text.textRect, 0, sizeof(text.textRect));
+        text.text = label;
+        text.textExpData = nullptr;
+        text.textTypeData.focusItemDef = nullptr;
+        item.typeData.textDef = &text;
+    }
+
+    void AddBotRow(BotRow &row, itemDef_s *const *templates, float y, const char *name,
+        const char *label, const char *dvar, multiDef_s *values)
+    {
+        for (int i = 0; i < layersPerRow; ++i)
+        {
+            itemDef_s &part = row.layers[i];
+            CopyBotItem(part, templates[i]);
+            UngateBotItem(part);
+            part.window.name = nullptr;
+            part.window.rect.y = part.window.rectClient.y = y;
+            if (i < layersPerRow - 1)
+                part.window.staticFlags |= 0x100000;
+            botItemPointers[botMenu.itemCount++] = &part;
+        }
+        SetBotText(row.layers[2], row.labels[0], label);
+        SetBotText(row.layers[3], row.labels[1], label);
+
+        itemDef_s &choice = row.layers[layersPerRow - 1];
+        SetBotText(choice, row.valueText, nullptr);
+        row.valueFocus = {};
+        row.valueFocus.focusTypeData.multi = values;
+        row.valueText.textTypeData.focusItemDef = &row.valueFocus;
+        choice.window.name = name;
+        choice.onEvent = &focusEvent;
+        choice.dvar = dvar;
     }
 }
 
-void UI_PrepareCustomBotMenu()
+bool UI_PrepareCustomBotMenu(UiContext *dc)
 {
+    constexpr int headingIndex = 7;
+    constexpr int firstRowIndex = 8;
+    constexpr float rowSpacing = 19.0f;
+    const menuDef_t *layout = Menus_FindByName(dc, "basictraining_settings");
+    if (!layout)
+        layout = DB_FindXAssetHeader(ASSET_TYPE_MENU, (char *)"basictraining_settings", 0, -1).menu;
+    if (!layout || layout->itemCount <= firstRowIndex + layersPerRow)
+        return false;
+
+    const itemDef_s *heading = layout->items[headingIndex];
+    const itemDef_s *hint = layout->items[layout->itemCount - 3];
+    itemDef_s *const *row = layout->items + firstRowIndex;
+    if (heading->type != 1 || !heading->typeData.textDef || hint->type != 1 || !hint->typeData.textDef
+        || row[0]->type != 0 || row[1]->type != 0 || row[2]->type != 1 || row[3]->type != 1 || row[4]->type != 10
+        || !row[2]->typeData.textDef || !row[3]->typeData.textDef || !row[4]->typeData.textDef)
+        return false;
+
     const char *gametype = Dvar_GetString("ui_gametype");
     if (!I_strnicmp(gametype, "hc", 2))
         gametype += 2;
-    // Stock free-for-all and party modes have no friendly team. The script
-    // manager uses level.teambased as the authoritative in-match decision.
     const bool teams = I_stricmp(gametype, "dm") && I_stricmp(gametype, "gun")
         && I_stricmp(gametype, "oic") && I_stricmp(gametype, "hlnd") && I_stricmp(gametype, "shrp");
-    botItems[1].dvar = teams ? "scr_num_bots_friendly" : "scr_num_bots";
-    botFocus[1].focusTypeData.multi = teams ? &friendlyCount : &botCount;
-    botItems[5].window.dynamicFlags[0] = teams ? 4 : 0;
-    botMenu.window.rect.h = teams ? 284.0f : 244.0f;
-    botMenu.window.rect.y = -botMenu.window.rect.h * 0.5f;
-    botMenu.window.rectClient = botMenu.initialRectInfo = botMenu.window.rect;
-    const float offset = teams ? 0.0f : 40.0f;
-    botItems[2].window.rectClient.y = 148.0f - offset;
-    botItems[3].window.rectClient.y = 190.0f - offset;
-    botItems[4].window.rectClient.y = 238.0f - offset;
-    botItems[7].window.rectClient.y = 226.0f - offset;
-    botText[3].text = teams ? "@OPENBLOPS_BOTS_TEAM_HINT" : "@OPENBLOPS_BOTS_SOLO_HINT";
-    I_strncpyz(botCountLabels[0], UI_SafeTranslateString("OPENBLOPS_BOTS_OFF"), sizeof(botCountLabels[0]));
-    const char *countFormat = UI_SafeTranslateString("OPENBLOPS_BOTS_COUNT");
-    const char *friendlyFormat = UI_SafeTranslateString("OPENBLOPS_BOTS_FRIENDLY");
-    const char *enemyFormat = UI_SafeTranslateString("OPENBLOPS_BOTS_ENEMY");
-    for (int i = 0; i < ARRAY_COUNT(botCountLabels); ++i)
+
+    const char *name = botMenu.window.name;
+    botMenu = *layout;
+    botMenu.window.name = name;
+    botMenu.window.modal = 1;
+    botMenu.window.dynamicFlags[0] = 0;
+    botMenu.initialRectInfo = botMenu.window.rect = botMenu.window.rectClient;
+    botMenu.ui3dWindowId = -1;
+    botMenu.cursorItem[0] = -1;
+    botMenu.visibleExp = {};
+    botMenu.showBits = 0;
+    botMenu.hideBits = ~0ULL;
+    botMenu.onEvent = &openEvent;
+    botMenu.onKey = nullptr;
+    botMenu.itemCount = 0;
+    botMenu.items = botItemPointers;
+
+    for (int i = 0; i < panelLayers; ++i)
     {
-        if (i)
-            Com_sprintf(botCountLabels[i], sizeof(botCountLabels[i]), countFormat, i);
-        Com_sprintf(friendlyLabels[i], sizeof(friendlyLabels[i]), friendlyFormat, i);
-        Com_sprintf(enemyLabels[i], sizeof(enemyLabels[i]), enemyFormat, i);
+        CopyBotItem(botPanel[i], layout->items[i]);
+        botPanel[i].window.staticFlags |= 0x100000;
+        botItemPointers[botMenu.itemCount++] = &botPanel[i];
     }
-    const char *difficulty = UI_SafeTranslateString("MENU_BASICTRAINING_DIFFICULTY_CAPS");
-    const char *difficultyKeys[] = {"MENU_RECRUIT_CAPS", "MENU_REGULAR_CAPS", "MENU_HARDENED_CAPS", "MENU_VETERAN_CAPS"};
-    for (int i = 0; i < ARRAY_COUNT(difficultyLabels); ++i)
-        Com_sprintf(difficultyLabels[i], sizeof(difficultyLabels[i]), "%s: %s", difficulty,
-            UI_SafeTranslateString(difficultyKeys[i]));
-    for (int i = 0; i < ARRAY_COUNT(botItems); ++i)
+    CopyBotItem(botTitle, heading);
+    UngateBotItem(botTitle);
+    botTitle.window.staticFlags |= 0x100000;
+    SetBotText(botTitle, titleText, "@OPENBLOPS_BOT_SETTINGS");
+    botItemPointers[botMenu.itemCount++] = &botTitle;
+
+    float y = row[4]->window.rectClient.y;
+    AddBotRow(botRows[0], row, y, "bots_count",
+        teams ? "@OPENBLOPS_BOTS_FRIENDLY" : "@OPENBLOPS_BOTS_COUNT",
+        teams ? "scr_num_bots_friendly" : "scr_num_bots", teams ? &friendlyCount : &botCount);
+    if (teams)
     {
-        botItems[i].window.rect = botItems[i].window.rectClient;
-        memset(botText[i].textRect, 0, sizeof(botText[i].textRect));
+        y += rowSpacing;
+        AddBotRow(botRows[1], row, y, "bots_enemies", "@OPENBLOPS_BOTS_ENEMY", "scr_num_bots_enemy", &enemyCount);
     }
+    y += rowSpacing;
+    AddBotRow(botRows[2], row, y, "bots_difficulty", "@MENU_BASICTRAINING_DIFFICULTY_CAPS",
+        "scr_bot_difficulty", &botDifficulty);
+
+    CopyBotItem(botHint, hint);
+    UngateBotItem(botHint);
+    botHint.window.rectClient.x = row[4]->window.rectClient.x;
+    botHint.window.rectClient.y = y + 2.0f * rowSpacing;
+    botHint.window.rect = botHint.window.rectClient;
+    botHint.window.staticFlags |= 0x900000;
+    SetBotText(botHint, hintText, teams ? "@OPENBLOPS_BOTS_TEAM_HINT" : "@OPENBLOPS_BOTS_SOLO_HINT");
+    botItemPointers[botMenu.itemCount++] = &botHint;
+    return true;
 }
 
 bool UI_IsCustomBotMenu(const menuDef_t *menu)
@@ -268,6 +256,14 @@ bool UI_IsCustomBotMenu(const menuDef_t *menu)
 // only while its button has the focus.
 bool UI_IsHiddenBotSettingsHighlight(int contextIndex, const itemDef_s *item)
 {
+    if (item->parent == &botMenu)
+    {
+        for (const auto &row : botRows)
+            for (int i = 0; i < layersPerRow - 1; ++i)
+                if (item == &row.layers[i])
+                    return Window_HasFocus(contextIndex, &row.layers[layersPerRow - 1].window) != (i % 2 != 0);
+        return false;
+    }
     if (!item->window.name || I_stricmp(item->window.name, "openblops_bot_settings_hl") || !item->parent)
         return false;
     const menuDef_t *menu = item->parent;
@@ -302,7 +298,7 @@ void UI_AddCustomBotSettings(int localClientNum, UiContext *dc, menuDef_t *menu)
             {
                 if (!script->action || !strstr(script->action, "open server_settings"))
                     continue;
-                InitBotMenu(source);
+                InitBotMenu();
                 lobbyButtons.emplace_back();
                 LobbyButton &entry = lobbyButtons.back();
                 entry.item = *source;

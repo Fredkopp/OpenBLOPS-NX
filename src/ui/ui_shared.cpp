@@ -4765,7 +4765,8 @@ void __cdecl Menus_Open(int localClientNum, UiContext *dc, menuDef_t *menu)
 #ifdef KISAK_MP
     if (UI_IsCustomBotMenu(menu))
     {
-        UI_PrepareCustomBotMenu();
+        if (!UI_PrepareCustomBotMenu(dc))
+            return;
         if (!Dvar_GetString("scr_bot_difficulty")[0])
             Dvar_SetStringByName("scr_bot_difficulty", "normal");
     }

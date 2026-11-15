@@ -7,10 +7,9 @@ HOST_MATCH	HOST MATCH	HÉBERGER UNE PARTIE	PARTIE HOSTEN	OSPITA PARTITA	ALOJAR P
 BOT_SETTINGS	BOT SETTINGS	PARAMÈTRES DES BOTS	BOT-EINSTELLUNGEN	IMPOSTAZIONI BOT	AJUSTES DE BOTS	НАСТРОЙКИ БОТОВ	USTAWIENIA BOTÓW	봇 설정	ボット設定	NASTAVENÍ BOTŮ
 BOTS_TEAM_HINT	Bots join after you choose a team. Max 17 bots.	Les bots rejoignent la partie après le choix de l'équipe. Maximum 17 bots.	Bots treten nach der Teamwahl bei. Maximal 17 Bots.	I bot si uniscono dopo la scelta della squadra. Massimo 17 bot.	Los bots se unen tras elegir equipo. Máximo 17 bots.	Боты присоединятся после выбора команды. Максимум 17 ботов.	Boty dołączą po wyborze drużyny. Maks. 17 botów.	팀을 선택하면 봇이 참가합니다. 최대 17명입니다.	チーム選択後にボットが参加します。最大17体。	Boti se připojí po výběru týmu. Nejvýše 17 botů.
 BOTS_SOLO_HINT	Bots join after you enter the match.	Les bots rejoignent la partie après votre arrivée.	Bots treten bei, sobald du in der Partie bist.	I bot si uniscono dopo il tuo ingresso in partita.	Los bots se unen cuando entras en la partida.	Боты присоединятся, когда вы войдёте в матч.	Boty dołączą po wejściu do meczu.	경기에 입장하면 봇이 참가합니다.	マッチに入るとボットが参加します。	Boti se připojí po vašem vstupu do zápasu.
-BOTS_COUNT	BOTS: %d	BOTS : %d	BOTS: %d	BOT: %d	BOTS: %d	БОТЫ: %d	BOTY: %d	봇: %d	ボット：%d	BOTI: %d
-BOTS_OFF	BOTS: OFF	BOTS : NON	BOTS: AUS	BOT: NO	BOTS: NO	БОТЫ: ВЫКЛ.	BOTY: WYŁ.	봇: 끔	ボット：オフ	BOTI: VYP.
-BOTS_FRIENDLY	FRIENDLY BOTS: %d	BOTS ALLIÉS : %d	VERBÜNDETE BOTS: %d	BOT ALLEATI: %d	BOTS ALIADOS: %d	СОЮЗНЫЕ БОТЫ: %d	PRZYJAZNE BOTY: %d	아군 봇: %d	味方ボット：%d	SPOJENEČTÍ BOTI: %d
-BOTS_ENEMY	ENEMY BOTS: %d	BOTS ENNEMIS : %d	FEINDLICHE BOTS: %d	BOT NEMICI: %d	BOTS ENEMIGOS: %d	ВРАЖЕСКИЕ БОТЫ: %d	WROGIE BOTY: %d	적군 봇: %d	敵ボット：%d	NEPŘÁTELŠTÍ BOTI: %d
+BOTS_COUNT	BOTS	BOTS	BOTS	BOT	BOTS	БОТЫ	BOTY	봇	ボット	BOTI
+BOTS_FRIENDLY	FRIENDLY BOTS	BOTS ALLIÉS	VERBÜNDETE BOTS	BOT ALLEATI	BOTS ALIADOS	СОЮЗНЫЕ БОТЫ	PRZYJAZNE BOTY	아군 봇	味方ボット	SPOJENEČTÍ BOTI
+BOTS_ENEMY	ENEMY BOTS	BOTS ENNEMIS	FEINDLICHE BOTS	BOT NEMICI	BOTS ENEMIGOS	ВРАЖЕСКИЕ БОТЫ	WROGIE BOTY	적군 봇	敵ボット	NEPŘÁTELŠTÍ BOTI
 SKIP	Skip	Passer	Überspringen	Salta	Omitir	Пропустить	Pomiń	건너뛰기	スキップ	Přeskočit
 SERVER_BROWSER	SERVER BROWSER	NAVIGATEUR DE SERVEURS	SERVERBROWSER	ELENCO SERVER	LISTA DE SERVIDORES	СПИСОК СЕРВЕРОВ	LISTA SERWERÓW	서버 목록	サーバー一覧	SEZNAM SERVERŮ
 ZOMBIES_BROWSER	ZOMBIES SERVER BROWSER	SERVEURS ZOMBIES	ZOMBIE-SERVER	SERVER ZOMBI	SERVIDORES DE ZOMBIS	СЕРВЕРЫ РЕЖИМА «ЗОМБИ»	SERWERY ZOMBIE	좀비 서버 목록	ゾンビサーバー一覧	SERVERY ZOMBIÍ
