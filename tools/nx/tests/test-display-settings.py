@@ -78,6 +78,7 @@ void Dvar_SetFromStringByName(const char*n,const char*v){
  assert(!strcmp(n,"nx_fpsLimit"));savedLimit.current.integer=atoi(v);}
 void UI_PlaySound(int,const char*n){assert(!strcmp(n,"uin_mouse_click_t"));++clicks;}
 void Item_RunEventScript(int,UiContext*,itemDef_s*,const char*){++applyScripts;}
+void UI_NX_RestoreWeaponStatsFocus(int,UiContext*,itemDef_s*){}
 char *va(const char *fmt,...){
  static char value[32];va_list args;va_start(args,fmt);vsnprintf(value,sizeof(value),fmt,args);va_end(args);return value;}
 multiDef_s *Item_GetMultiDef(itemDef_s* item){return item->typeData.textDef->textTypeData.focusItemDef->focusTypeData.multi;}

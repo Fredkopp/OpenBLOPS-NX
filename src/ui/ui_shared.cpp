@@ -4161,6 +4161,14 @@ static bool UI_NX_IsFriendsShortcut(itemDef_s *item)
     return label && label->text && !I_stricmp(label->text, "@PLATFORM_PARTY_INVITE");
 }
 
+static bool UI_NX_IsClearKillstreaksShortcut(itemDef_s *item)
+{
+    const textDef_s *label = item->type == 3 ? Item_GetTextDef(item) : nullptr;
+    return label && label->text && !I_stricmp(label->text, "@PLATFORM_CLEAR_KILLSTREAKS")
+        && item->parent && item->parent->window.name
+        && !I_stricmp(item->parent->window.name, "menu_xboxlive_killstreaks");
+}
+
 static bool UI_NX_IsFriendsMenu(const menuDef_t *menu)
 {
     const char *name = menu ? menu->window.name : nullptr;
@@ -4265,7 +4273,8 @@ static const char *UI_NX_SettingsDestination(const itemDef_s *item)
 
 static bool UI_NX_IsPointerOnly(itemDef_s *item)
 {
-    if (UI_NX_IsBackPrompt(item) || UI_NX_IsFriendsShortcut(item) || UI_NX_IsFriendsTab(item) || UI_NX_ClassRotationButton(item)
+    if (UI_NX_IsBackPrompt(item) || UI_NX_IsFriendsShortcut(item) || UI_NX_IsClearKillstreaksShortcut(item)
+        || UI_NX_IsFriendsTab(item) || UI_NX_ClassRotationButton(item)
         || UI_NX_IsClassListFaction(item) || UI_NX_ServerBrowserShortcut(item) || UI_NX_IsServerBrowserTab(item)
         || (item->window.name && !I_stricmp(item->window.name, "ExitFlyoutButton")))
         return true;
@@ -5124,12 +5133,13 @@ static bool UI_NX_RunBackPrompt(int localClientNum, UiContext *dc, menuDef_t *me
     return false;
 }
 
-static bool UI_NX_RunFriendsShortcut(int localClientNum, UiContext *dc, menuDef_t *menu)
+static bool UI_NX_RunXShortcut(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
     for (int i = 0; i < menu->itemCount; ++i)
     {
         itemDef_s *item = menu->items[i];
-        if (UI_NX_IsFriendsShortcut(item) && Item_IsVisible(localClientNum, dc->contextIndex, item)
+        if ((UI_NX_IsFriendsShortcut(item) || UI_NX_IsClearKillstreaksShortcut(item))
+            && Item_IsVisible(localClientNum, dc->contextIndex, item)
             && ((item->dvarFlags & 3) == 0 || Item_EnableShowViaDvar(item, 1))
             && Item_DoesEventExist(item, "action"))
         {
@@ -5706,7 +5716,7 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
         return;
     if ((key == K_BUTTON_LSHLDR || key == K_BUTTON_RSHLDR) && UI_NX_IsClassRotationMenu(menu))
         return;
-    if (down && key == K_BUTTON_Y && UI_NX_RunFriendsShortcut(localClientNum, dc, menu))
+    if (down && key == K_BUTTON_Y && UI_NX_RunXShortcut(localClientNum, dc, menu))
         return;
 #endif
     inHandler = 1;
@@ -7656,6 +7666,31 @@ int __cdecl Item_Slider_HandleKey(UiContext *dc, itemDef_s *item, int key)
     }
 }
 
+#ifdef KISAK_NX
+static bool UI_NX_IsWeaponStatsToggle(const itemDef_s *item)
+{
+    return item->type == 3 && item->parent && item->parent->window.name
+        && !I_stricmp(item->parent->window.name, "cac_weapon")
+        && UI_NX_ItemHasActionCommand(item, "setDvar ui_cac_gun_attributes_vis ");
+}
+
+static void UI_NX_RestoreWeaponStatsFocus(int localClientNum, UiContext *dc, itemDef_s *item)
+{
+    menuDef_t *menu = item->parent;
+    const int context = dc->contextIndex;
+    if (!UI_NX_IsWeaponStatsToggle(item) || Menu_GetFocused(dc) != menu
+        || !Window_HasFocus(context, &item->window) || Item_IsVisible(localClientNum, context, item))
+        return;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *candidate = menu->items[i];
+        if (candidate != item && UI_NX_IsWeaponStatsToggle(candidate) && UI_NX_CanFocus(localClientNum, dc, candidate)
+            && Item_SetFocus(localClientNum, dc, candidate, candidate->window.rect.x, candidate->window.rect.y))
+            return;
+    }
+}
+#endif
+
 void __cdecl Item_Action(int localClientNum, UiContext *dc, itemDef_s *item)
 {
 #ifdef KISAK_NX
@@ -7669,7 +7704,12 @@ void __cdecl Item_Action(int localClientNum, UiContext *dc, itemDef_s *item)
     if ( dc->openMenuCount )
     {
         if ( item )
+        {
             Item_RunEventScript(localClientNum, dc, item, "action");
+#ifdef KISAK_NX
+            UI_NX_RestoreWeaponStatsFocus(localClientNum, dc, item);
+#endif
+        }
     }
 }
 
@@ -10182,7 +10222,8 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                 }
 #endif
 #ifdef KISAK_NX
-                if (!UI_NX_IsFriendsShortcut(item) && !UI_NX_ServerBrowserShortcut(item))
+                if (!UI_NX_IsFriendsShortcut(item) && !UI_NX_ServerBrowserShortcut(item)
+                    && !UI_NX_IsClearKillstreaksShortcut(item))
 #endif
                 Window_Paint(
                     localClientNum,
@@ -10196,7 +10237,8 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     item);
 #ifdef KISAK_NX
                 int button = UI_NX_ClassRotationButton(item);
-                if (UI_NX_IsServerBrowserTab(item))
+                const bool browserTab = UI_NX_IsServerBrowserTab(item);
+                if (browserTab)
                 {
                     if (UI_NX_ItemHasActionCommand(item, "openMenuImmediate ( server_browser_ranked )"))
                         button = K_BUTTON_LSHLDR;
@@ -10211,10 +10253,11 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     Font_s *font = UI_GetFontHandle(placement, 0, scale);
                     char caption[4];
                     I_strncpyz(caption, Key_KeynumToString(button, 1), sizeof(caption));
-                    const float x = button == K_BUTTON_LSHLDR
-                        ? bounds.x - 4.0f - UI_TextWidth(caption, 0, font, scale)
-                        : bounds.x + bounds.w + 4.0f;
-                    const float y = bounds.y + (bounds.h + UI_TextHeight(font, scale)) * 0.5f;
+                    const float width = UI_TextWidth(caption, 0, font, scale);
+                    const float x = browserTab ? bounds.x + (bounds.w - width) * 0.5f
+                        : button == K_BUTTON_LSHLDR ? bounds.x - 4.0f - width : bounds.x + bounds.w + 4.0f;
+                    const float y = browserTab ? bounds.y - 2.0f
+                        : bounds.y + (bounds.h + UI_TextHeight(font, scale)) * 0.5f;
                     UI_DrawText(placement, caption, 0x7FFFFFFF, font, x, y, bounds.horzAlign,
                         bounds.vertAlign, scale, item->window.foreColor, 0);
                 }
@@ -10359,6 +10402,7 @@ static bool UI_NX_FormatControlPrompt(const char *reference, char *buffer, int s
     static constexpr struct { const char *reference; const char *label; char button; } prompts[] = {
         {"PLATFORM_CONTINUE", "MENU_CONTINUE", K_BUTTON_B},
         {"PLATFORM_PARTY_INVITE", "PLATFORM_PARTY_INVITE", K_BUTTON_Y},
+        {"PLATFORM_CLEAR_KILLSTREAKS", "PLATFORM_CLEAR_KILLSTREAKS", K_BUTTON_Y},
         {"OPENBLOPS_ZOMBIE_REFRESH", "MENU_REFRESH", K_BUTTON_X},
         {"OPENBLOPS_ZOMBIE_JOIN", "MENU_JOIN_SERVER_CAPS", K_BUTTON_B},
         {"PLATFORM_UI_SELECTBUTTON", nullptr, K_BUTTON_B},

@@ -42,10 +42,13 @@ code=r"""
 #include <vector>
 #include <list>
 #include <openblops_directory/directory_protocol.h>
-struct Rect {float x=0,y=0,w=180,h=17;};
+struct Rect {float x=0,y=0,w=180,h=17;int horzAlign=2,vertAlign=1;};
+using rectDef_s=Rect;
 struct Window {const char *name=nullptr;Rect rect,rectClient;int style=3,background=123;float foreColor[4]{.2f,.3f,.4f,1};};
 struct GenericEventScript {const char *action=nullptr;GenericEventScript *next=nullptr;};
 struct GenericEventHandler {const char *name=nullptr;GenericEventScript *eventScript=nullptr;GenericEventHandler *next=nullptr;};
+struct animParamsDef_t {const char *name=nullptr;Rect rectClient;GenericEventHandler *onEvent=nullptr;};
+struct UIAnimInfo {int animStateCount=0;animParamsDef_t **animStates=nullptr;animParamsDef_t currentAnimState,nextAnimState;};
 struct editFieldDef_s {int cursorPos[1]{},paintOffset=0,maxChars=20;};
 struct multiDef_s {const char*dvarList[32]{};float dvarValue[32]{};int count=0;};
 struct focusItemDef_s {int marker=42;struct {editFieldDef_s *editField=nullptr;multiDef_s *multi=nullptr;} focusTypeData;};
@@ -55,8 +58,8 @@ struct ExpressionStatement {expressionRpn *rpn=nullptr;int numRpn=0;};
 struct textExp_s {ExpressionStatement textExp;};
 struct textDef_s {const char *text=nullptr;textExp_s *textExpData=nullptr;Rect textRect[1];struct {focusItemDef_s *focusItemDef=nullptr;} textTypeData;};
 struct menuDef_t;
-struct itemDef_s {Window window;int type=3,dataType=3;struct {textDef_s *textDef=nullptr;} typeData;menuDef_t *parent=nullptr;GenericEventHandler *onEvent=nullptr;const char *dvar=nullptr,*dvarTest=nullptr,*enableDvar=nullptr;void *rectExpData=nullptr,*animInfo=nullptr;int dvarFlags=0;ExpressionStatement visibleExp;unsigned long long showBits=0,hideBits=~0ull;};
-struct menuDef_t {Window window;int itemCount=0;itemDef_s **items=nullptr;};
+struct itemDef_s {Window window;int type=3,dataType=3;struct {textDef_s *textDef=nullptr;} typeData;menuDef_t *parent=nullptr;GenericEventHandler *onEvent=nullptr;const char *dvar=nullptr,*dvarTest=nullptr,*enableDvar=nullptr;void *rectExpData=nullptr;UIAnimInfo *animInfo=nullptr;int dvarFlags=0;ExpressionStatement visibleExp;unsigned long long showBits=0,hideBits=~0ull;};
+struct menuDef_t {Window window;int itemCount=0;itemDef_s **items=nullptr;GenericEventHandler *onEvent=nullptr;};
 struct UiContext {};
 struct UIInfo {UiContext uiDC;} ui;
 struct {struct {bool enabled=false;} current;} running;
@@ -78,6 +81,12 @@ char *UI_ToUpper(const char *key){return const_cast<char *>(key);}
 char *UI_SafeTranslateString(const char *key){return const_cast<char *>(key);}
 int I_stricmp(const char *a,const char *b){return std::strcmp(a,b);}
 int Item_IsTextDefType(const itemDef_s *i){return i->typeData.textDef!=nullptr;}
+animParamsDef_t *Item_FindStateByName(itemDef_s *item,const char *name){
+ if(item->animInfo)for(int i=0;i<item->animInfo->animStateCount;++i){
+  auto *state=item->animInfo->animStates[i];if(!strcmp(state->name,name))return state;
+ }
+ return nullptr;
+}
 void Dvar_SetBoolByName(const char *name,bool value){flags[name]=value;}
 void _Dvar_RegisterString(const char*name,const char*value,int,const char*){if(!strings.count(name))strings[name]=value;}
 struct LimitSetting {struct {int integer=0;}current;};
@@ -133,14 +142,29 @@ int main(){
  GenericEventScript rankedAction{"exec quickmatch ;"},privateAction{"open menu_xboxlive_privatelobby ;"},onFocus{"set ui_highlight 2 ;"};
  nativePrivate=&privateAction;nativeRanked=&rankedAction;
  GenericEventHandler rankFocus{"onFocus",&onFocus},rankEvent{"action",&rankedAction,&rankFocus},privateEvent{"action",&privateAction};
- itemDef_s rank,decor,ops,priv,other,wager,wagerHighlight;
+ itemDef_s rank,decor,ops,priv,other,wager,wagerHighlight,wagerBackground,background;
  rank.window.name="SecondFlyout";rank.window.rect.y=rank.window.rectClient.y=57;rank.typeData.textDef=&rankedText;rank.onEvent=&rankEvent;
  decor.typeData.textDef=&rankedDecoration;decor.dataType=1;
  priv.window.name="FifthFlyout";priv.typeData.textDef=&privateText;priv.onEvent=&privateEvent;
  ops.typeData.textDef=&opsText;other.typeData.textDef=&otherText;
  wagerText.text="@MPUI_WAGER_MATCH_CAPS";wagerHighlightText.text="WAGER MATCH";wager.typeData.textDef=&wagerText;wagerHighlight.typeData.textDef=&wagerHighlightText;wagerHighlight.dataType=1;
  GenericEventScript wagerNative{"exec wagermatch ;"};GenericEventHandler wagerEvent{"action",&wagerNative};wager.onEvent=&wagerEvent;
- itemDef_s *flyItems[]{&rank,&decor,&other,&priv,&wager,&wagerHighlight};menuDef_t fly;fly.window.name="live_flyout";fly.items=flyItems;fly.itemCount=6;
+ other.window.name="FourthFlyout";other.window.rect.y=other.window.rectClient.y=91;
+ priv.window.rect.y=priv.window.rectClient.y=108;
+ wager.window.name="ThirdFlyout";
+ wager.window.rectClient.y=wagerHighlight.window.rectClient.y=wagerBackground.window.rectClient.y=74;
+ background.window.name="ButtonBackground";
+ GenericEventScript originalFade{"ui_animate live_flyout ThirdFlyout FadeIn 40 ;"},nextFade{"ui_animate live_flyout FourthFlyout FadeIn 40 ;"};
+ GenericEventHandler originalEnter{"onEnter",&originalFade},nextEnter{"onEnter",&nextFade};
+ animParamsDef_t rankFade{"FadeIn",rank.window.rectClient,&originalEnter},wagerFade{"FadeIn",wager.window.rectClient,&nextEnter};
+ animParamsDef_t otherFade{"FadeIn",other.window.rectClient},backgroundFly{"Fly",background.window.rectClient};backgroundFly.rectClient.h=85;
+ animParamsDef_t *rankStates[]{&rankFade},*wagerStates[]{&wagerFade},*otherStates[]{&otherFade},*backgroundStates[]{&backgroundFly};
+ UIAnimInfo rankAnim{1,rankStates},wagerAnim{1,wagerStates},otherAnim{1,otherStates},backgroundAnim{1,backgroundStates};
+ rank.animInfo=&rankAnim;wager.animInfo=&wagerAnim;other.animInfo=&otherAnim;background.animInfo=&backgroundAnim;
+ GenericEventScript reset{"execNow ui_animate live_flyout ThirdFlyout Default 0 ; execNow ui_animate live_flyout FourthFlyout Default 0 ;"};
+ GenericEventHandler closeEvent{"onClose",&reset};
+ itemDef_s *flyItems[]{&rank,&decor,&other,&priv,&wager,&wagerHighlight,&wagerBackground,&background};
+ menuDef_t fly;fly.window.name="live_flyout";fly.items=flyItems;fly.itemCount=8;fly.onEvent=&closeEvent;
  for(auto *i:flyItems)i->parent=&fly;
  itemDef_s opsHeader=ops,opsHighlight=ops,opsOther=ops;
  opsHeader.dataType=opsHighlight.dataType=opsOther.dataType=1;
@@ -177,10 +201,14 @@ int main(){
  assert(std::string(fly.items[0]->typeData.textDef->text)=="@OPENBLOPS_HOST_MATCH");
  assert(std::string(fly.items[1]->typeData.textDef->text)=="@OPENBLOPS_HOST_MATCH");
  assert(rankedText.text==nullptr&&rankedText.textExpData==&rankExpr&&std::string(rankParts[0].data.constant.internals.string)=="@MENU_RANKED_MATCH_CAPS");
- assert(fly.itemCount==6&&fly.items[2]==&other&&fly.items[3]!=&priv);
+ assert(fly.itemCount==5&&fly.items[2]!=&other&&fly.items[3]!=&priv);
+ assert(fly.items[2]->window.rect.y==74&&fly.items[3]->window.rect.y==91);
+ assert(!strcmp(fly.items[2]->typeData.textDef->text,"OTHER"));
+ assert(fly.items[0]->animInfo->animStates[0]->onEvent==&nextEnter);
+ assert(fly.items[2]->animInfo->animStates[0]->rectClient.y==74&&otherFade.rectClient.y==91);
+ assert(fly.items[4]->animInfo->animStates[0]->rectClient.h==68&&backgroundFly.rectClient.h==85);
+ assert(!strstr(fly.onEvent->eventScript->action,"ThirdFlyout")&&strstr(reset.action,"ThirdFlyout"));
  assert(std::string(fly.items[3]->typeData.textDef->text)=="@OPENBLOPS_OFFLINE_MATCH"&&fly.items[3]->onEvent==priv.onEvent);
- assert(std::string(fly.items[4]->typeData.textDef->text).empty()&&std::string(fly.items[5]->typeData.textDef->text).empty());
- assert(fly.items[4]->onEvent==&wagerEvent&&std::string(wagerText.text)=="@MPUI_WAGER_MATCH_CAPS");
  auto *host=fly.items[0];auto **patched=fly.items;
  assert(host->window.rect.y==57&&host->window.background==123&&host->window.style==3);
  assert(host->window.foreColor[0]==rank.window.foreColor[0]&&host->typeData.textDef->textExpData==nullptr);

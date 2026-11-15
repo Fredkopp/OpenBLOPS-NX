@@ -58,6 +58,9 @@ struct ItemCopy
     itemDef_s item{};
     textDef_s text{};
     focusItemDef_s focus{};
+    UIAnimInfo animation{};
+    std::vector<animParamsDef_t> states;
+    std::vector<animParamsDef_t *> statePointers;
 };
 struct MenuCopy
 {
@@ -66,6 +69,9 @@ struct MenuCopy
     std::vector<itemDef_s *> items;
     itemDef_s *hostButton = nullptr;
     GenericEventScript *privateAction = nullptr;
+    std::list<GenericEventHandler> events;
+    GenericEventScript closeScript{};
+    std::string closeAction;
 };
 std::list<MenuCopy> menus;
 struct ServerSettingItem
@@ -261,6 +267,69 @@ void CancelPublic(bool explicitChoice = false)
     hostPhase = HostPhase::Off;
     hostMap.clear();
 }
+void CompactFlyoutItem(ItemCopy &copy, float offset, float removedHeight, const animParamsDef_t *nextFade)
+{
+    itemDef_s &item = copy.item;
+    item.window.rect.y += offset;
+    item.window.rectClient.y += offset;
+    if (!item.animInfo)
+        return;
+    copy.animation = *item.animInfo;
+    item.animInfo = &copy.animation;
+    auto adjust = [offset, removedHeight](animParamsDef_t &state) {
+        state.rectClient.y += offset;
+        if (removedHeight > 0.0f && state.rectClient.h > removedHeight)
+            state.rectClient.h -= removedHeight;
+    };
+    adjust(copy.animation.currentAnimState);
+    adjust(copy.animation.nextAnimState);
+    if (!copy.animation.animStates)
+        return;
+    const int count = copy.animation.animStateCount;
+    copy.states.resize(count);
+    copy.statePointers.resize(count);
+    for (int i = 0; i < count; ++i)
+    {
+        const animParamsDef_t *original = copy.animation.animStates[i];
+        if (!original)
+            continue;
+        auto &state = copy.states[i];
+        state = *original;
+        adjust(state);
+        if (nextFade && Named(state.name, "FadeIn"))
+            state.onEvent = nextFade->onEvent;
+        copy.statePointers[i] = &state;
+    }
+    copy.animation.animStates = copy.statePointers.data();
+}
+
+void RemoveWagerReset(MenuCopy &copy)
+{
+    constexpr char reset[] = "execNow ui_animate live_flyout ThirdFlyout Default 0 ; ";
+    GenericEventHandler *previous = nullptr;
+    for (auto *event = copy.menu->onEvent; event; event = event->next)
+    {
+        copy.events.push_back(*event);
+        auto &replacement = copy.events.back();
+        if (previous)
+            previous->next = &replacement;
+        previous = &replacement;
+        const auto *script = event->eventScript;
+        if (!Named(event->name, "onClose") || !script || !script->action)
+            continue;
+        const char *position = std::strstr(script->action, reset);
+        if (!position)
+            continue;
+        copy.closeAction = script->action;
+        copy.closeAction.erase(position - script->action, sizeof(reset) - 1);
+        copy.closeScript = *script;
+        copy.closeScript.action = copy.closeAction.c_str();
+        replacement.eventScript = &copy.closeScript;
+    }
+    if (previous)
+        copy.menu->onEvent = &copy.events.front();
+}
+
 void PatchMenu(menuDef_t *menu)
 {
     if (!menu || (!Named(menu->window.name, "main_text") && !Named(menu->window.name, "live_flyout")))
@@ -269,27 +338,42 @@ void PatchMenu(menuDef_t *menu)
         if (copy.menu == menu && menu->items == copy.items.data())
             return;
     itemDef_s *privateButton = nullptr;
+    itemDef_s *wagerButton = nullptr;
     if (Named(menu->window.name, "live_flyout"))
         for (int i = 0; i < menu->itemCount; ++i)
-            if (HasAction(menu->items[i], "open menu_xboxlive_privatelobby"))
-                privateButton = menu->items[i];
+        {
+            itemDef_s *item = menu->items[i];
+            if (HasAction(item, "open menu_xboxlive_privatelobby"))
+                privateButton = item;
+            if (Named(item->window.name, "ThirdFlyout"))
+                wagerButton = item;
+        }
     menus.emplace_back();
     auto &copy = menus.back();
     copy.menu = menu;
     copy.privateAction = Event(privateButton, "action");
+    const rectDef_s *wagerRow = wagerButton ? &wagerButton->window.rectClient : nullptr;
+    const animParamsDef_t *nextFade = wagerButton ? Item_FindStateByName(wagerButton, "FadeIn") : nullptr;
+    if (wagerRow)
+        RemoveWagerReset(copy);
     for (int i = 0; i < menu->itemCount; ++i)
     {
         itemDef_s *source = menu->items[i];
         const bool text = Item_IsTextDefType(source) && source->typeData.textDef;
         const auto *label = text ? source->typeData.textDef : nullptr;
+        const rectDef_s &rect = source->window.rectClient;
+        const bool aligned = wagerRow && rect.horzAlign == wagerRow->horzAlign && rect.vertAlign == wagerRow->vertAlign;
+        if (aligned && rect.x == wagerRow->x && rect.y == wagerRow->y && rect.w == wagerRow->w && rect.h == wagerRow->h)
+            continue;
+        const float offset = aligned && rect.y >= wagerRow->y + wagerRow->h ? -wagerRow->h : 0.0f;
+        const float shrink = wagerRow && Named(source->window.name, "ButtonBackground") ? wagerRow->h : 0.0f;
+        const animParamsDef_t *fade = Named(source->window.name, "SecondFlyout") ? nextFade : nullptr;
         const bool operations = HasLabel(label, "@MENU_OPERATIONS_CAPS");
         const bool ranked = Named(menu->window.name, "live_flyout") && privateButton &&
                             (HasLabel(label, "@MENU_RANKED_MATCH_CAPS") || HasAction(source, "quickmatch"));
         const bool offline = Named(menu->window.name, "live_flyout") && privateButton
             && (HasLabel(label, "@MPUI_CUSTOM_MATCH_CAPS") || HasLabel(label, "PRIVATE MATCH") || source == privateButton);
-        const bool wager = Named(menu->window.name, "live_flyout")
-            && (HasLabel(label, "@MPUI_WAGER_MATCH_CAPS") || HasLabel(label, "WAGER MATCH"));
-        if (!operations && !ranked && !offline && !wager)
+        if (!operations && !ranked && !offline && offset == 0.0f && shrink == 0.0f && !fade)
         {
             copy.items.push_back(source);
             continue;
@@ -303,9 +387,12 @@ void PatchMenu(menuDef_t *menu)
         {
             part.text = *source->typeData.textDef;
             item.typeData.textDef = &part.text;
-            part.text.text = wager ? "" : offline ? "@OPENBLOPS_OFFLINE_MATCH"
-                : ranked ? "@OPENBLOPS_HOST_MATCH" : "@MPUI_CREATE_A_CLASS_CAPS";
-            part.text.textExpData = nullptr;
+            if (operations || ranked || offline)
+            {
+                part.text.text = offline ? "@OPENBLOPS_OFFLINE_MATCH"
+                    : ranked ? "@OPENBLOPS_HOST_MATCH" : "@MPUI_CREATE_A_CLASS_CAPS";
+                part.text.textExpData = nullptr;
+            }
             part.text.textRect[0] = {};
             if (source->dataType == 3 && part.text.textTypeData.focusItemDef)
             {
@@ -325,9 +412,12 @@ void PatchMenu(menuDef_t *menu)
             item.showBits = privateButton->showBits;
             item.hideBits = privateButton->hideBits;
         }
+        if (offset != 0.0f || shrink != 0.0f || fade)
+            CompactFlyoutItem(part, offset, shrink, fade);
         copy.items.push_back(&item);
     }
     menu->items = copy.items.data();
+    menu->itemCount = static_cast<int>(copy.items.size());
 }
 } // namespace
 #ifdef KISAK_NX
