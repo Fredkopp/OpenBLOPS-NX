@@ -272,8 +272,7 @@ void UI_NX_RequestCinematicSkip(int localClientNum, int key)
 {
     if ( localClientNum != 0 || (int)UI_GetActiveMenu(localClientNum) != UISP_PREGAME || !R_Cinematic_IsStarted() )
         return;
-    if ( key != K_BUTTON_A && key != K_BUTTON_B && key != K_BUTTON_START && key != K_ENTER && key != K_ESCAPE
-        && key != K_MOUSE1 )
+    if (key != K_BUTTON_A && key != K_BUTTON_B && key != K_BUTTON_START)
         return;
     s_nxCinematicSkipRequested[0] = true;
 }

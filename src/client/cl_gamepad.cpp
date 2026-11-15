@@ -643,11 +643,18 @@ void __cdecl CL_GamepadButtonEvent(
         locSelInputState = &playerKeys[localClientNum].locSelInputState;
         if ( (LocalClientUIGlobals->keyCatchers & 8) != 0 && v15 )
         {
-            if ( key == 2 || keys[key].binding && !strcmp(keys[key].binding, "+actionslot 4") )
+#ifdef KISAK_NX
+            constexpr int cancel = K_BUTTON_A;
+            constexpr int confirm = K_BUTTON_B;
+#else
+            constexpr int cancel = K_BUTTON_B;
+            constexpr int confirm = K_BUTTON_A;
+#endif
+            if ( key == cancel || keys[key].binding && !strcmp(keys[key].binding, "+actionslot 4") )
             {
                 *locSelInputState = LOC_SEL_INPUT_CANCEL;
             }
-            else if ( key == 1 || keys[key].binding && !strcmp(keys[key].binding, "+attack") )
+            else if ( key == confirm || keys[key].binding && !strcmp(keys[key].binding, "+attack") )
             {
                 *locSelInputState = LOC_SEL_INPUT_CONFIRM;
             }
@@ -674,7 +681,11 @@ void __cdecl CL_GamepadButtonEvent(
             if ( clcState == CA_CINEMATIC || clcState == CA_LOGO )
             {
                 if ( buttonEvent == 1
+#ifdef KISAK_NX
+                    && (key == 2 || key == 14)
+#else
                     && (key == 1 || key == 14)
+#endif
                     && ((LocalClientUIGlobals->keyCatchers & 0x10) == 0 || ActiveMenu == UIMENU_NONE) )
                 {
                     CL_StopLogoOrCinematic(localClientNum);
@@ -868,6 +879,44 @@ bool __cdecl CL_CheckForIgnoreDueToRepeat(int localClientNum, int key, int repea
     }
     return repeatCount > 1;
 }
+
+#ifdef KISAK_NX
+void CL_GamepadUpdateMenuStick(float x, float y, unsigned int time)
+{
+    static int heldKey;
+    if (!cls.uiStarted || !Key_IsCatcherActive(0, 0x50) || Key_IsCatcherActive(0, 0x100))
+    {
+        heldKey = 0;
+        return;
+    }
+
+    const float threshold = gpad_stick_pressed->current.value;
+    const float hysteresis = gpad_stick_pressed_hysteresis->current.value;
+    const float releaseThreshold = std::max(0.0f, threshold - hysteresis);
+    const bool stillHeld = (heldKey == K_APAD_UP && y > releaseThreshold)
+        || (heldKey == K_APAD_DOWN && -y > releaseThreshold)
+        || (heldKey == K_APAD_RIGHT && x > releaseThreshold)
+        || (heldKey == K_APAD_LEFT && -x > releaseThreshold);
+
+    int key = heldKey;
+    if (!stillHeld)
+    {
+        key = 0;
+        const float pressThreshold = threshold + hysteresis;
+        if (fabsf(y) >= fabsf(x) && fabsf(y) > pressThreshold)
+            key = y > 0.0f ? K_APAD_UP : K_APAD_DOWN;
+        else if (fabsf(x) > pressThreshold)
+            key = x > 0.0f ? K_APAD_RIGHT : K_APAD_LEFT;
+    }
+
+    const int previousKey = heldKey;
+    heldKey = key;
+    if (previousKey && previousKey != key)
+        UI_KeyEvent(0, previousKey, 0);
+    if (key && !CL_CheckForIgnoreDueToRepeat(0, key, previousKey == key ? 2 : 1, time))
+        UI_KeyEvent(0, key, 1);
+}
+#endif
 
 char __cdecl IsGamepadKey(int key)
 {

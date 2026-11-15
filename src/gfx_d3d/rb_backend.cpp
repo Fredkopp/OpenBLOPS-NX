@@ -2791,6 +2791,18 @@ void __cdecl GetShiftColor(
     }
 }
 
+#ifdef KISAK_NX
+static float RB_TextGlyphTop(Font_s *font, const Glyph *glyph, unsigned int letter)
+{
+    if (ValidGamePadButtonIcon(letter) && ValidGamePadButtonIcon(glyph->letter))
+    {
+        const Glyph *cap = R_GetCharacterGlyph(font, 'H');
+        return cap->y0 + (cap->pixelHeight - glyph->pixelHeight) * 0.5f;
+    }
+    return glyph->y0;
+}
+#endif
+
 void __cdecl RB_DrawText(const char *text, Font_s *font, float x, float y, GfxColor color)
 {
     DrawText2D(text, x, y, 1.0, font, 1.0, 1.0, 0.0, 1.0, color, 0x7FFFFFFF, 0, 0, 0, 0.0, color, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -3384,7 +3396,11 @@ void __cdecl DrawText2D(
                             deltaX = (float)glyphOriginal->dx;
                         }
                         xAdj = (float)((float)glyph->x0 + decayOffset) * xScale;
+#ifdef KISAK_NX
+                        yAdj = RB_TextGlyphTop(font, glyph, letter) * yScale;
+#else
                         yAdj = (float)glyph->y0 * yScale;
+#endif
                         if ( drawLargeCharAtEnd && maxLengthRemaining == 1 )
                         {
                             yScale = yScale * sizeIncrease;
@@ -4528,7 +4544,11 @@ void __cdecl RB_DrawTextInSpace(
     xyz[0] = (float)(x0 * *xPixelStep) + curOrg;
     xyz[1] = (float)(x0 * xPixelStep[1]) + curOrg_4;
     xyz[2] = (float)(x0 * xPixelStep[2]) + curOrg_8;
+#ifdef KISAK_NX
+    y0 = RB_TextGlyphTop(font, glyph, letter);
+#else
     y0 = (float)glyph->y0;
+#endif
     xyz[0] = (float)(y0 * *yPixelStep) + xyz[0];
     xyz[1] = (float)(y0 * yPixelStep[1]) + xyz[1];
     xyz[2] = (float)(y0 * yPixelStep[2]) + xyz[2];

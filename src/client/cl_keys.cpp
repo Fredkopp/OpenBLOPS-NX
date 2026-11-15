@@ -1,5 +1,8 @@
 #include <universal/local_client_limits.h>
 #include "cl_keys.h"
+#ifdef KISAK_NX
+#include <ui/keycodes.h>
+#endif
 #include <gfx_d3d/r_font.h>
 #include <client_mp/cl_main_mp.h>
 #include <stringed/stringed_hooks.h>
@@ -1226,6 +1229,22 @@ bool __cdecl Key_IsValidGamePadChar(char key)
 char tinystr[5];
 const char *__cdecl Key_KeynumToString(int keynum, int translate)
 {
+#ifdef KISAK_NX
+    if (translate)
+    {
+        switch (keynum)
+        {
+        case K_BUTTON_LSHLDR: return "[L]";
+        case K_BUTTON_RSHLDR: return "[R]";
+        case K_BUTTON_START: return "[+]";
+        case K_BUTTON_BACK: return "[-]";
+        case K_BUTTON_LSTICK: return "[L3]";
+        case K_BUTTON_RSTICK: return "[R3]";
+        case K_BUTTON_LTRIG: return "[ZL]";
+        case K_BUTTON_RTRIG: return "[ZR]";
+        }
+    }
+#endif
     char v3; // [esp+0h] [ebp-14h]
     char v4; // [esp+4h] [ebp-10h]
     char j; // [esp+8h] [ebp-Ch]
@@ -1287,6 +1306,10 @@ const char *__cdecl Key_KeynumToString(int keynum, int translate)
 
 void __cdecl Key_SetBinding(int localClientNum, int keynum, const char *binding, int bindNum)
 {
+#ifdef KISAK_NX
+    if (keynum < 0 || keynum > K_LASTGAMEPADBUTTON_RANGE_3 || !Key_IsValidGamePadChar(keynum))
+        return;
+#endif
     if ( localClientNum
         && !Assert_MyHandler(
                     "C:\\projects_pc\\cod\\codsrc\\src\\client\\cl_keys.cpp",
@@ -1383,6 +1406,9 @@ int __cdecl Key_GetCommandAssignmentInternal(
     const char *binding; // [esp+4h] [ebp-8h]
     int count; // [esp+8h] [ebp-4h]
 
+#ifdef KISAK_NX
+    gamePadOnly = 1;
+#endif
     twokeys[1] = -1;
     *twokeys = -1;
     count = 0;
@@ -1843,6 +1869,10 @@ void __cdecl CL_InitKeyCommands()
 
 void __cdecl CL_KeyEvent(int localClientNum, int key, int down, unsigned int time)
 {
+#ifdef KISAK_NX
+    if (!IsGamepadKey(key))
+        return;
+#endif
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
     if (down && CL_SplitGuestOwnsMenu())
         return;
@@ -2279,6 +2309,7 @@ void __cdecl CL_HandleKeySpectatorInput(int localClientNum, int key)
 
 void __cdecl CL_CharEvent(int localClientNum, int key)
 {
+#ifndef KISAK_NX
     clientUIActive_t *LocalClientUIGlobals; // [esp+0h] [ebp-8h]
 
     if ( DevGui_IsActive() || key == 96 || key == 126 )
@@ -2307,6 +2338,7 @@ LABEL_15:
         if ( !CL_GetLocalClientConnectionState(localClientNum) )
             goto LABEL_15;
     }
+#endif
 }
 
 void __cdecl CL_ConsoleCharEvent(int localClientNum, int key)

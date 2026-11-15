@@ -80,19 +80,23 @@ delete it to return to them.
 
 Face buttons are mapped by **position** (`src/nx/nx_xinput.cpp`): the game is
 written for an Xbox pad, so in game the Switch's bottom button does what the
-Xbox A does (jump). Menus swap the pair back to the Nintendo convention: **A
-confirms, B goes back**. Prompts show the Switch's labels (`nx_switchglyphs 1`).
+Xbox A does (jump). Menus use the Nintendo convention: **A confirms, B goes
+back**. Prompts use Switch button labels.
 
 | Switch | Menus | In game |
 |---|---|---|
 | D-pad / left stick | move focus | move |
 | A (right) | confirm | the Xbox B binding |
 | B (bottom) | back | the Xbox A binding (jump) |
-| Y (left) / X (top) | Y refreshes the server browser | Xbox X / Xbox Y |
+| Y (left) / X (top) | Y refreshes the server browser, X opens Friends where shown | Xbox X / Xbox Y |
+| L / R | Rotate the character in Create a Class | Xbox LB / RB |
 | + / − | Start / Back | pause / scores |
 | ZL / ZR | | aim / fire |
 
 Text fields (server name, passwords) open the Switch keyboard.
+In Create a Class, press down from Face Paint to reach the footer buttons.
+Press **A** on the faction to edit it with left and right, then **B** to keep
+the choice and return to the footer buttons.
 
 ## Building
 

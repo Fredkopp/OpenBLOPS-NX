@@ -221,7 +221,7 @@ void Refresh()
     switch (info.phase)
     {
     // Button prompts: glyph 2 draws as the Switch's A (confirm) and glyph 1 as
-    // its B (back), as nx_switchglyphs labels them.
+    // its B (back).
     case NxUpdatePhase::Downloading:
         std::snprintf(s_title, sizeof(s_title), "DOWNLOADING UPDATE");
         if (info.total)

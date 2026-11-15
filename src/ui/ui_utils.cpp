@@ -123,6 +123,16 @@ bool UI_IsHiddenBotSettingsHighlight(int contextIndex, const itemDef_s *item);  
 #endif
 int __cdecl Item_IsVisible(int localClientNum, int contextIndex, itemDef_s *item)
 {
+#ifdef KISAK_NX
+    if (item->parent && item->parent->window.name && !I_stricmp(item->parent->window.name, "options_gamepad"))
+    {
+        const rectDef_s &rect = item->window.rectClient;
+        if (rect.vertAlign == 1
+            || (item->dvar && !I_stricmp(item->dvar, "gpad_enabled"))
+            || (item->window.name && !I_stricmp(item->window.name, "gamepad_warning")))
+            return 0;
+    }
+#endif
     if ( !Window_IsVisible(contextIndex, &item->window) )
         return 0;
     if ( (item->dvarFlags & 0xC) != 0 && !Item_EnableShowViaDvar(item, 4) )

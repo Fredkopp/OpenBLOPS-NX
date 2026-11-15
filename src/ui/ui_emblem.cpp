@@ -11,6 +11,9 @@
 #include <live/live_pcache_profile.h>
 #include <live/live_counter.h>
 #include <gfx_d3d/r_rendercmds.h>
+#ifdef KISAK_NX
+#include <win32/win_gamepad.h>
+#endif
 
 CompositeEmblemLayer s_emblem[12];
 CompositeEmblemLayer *s_selected;
@@ -281,6 +284,28 @@ void __cdecl UI_DrawEmblemColors(int contextIndex, const rectDef_s *rect)
 
 void __cdecl UI_EmblemUpdate(int localClientNum)
 {
+#ifdef KISAK_NX
+    uiInfo_s *ui = UI_GetInfo(localClientNum);
+    const menuDef_t *menu = Menu_GetFocused(&ui->uiDC);
+    const int port = Com_LocalClient_GetControllerIndex(localClientNum);
+    if (!menu || !menu->window.name || I_stricmp(menu->window.name, "emblem_edit")
+        || !s_selected || !GPad_IsActive(port) || ui->uiDC.FPS <= 0.0f)
+        return;
+    const float dt = fminf(0.1f, 1.0f / ui->uiDC.FPS);
+    const float moveX = GPad_GetStick(port, GPAD_RX);
+    const float moveY = GPad_GetStick(port, GPAD_RY);
+    const float scale = GPad_GetButton(port, GPAD_R_TRIG) - GPad_GetButton(port, GPAD_L_TRIG);
+    const float turn = GPad_GetButton(port, GPAD_R_SHLDR) - GPad_GetButton(port, GPAD_L_SHLDR);
+    if (moveX || moveY || scale || turn)
+    {
+        s_selected->pos[0] += moveX * 0.4f * dt;
+        s_selected->pos[1] -= moveY * 0.4f * dt;
+        s_selected->scale[0] += scale * 0.8f * dt;
+        s_selected->scale[1] += scale * 0.8f * dt;
+        s_selected->angle += turn * 72.0f * dt;
+        UI_EmblemClampLayer(s_selected);
+    }
+#else
     char *v1; // eax
     char *v2; // eax
     char *v3; // eax
@@ -532,6 +557,7 @@ void __cdecl UI_EmblemUpdate(int localClientNum)
         s_emblemIsTranslating = 0;
         s_emblemIsScaling = 0;
     }
+#endif
 }
 
 void __cdecl UI_EmblemClampLayer(CompositeEmblemLayer *layer)

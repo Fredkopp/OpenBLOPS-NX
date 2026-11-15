@@ -330,10 +330,10 @@ bool Directory_ZombiesPrepareMenus(UiContext *dc)
     Event(servers, 3, "doubleClick", "uiScript JoinServer ;");
     Control(set.browser, text, "directory_status", browserStatus, 32, 374, 576, 24, 1);
 #ifdef KISAK_NX
-    // Glyph 3 is the X button, which nx_switchglyphs draws as the Switch's Y:
+    // Glyph 3 draws as the Switch's Y:
     // buttons map by position, so the Switch's Y arrives as K_BUTTON_X, the
     // browser's refresh key (Directory_HandleControllerKey).
-    // Glyph 2 draws as the Switch's A (nx_switchglyphs swaps 1 and 2).
+    // Glyph 2 draws as the Switch's A.
     Control(set.browser, text, "directory_refresh", "\x03 REFRESH", 32, 434, 150, 28);
     Control(set.browser, text, "directory_join", "\x02 JOIN SERVER", 224, 434, 170, 28);
 #else

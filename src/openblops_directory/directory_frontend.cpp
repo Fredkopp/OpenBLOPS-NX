@@ -326,7 +326,7 @@ namespace
 {
 // Switch: the browser refreshes on Y (the Switch's Y arrives as K_BUTTON_X;
 // Directory_HandleControllerKey). Put the button glyph in front of the stock
-// refresh label. Glyph 3 is X, which nx_switchglyphs draws as the Switch's Y.
+// refresh label. Glyph 3 draws as the Switch's Y.
 const char *FirstStringConstant(const textDef_s *text)
 {
     if (!text->textExpData)
@@ -359,7 +359,7 @@ void PatchRefreshPrompt(menuDef_t *menu)
         if (HasAction(item, "RefreshServers") || HasAction(item, "RefreshFilter"))
             glyph = '\x03';
         else if (HasAction(item, "JoinServer"))
-            glyph = '\x02';   // draws as the Switch's A (nx_switchglyphs swaps 1 and 2)
+            glyph = '\x02';   // draws as the Switch's A
         if (!glyph)
             continue;
         if (const char *key = FirstStringConstant(text))

@@ -5647,6 +5647,9 @@ void __cdecl CG_DrawHoldBreathZoomHint(
     const WeaponVariantDef *weapVariantDef; // [esp+34h] [ebp-118h]
     int weaponIndex; // [esp+38h] [ebp-114h]
     char binding[256]; // [esp+3Ch] [ebp-110h] BYREF
+#ifdef KISAK_NX
+    char controllerHint[1024];
+#endif
     const playerState_s *ps; // [esp+140h] [ebp-Ch]
     const WeaponDef *weapDef; // [esp+144h] [ebp-8h]
     float x; // [esp+148h] [ebp-4h]
@@ -5667,9 +5670,17 @@ void __cdecl CG_DrawHoldBreathZoomHint(
                     if ( weapVariantDef->fAdsZoomFov1 != weapVariantDef->fAdsZoomFov2
                         || weapVariantDef->fAdsZoomFov2 != weapVariantDef->fAdsZoomFov3 )
                     {
+#ifdef KISAK_NX
+                        if (!UI_GetKeyBindingLocalizedString(localClientNum, "+melee", binding, 0))
+                            return;
+                        v6 = UI_SafeTranslateString("PLATFORM_ZOOMIN");
+                        string = UI_NX_ReplaceControlPrompt(v6, binding, controllerHint, sizeof(controllerHint))
+                            ? controllerHint : binding;
+#else
                         UI_GetKeyBindingLocalizedString(localClientNum, "+melee", binding, 0);
                         v6 = UI_SafeTranslateString("PLATFORM_HOLD_BREATH_ZOOM");
                         string = UI_ReplaceConversionString(v6, binding);
+#endif
                         x = rect->x
                             - (float)(int)((float)((float)UI_TextWidth(string, 0, font, fontscale) * 0.5) + 9.313225746154785e-10);
                         UI_DrawText(
@@ -5705,6 +5716,9 @@ void __cdecl CG_DrawRCBombHints(
     centity_s *vehicle; // [esp+48h] [ebp-120h]
     bool useBinding; // [esp+4Fh] [ebp-119h]
     char binding[256]; // [esp+50h] [ebp-118h] BYREF
+#ifdef KISAK_NX
+    char controllerHint[1024];
+#endif
     const playerState_s *ps; // [esp+154h] [ebp-14h]
     float color[4]; // [esp+158h] [ebp-10h] BYREF
 
@@ -5747,10 +5761,23 @@ void __cdecl CG_DrawRCBombHints(
                             goto LABEL_17;
                         case 373:
                             string = UI_SafeTranslateString("PLATFORM_RC_BOMB_STEERING");
+#ifdef KISAK_NX
+                            UI_GetSticksTranslatedString(localClientNum, "+lookstick", binding);
+                            string = UI_NX_ReplaceControlPrompt(string, binding, controllerHint, sizeof(controllerHint))
+                                ? controllerHint : binding;
+#endif
                             useBinding = 0;
                             goto LABEL_17;
                         case 374:
                             string = UI_SafeTranslateString("PLATFORM_RC_BOMB_ACCELERATE");
+#ifdef KISAK_NX
+                            UI_GetSticksTranslatedString(localClientNum, "+movestick", binding);
+                            if (UI_NX_ReplaceControlPrompt(string, binding, controllerHint, sizeof(controllerHint),
+                                "^3[{+forward}]^7/^3[{+back}]^7"))
+                                string = controllerHint;
+                            else if (SEH_ReplaceDirectiveInStringWithBinding(localClientNum, string, controllerHint))
+                                string = controllerHint;
+#endif
                             useBinding = 0;
                             goto LABEL_17;
                         case 375:

@@ -455,6 +455,10 @@ void __cdecl SEH_GetBindingForDirective(int localClientNum, char *directive, cha
     else
     {
         SEH_ParseDirective(directive, name, arg0);
+#ifdef KISAK_NX
+        if (UI_GetSticksTranslatedString(localClientNum, name, result))
+            return;
+#endif
         if ( !I_stricmp(name, "gocrouch")
             && (UI_GetKeyBindingLocalizedString(localClientNum, "togglecrouch", result, 0)
              || UI_GetKeyBindingLocalizedString(localClientNum, "+movedown", result, 0)) )

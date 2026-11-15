@@ -28,6 +28,15 @@
 #include <qcommon/threads.h>
 #include <universal/com_memory.h>
 #include <qcommon/com_bsp.h>
+#ifdef KISAK_NX
+#include <qcommon/com_clients.h>
+#include <win32/win_gamepad.h>
+#include "ui_main.h"
+#include "ui_shared.h"
+#ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
+#include <client/splitscreen.h>
+#endif
+#endif
 
 const char *modeNames[22] =
 {
@@ -403,15 +412,40 @@ void __thiscall UIViewer::UpdateCamera(refdef_s *refdef, float deltaTime)
     int localClientNum; // [esp+B8h] [ebp-8h]
     float YAW_SPEED; // [esp+BCh] [ebp-4h]
 
+#ifdef KISAK_NX
+    const bool classRotationMenu = UI_NX_IsClassRotationMenu(Menu_GetFocused(&UI_GetInfo(0)->uiDC));
+#endif
     if ( this->cameraControl->current.enabled )
     {
         Dvar_SetString((dvar_s *)this->viewerMsg, "uiViewer control only supported on XBOX");
     }
-    else if ( this->mode == MODE_PLAYER_FIRST || this->mode == MODE_WEAPON_FIRST || this->mode == MODE_EDIT_PLAYER_BODY )
+    else if (this->mode == MODE_PLAYER_FIRST || this->mode == MODE_WEAPON_FIRST || this->mode == MODE_EDIT_PLAYER_BODY
+#ifdef KISAK_NX
+        || (classRotationMenu && this->mode == MODE_CHOOSE_CLASS_PLAYER)
+#endif
+    )
     {
         YAW_SPEED = 180.0f;
         cgameGlob = CG_GetLocalClientGlobals(0);
         localClientNum = cgameGlob->localClientNum;
+#ifdef KISAK_NX
+        if (classRotationMenu)
+        {
+            int port = Com_LocalClient_GetControllerIndex(localClientNum);
+#ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
+            if (CL_SplitGuestOwnsMenu())
+                port = Dvar_GetInt("splitguest_controller");
+#endif
+            if (port >= 0 && port < GPAD_PORT_COUNT && GPad_IsActive(port))
+            {
+                const float direction = static_cast<float>(GPad_GetButton(port, GPAD_L_SHLDR)
+                    - GPad_GetButton(port, GPAD_R_SHLDR));
+                if (direction != 0.0f)
+                    this->camera.yaw = AngleNormalize180(this->camera.yaw + direction * YAW_SPEED * deltaTime);
+            }
+        }
+        else
+#endif
         if ( Key_IsDown(localClientNum, 156) || Key_IsDown(localClientNum, 200) && s_viewerRotateLeftRepeatEnabled )
         {
             s_viewerRotateRightRepeatEnabled = 0;

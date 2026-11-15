@@ -1224,10 +1224,14 @@ void __cdecl Com_EventLoop()
             Com_ClientPacketEvent();
             return;
         case SE_KEY:
+#ifndef KISAK_NX
             CL_KeyEvent(0, ev.evValue, ev.evValue2, ev.evTime);
+#endif
             break;
         case SE_CHAR:
+#ifndef KISAK_NX
             CL_CharEvent(0, ev.evValue);
+#endif
             break;
         case SE_CONSOLE:
             Con_Restricted_AddBuf((char *)ev.evPtr);

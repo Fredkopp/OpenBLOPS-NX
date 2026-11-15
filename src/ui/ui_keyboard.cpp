@@ -6,6 +6,10 @@
 #include <qcommon/com_clients.h>
 #include <qcommon/profanityfilter.h>
 #include <stringed/stringed_hooks.h>
+#ifdef KISAK_NX
+#include <algorithm>
+#include <switch.h>
+#endif
 
 keyBoardUtitlity uiKeyboard;
 
@@ -46,21 +50,58 @@ void __cdecl UI_ClearKeyboardActive()
     uiKeyboard.keyboardType = 0;
 }
 
+#ifdef KISAK_NX
+static void UI_NX_OpenVirtualKeyboard(int keyboardType, const char *title, const char *initialText, int size)
+{
+    if (uiKeyboard.keyboardActive || size < 2)
+        return;
+    SwkbdConfig keyboard{};
+    if (R_FAILED(swkbdCreate(&keyboard, 0)))
+        return;
+    swkbdConfigMakePresetDefault(&keyboard);
+    if (title && *title && std::all_of(title, title + strlen(title), [](unsigned char ch) {
+            return ch >= 32 && ch < 127;
+        }))
+        swkbdConfigSetHeaderText(&keyboard, title);
+    swkbdConfigSetInitialText(&keyboard, initialText);
+    const int limit = std::min(size - 1, 255);
+    swkbdConfigSetStringLenMax(&keyboard, limit);
+    char value[1024]{};
+    const Result result = swkbdShow(&keyboard, value, sizeof(value));
+    swkbdClose(&keyboard);
+    if (R_FAILED(result) || strlen(value) > static_cast<size_t>(limit))
+        return;
+
+    UI_SetActiveKeyboardType(keyboardType);
+    Dvar_SetStringByName("ui_keyboard_dvar_new", value);
+    UI_KeyboardComplete(0);
+}
+#endif
+
 void __cdecl UI_Keyboard_New_f()
 {
     const char *v0; // eax
     int keyboardType; // [esp+4Ch] [ebp-10h]
+#ifndef KISAK_NX
     char *defaultString; // [esp+54h] [ebp-8h]
     char *title; // [esp+58h] [ebp-4h]
 
     title = 0;
     defaultString = 0;
+#endif
     if ( Cmd_Argc() == 2 || Cmd_Argc() == 5 )
     {
         v0 = Cmd_Argv(1);
         keyboardType = atoi(v0);
         if ( keyboardType > 0 && keyboardType < 3 )
         {
+#ifdef KISAK_NX
+            if (keyboardType == 1)
+                UI_NX_OpenVirtualKeyboard(keyboardType, Demo_GetKeyboardTitle(), Demo_GetKeyboardDefaultText(),
+                    Demo_GetKeyboardTextSize());
+            else if (Cmd_Argc() == 5)
+                UI_NX_OpenVirtualKeyboard(keyboardType, Cmd_Argv(2), Cmd_Argv(3), atoi(Cmd_Argv(4)));
+#else
             if ( keyboardType == 1 )
             {
                 title = (char *)Demo_GetKeyboardTitle();
@@ -72,6 +113,7 @@ void __cdecl UI_Keyboard_New_f()
             Dvar_SetStringByName("ui_keyboardtitle", title);
             Dvar_SetStringByName("ui_keyboard_dvar_edit", defaultString);
             UI_OpenMenu(0, "popmenu_ui_keyboard_text");
+#endif
         }
         else
         {

@@ -99,6 +99,9 @@ bool __cdecl IN_IsTalkKeyHeld()
 
 int __cdecl CL_MouseEvent(int x, int y, int dx, int dy)
 {
+#ifdef KISAK_NX
+    return 0;
+#else
     clientActive_t *LocalClientGlobals; // [esp+0h] [ebp-8h]
     clientUIActive_t *clUI; // [esp+4h] [ebp-4h]
 
@@ -142,6 +145,7 @@ int __cdecl CL_MouseEvent(int x, int y, int dx, int dy)
             return 0;
         }
     }
+#endif
 }
 
 void __cdecl CL_SetCursorPos(unsigned int x, unsigned int y)
@@ -528,9 +532,18 @@ usercmd_s *__cdecl CL_CreateCmd(usercmd_s *result, int localClientNum)
     {
         CL_CmdButtons(localClientNum, &cmd);
         CL_KeyMove(localClientNum, &cmd);
+#ifndef KISAK_NX
         CL_MouseMove(localClientNum, &cmd);
+#endif
         ControllerIndex = Com_LocalClient_GetControllerIndex(localClientNum);
         if ( GPad_IsActive(ControllerIndex)
+#ifdef KISAK_NX
+            && (!Key_IsCatcherActive(localClientNum, 16) || UI_GetActiveMenu(localClientNum) == UIMENU_SCOREBOARD
+#ifdef KISAK_SP
+                || (Com_IsMenuLevel(localClientNum) && UI_MenuIsUI3D(localClientNum))
+#endif
+                )
+#endif
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
             && !CL_SplitGuestOwnsController(ControllerIndex)
 #endif
@@ -884,6 +897,18 @@ void __cdecl CL_GamepadMove(int localClientNum, usercmd_s *cmd)
                 if ( attack >= cl_analog_attack_threshold->current.value )
                     cmd->button_bits.setBit(0);
                 CG_HandleSpecialStateInput(localClientNum, &cmd->button_bits);
+#if defined(KISAK_NX) && defined(KISAK_SP)
+                if (Com_IsMenuLevel(localClientNum) && UI_MenuIsUI3D(localClientNum))
+                {
+                    const int port = Com_LocalClient_GetControllerIndex(localClientNum);
+                    const float dt = fminf(0.1f, cls.frametime * 0.001f);
+                    const float x = GPad_GetStick(port, GPAD_RX);
+                    const float y = GPad_GetStick(port, GPAD_RY);
+                    LocalClientGlobals->viewangles[1] -= (x * fabsf(x)) * 55.0f * dt;
+                    LocalClientGlobals->viewangles[0] -= (y * fabsf(y)) * 40.0f * dt;
+                }
+                else
+#endif
                 if ( (Demo_IsPlaying() || (LocalClientGlobals->snap.ps.eFlags2 & 0x40000) == 0)
                     && CG_ShouldUpdateViewAngles(localClientNum) )
                 {
