@@ -5149,6 +5149,40 @@ static bool UI_NX_FocusSettingsCategory(int localClientNum, UiContext *dc, menuD
     return first && Item_SetFocus(localClientNum, dc, first, first->window.rect.x, first->window.rect.y);
 }
 
+static void UI_NX_CopyPreviewDvar(const char *destination, const char *source)
+{
+    const dvar_s *current = Dvar_FindVar(source);
+    if (!current)
+        return;
+    const dvar_s *preview = Dvar_FindVar(destination);
+    const char *value = Dvar_DisplayableValue(current);
+    if (!preview || strcmp(Dvar_DisplayableValue(preview), value))
+        Dvar_SetCommand(destination, const_cast<char *>(value));
+}
+
+static void UI_NX_SyncSettingsPreview(const char *category)
+{
+    if (!I_stricmp(category, "options_graphics") || !I_stricmp(category, "options_graphics_texture"))
+    {
+        static constexpr const char *settings[] = {
+            "r_mode", "r_fullscreen", "r_aasamples", "r_aspectRatio", "r_displayRefresh", "r_vsync",
+            "r_picmip", "r_picmip_bump", "r_picmip_spec", "r_picmip_manual",
+        };
+        for (const char *source : settings)
+        {
+            char destination[32];
+            Com_sprintf(destination, sizeof(destination), "ui_%s", source);
+            UI_NX_CopyPreviewDvar(destination, source);
+        }
+    }
+    else if (!I_stricmp(category, "options_sound"))
+        UI_NX_CopyPreviewDvar("ui_sd_xa2_device_name", "sd_xa2_device_name");
+    else if (!I_stricmp(category, "options_multi"))
+        UI_NX_CopyPreviewDvar("ui_name", "name");
+    else if (!I_stricmp(category, "options_game"))
+        UI_NX_CopyPreviewDvar("ui_language", "loc_language");
+}
+
 static menuDef_t *UI_NX_SettingsPreview(UiContext *dc, menuDef_t *menu, int &nativeItemCount)
 {
     const bool isRoot = UI_NX_IsSettingsRoot(menu);
@@ -5168,10 +5202,12 @@ static menuDef_t *UI_NX_SettingsPreview(UiContext *dc, menuDef_t *menu, int &nat
     menuDef_t *preview = category ? Menus_FindByName(dc, category) : nullptr;
     if (preview == menu)
         return nullptr;
-    if (preview)
-        UI_NX_PrepareSettingsMenu(dc, preview);
+    if (!preview)
+        return nullptr;
+    UI_NX_PrepareSettingsMenu(dc, preview);
+    UI_NX_SyncSettingsPreview(preview->window.name);
     nativeItemCount = std::min(menu->itemCount, root->itemCount);
-    return preview && preview->itemCount > nativeItemCount ? preview : nullptr;
+    return preview->itemCount > nativeItemCount ? preview : nullptr;
 }
 
 static void UI_NX_MoveHorizontalFocus(int localClientNum, UiContext *dc, menuDef_t *menu,
@@ -10111,38 +10147,6 @@ static bool UI_NX_ReplacePromptButton(const char *label, char button, char *buff
     return UI_NX_ReplaceControlPrompt(label, input, buffer, size, expected);
 }
 
-static const char *UI_NX_TranslateSettingLabel(const char *label)
-{
-    if (!I_stricmp(label, "AIM ASSIST"))
-        return UI_SafeTranslateString("MENU_AIM_ASSIST_CAPS");
-
-    const bool acceleration = !I_stricmp(label, "AIM ACCELERATION");
-    if (!acceleration && I_stricmp(label, "PERFORMANCE OVERLAY"))
-        return label;
-
-    static constexpr struct { const char *language; const char *acceleration; const char *performance; } translations[] = {
-        { "english", "AIM ACCELERATION", "PERFORMANCE OVERLAY" },
-        { "french", "ACC\xC9L\xC9RATION DE VIS\xC9" "E", "AFFICHAGE DES PERFORMANCES" },
-        { "frenchcan", "ACC\xC9L\xC9RATION DE VIS\xC9" "E", "AFFICHAGE DES PERFORMANCES" },
-        { "german", "ZIELBESCHLEUNIGUNG", "LEISTUNGSANZEIGE" },
-        { "austrian", "ZIELBESCHLEUNIGUNG", "LEISTUNGSANZEIGE" },
-        { "italian", "ACCELERAZIONE MIRA", "INDICATORE PRESTAZIONI" },
-        { "spanish", "ACELERACI\xD3N DE APUNTADO", "INDICADOR DE RENDIMIENTO" },
-        { "british", "AIM ACCELERATION", "PERFORMANCE OVERLAY" },
-        { "russian", "\xD3\xD1\xCA\xCE\xD0\xC5\xCD\xC8\xC5 \xCF\xD0\xC8\xD6\xC5\xCB\xC8\xC2\xC0\xCD\xC8\xDF", "\xCF\xCE\xCA\xC0\xC7\xC0\xD2\xC5\xCB\xC8 \xCF\xD0\xCE\xC8\xC7\xC2\xCE\xC4\xC8\xD2\xC5\xCB\xDC\xCD\xCE\xD1\xD2\xC8" },
-        { "polish", "PRZYSPIESZENIE CELOWANIA", "WSKA\x8FNIK WYDAJNO\x8C" "CI" },
-        { "korean", "\xC1\xB6\xC1\xD8 \xB0\xA1\xBC\xD3", "\xBC\xBA\xB4\xC9 \xC7\xA5\xBD\xC3" },
-        { "japanese", "\x8F\xC6\x8F\x80\x89\xC1\x91\xAC", "\x83\x70\x83\x74\x83\x48\x81\x5B\x83\x7D\x83\x93\x83\x58\x95\x5C\x8E\xA6" },
-        { "czech", "ZRYCHLEN\xCD M\xCD\xD8" "EN\xCD", "UKAZATEL V\xDDKONU" },
-        { "fulljap", "\x8F\xC6\x8F\x80\x89\xC1\x91\xAC", "\x83\x70\x83\x74\x83\x48\x81\x5B\x83\x7D\x83\x93\x83\x58\x95\x5C\x8E\xA6" },
-    };
-    const char *language = SEH_GetLanguageName(SEH_GetCurrentLanguage());
-    for (const auto &translation : translations)
-        if (!I_stricmp(language, translation.language))
-            return acceleration ? translation.acceleration : translation.performance;
-    return label;
-}
-
 static bool UI_NX_FormatControlPrompt(const char *reference, char *buffer, int size)
 {
     static constexpr struct { const char *reference; const char *label; char button; } buttonPrompts[] = {
@@ -10164,13 +10168,15 @@ static bool UI_NX_FormatControlPrompt(const char *reference, char *buffer, int s
             return true;
         if (prompt.button != K_BUTTON_B)
             return false;
-        Com_sprintf(buffer, size, "%c Skip", prompt.button);
+        Com_sprintf(buffer, size, "%c %s", prompt.button, UI_SafeTranslateString("OPENBLOPS_SKIP"));
         return true;
     }
 
     static constexpr struct { const char *reference; const char *label; char button; } prompts[] = {
         {"PLATFORM_CONTINUE", "MENU_CONTINUE", K_BUTTON_B},
         {"PLATFORM_PARTY_INVITE", "PLATFORM_PARTY_INVITE", K_BUTTON_Y},
+        {"OPENBLOPS_ZOMBIE_REFRESH", "MENU_REFRESH", K_BUTTON_X},
+        {"OPENBLOPS_ZOMBIE_JOIN", "MENU_JOIN_SERVER_CAPS", K_BUTTON_B},
         {"PLATFORM_UI_SELECTBUTTON", nullptr, K_BUTTON_B},
         {"PLATFORM_PRESS_ESCAPE_TO_EXIT", "MENU_QUIT", K_BUTTON_A},
         {"PLATFORM_PRESS_START_BUTTON", "PLATFORM_PRESS_START_BUTTON", K_BUTTON_B},
@@ -10313,15 +10319,6 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
             }
         }
     }
-    else if (UI_NX_IsSettingsMenu(item->parent))
-    {
-        const char *localized = UI_NX_TranslateSettingLabel(textPtr);
-        if (localized != textPtr)
-        {
-            I_strncpyz(text, localized, sizeof(text));
-            textPtr = text;
-        }
-    }
 #else
         textPtr = UI_SafeTranslateString(textPtr + 1);
 #endif
@@ -10334,7 +10331,8 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
         const float originalScale = textDefPtr->textscale;
         const int classFooterSlot = UI_NX_ClassFooterSlot(item);
         const bool fitSettingsLabel = (item->type == 1 || item->type == 3) && UI_NX_IsSettingsMenu(item->parent);
-        if ((fitSettingsLabel || classFooterSlot >= 0)
+        const bool fitPortLabel = textDefPtr->text && !strncmp(textDefPtr->text, "@OPENBLOPS_", 11);
+        if ((fitSettingsLabel || fitPortLabel || classFooterSlot >= 0)
             && !(item->window.staticFlags & 0x800000) && item->window.rect.w >= 32.0f)
         {
             Font_s *labelFont = Item_GetFont(dc->contextIndex, item);
@@ -13121,11 +13119,11 @@ static void UI_NX_AddAimAssistOption(menuDef_t *menu)
 
     itemDef_s *added[16] = {};
     int addedCount = UI_NX_CloneInvertRow(menu, invert, label, dy, "options_gamepad_nx_aimassist",
-        "options_gamepad_nx_aimassist_hl", "options_gamepad_nx_aimassist_row", "nx_aimassist", "AIM ASSIST",
+        "options_gamepad_nx_aimassist_hl", "options_gamepad_nx_aimassist_row", "nx_aimassist", "@MENU_AIM_ASSIST_CAPS",
         added, (int)ARRAY_COUNT(added));
     addedCount += UI_NX_CloneInvertRow(menu, invert, label, dy + rowStep, "options_gamepad_nx_aimaccel",
         "options_gamepad_nx_aimaccel_hl", "options_gamepad_nx_aimaccel_row", "nx_aimacceleration",
-        "AIM ACCELERATION", added + addedCount, (int)ARRAY_COUNT(added) - addedCount);
+        "@OPENBLOPS_AIM_ACCELERATION", added + addedCount, (int)ARRAY_COUNT(added) - addedCount);
     if ( !addedCount )
         return;
 
@@ -13221,7 +13219,7 @@ static void UI_AddPerformanceOverlayOption(menuDef_t *menu)
     const float rowY = last->window.rect.y + 19.0f;
     if ( !UI_AddGraphicsChoiceRow(menu, last, rowY, "options_graphics_performance",
             "options_graphics_performance_hl", "options_graphics_performance_row",
-            "PERFORMANCE OVERLAY", "cg_performanceOverlay", &values) )
+            "@OPENBLOPS_PERFORMANCE_OVERLAY", "cg_performanceOverlay", &values) )
         return;
     for ( int i = 0; i < menu->itemCount; ++i )
     {
@@ -13235,38 +13233,6 @@ static void UI_AddPerformanceOverlayOption(menuDef_t *menu)
 }
 
 #ifdef KISAK_NX
-struct FrameRateOptionText
-{
-    const char *language;
-    const char *label;
-    const char *unlimited;
-};
-
-static const FrameRateOptionText &UI_NX_GetFrameRateOptionText()
-{
-    static constexpr FrameRateOptionText translations[] = {
-        { "english",   "FPS LIMIT", "UNLIMITED" },
-        { "french",    "LIMITE FPS", "SANS LIMITE" },
-        { "frenchcan", "LIMITE FPS", "SANS LIMITE" },
-        { "german",    "FPS-LIMIT", "UNBEGRENZT" },
-        { "austrian",  "FPS-LIMIT", "UNBEGRENZT" },
-        { "italian",   "LIMITE FPS", "ILLIMITATO" },
-        { "spanish",   "L\xCDMITE DE FPS", "SIN L\xCDMITE" },
-        { "british",   "FPS LIMIT", "UNLIMITED" },
-        { "russian",   "\xCB\xC8\xCC\xC8\xD2 FPS", "\xC1\xC5\xC7 \xCB\xC8\xCC\xC8\xD2\xC0" },
-        { "polish",    "LIMIT FPS", "BEZ LIMITU" },
-        { "korean",    "FPS \xC1\xA6\xC7\xD1", "\xC1\xA6\xC7\xD1 \xBE\xF8\xC0\xBD" },
-        { "japanese",  "FPS \x8F\xE3\x8C\xC0", "\x96\xB3\x90\xA7\x8C\xC0" },
-        { "czech",     "LIMIT FPS", "BEZ OMEZEN\xCD" },
-        { "fulljap",   "FPS \x8F\xE3\x8C\xC0", "\x96\xB3\x90\xA7\x8C\xC0" },
-    };
-    const char *language = SEH_GetLanguageName(SEH_GetCurrentLanguage());
-    for ( const auto &translation : translations )
-        if ( !I_stricmp(language, translation.language) )
-            return translation;
-    return translations[0];
-}
-
 static void UI_NX_AddFrameRateOption(menuDef_t *menu)
 {
     if ( !menu || !menu->window.name || I_stricmp(menu->window.name, "options_graphics")
@@ -13285,18 +13251,16 @@ static void UI_NX_AddFrameRateOption(menuDef_t *menu)
         return;
 
     static multiDef_s values = {
-        { "30 FPS", "40 FPS", "45 FPS", "50 FPS", "60 FPS", "75 FPS", "85 FPS", "90 FPS", "120 FPS", "UNLIMITED" },
+        { "30 FPS", "40 FPS", "45 FPS", "50 FPS", "60 FPS", "75 FPS", "85 FPS", "90 FPS", "120 FPS", "@MENU_UNLIMITED" },
         {}, { 30, 40, 45, 50, 60, 75, 85, 90, 120, 0 }, 10, 0, 0
     };
-    const auto &translation = UI_NX_GetFrameRateOptionText();
-    values.dvarList[values.count - 1] = translation.unlimited;
     const float rowY = vsync->window.rect.y + 19.0f;
     const float firstY = filter->window.rect.y - 1.0f;
     const float lastY = textures->window.rect.y;
     const float shift = rowY + 19.0f - filter->window.rect.y;
     if ( !UI_AddGraphicsChoiceRow(menu, vsync, rowY, "options_graphics_frame_limit",
             "options_graphics_frame_limit_hl", "options_graphics_frame_limit_row",
-            translation.label, "nx_fpsLimit", &values) )
+            "@OPENBLOPS_FPS_LIMIT", "nx_fpsLimit", &values) )
         return;
 
     if ( shift > 0.0f )

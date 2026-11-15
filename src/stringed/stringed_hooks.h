@@ -149,6 +149,8 @@ int __cdecl SEH_StringEd_SetLanguageStrings(unsigned int iLanguage);
 const char *__cdecl SE_GetString(char *psPackageAndStringReference);
 const char *__cdecl SE_GetString_FastFile(char *psPackageAndStringReference);
 const char *__cdecl SEH_StringEd_GetString(char *pszReference);
+const char *SEH_GetPortString(const char *reference, bool utf8 = false);
+const char *SEH_LocalizePortText(const char *english);
 char *__cdecl SEH_SafeTranslateString(const char *pszReference);
 void __cdecl SEH_LocalizeTextMessageWithBindings(
     int localClientNum, const char *input, const char *messageType, char *output, unsigned int size);

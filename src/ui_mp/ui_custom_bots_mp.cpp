@@ -3,6 +3,7 @@
 #include <ui/ui_shared.h>
 #include <ui/ui_utils.h>
 #include <ui/ui_feeders.h>
+#include <ui/ui_main.h>
 #include <qcommon/common.h>
 #include <cmath>
 #include <list>
@@ -19,9 +20,10 @@ namespace
     multiDef_s botDifficulty;
     multiDef_s friendlyCount;
     multiDef_s enemyCount;
-    char friendlyLabels[18][32];
-    char enemyLabels[18][32];
-    char botCountLabels[18][24];
+    char friendlyLabels[18][80];
+    char enemyLabels[18][80];
+    char botCountLabels[18][80];
+    char difficultyLabels[4][96];
     GenericEventScript closeScript;
     GenericEventHandler closeEvent;
     GenericEventScript openScript;
@@ -105,7 +107,7 @@ namespace
         botMenu.imageTrack = button->imageTrack;
 
         const char *names[] = {"bots_title", "bots_count", "bots_difficulty", "bots_hint", "bots_done", "bots_enemies", "bots_accent", "bots_divider"};
-        const char *labels[] = {"BOT SETTINGS", "", "", "Bots join after you choose a team. Max 17 bots.", "DONE", "", "", ""};
+        const char *labels[] = {"@OPENBLOPS_BOT_SETTINGS", "", "", "@OPENBLOPS_BOTS_TEAM_HINT", "@PLATFORM_DONE", "", "", ""};
         const float positions[] = {16.0f, 68.0f, 148.0f, 190.0f, 238.0f, 108.0f, 52.0f, 226.0f};
         for (int i = 0; i < ARRAY_COUNT(botItems); ++i)
         {
@@ -123,6 +125,8 @@ namespace
             item.hideBits = ~0ULL;
             if (i == 0 || i == 3 || i >= 6)
                 item.window.staticFlags |= 0x100000;
+            if (i == 3)
+                item.window.staticFlags |= 0x800000;
             item.typeData.textDef = &botText[i];
             botText[i] = *button->typeData.textDef;
             botText[i].text = labels[i];
@@ -176,11 +180,8 @@ namespace
         botCount.count = 18;
         for (int i = 0; i < 18; ++i)
         {
-            Com_sprintf(botCountLabels[i], sizeof(botCountLabels[i]), i ? "< BOTS: %d >" : "< BOTS: OFF >", i);
             botCount.dvarList[i] = botCountLabels[i];
             botCount.dvarValue[i] = (float)i;
-            Com_sprintf(friendlyLabels[i], sizeof(friendlyLabels[i]), "< FRIENDLY BOTS: %d >", i);
-            Com_sprintf(enemyLabels[i], sizeof(enemyLabels[i]), "< ENEMY BOTS: %d >", i);
             friendlyCount.dvarList[i] = friendlyLabels[i];
             enemyCount.dvarList[i] = enemyLabels[i];
             friendlyCount.dvarValue[i] = enemyCount.dvarValue[i] = (float)i;
@@ -190,11 +191,10 @@ namespace
         botDifficulty.count = 4;
         botDifficulty.strDef = 1;
         const char *values[] = {"easy", "normal", "hard", "fu"};
-        const char *labelsByDifficulty[] = {"< DIFFICULTY: RECRUIT >", "< DIFFICULTY: REGULAR >", "< DIFFICULTY: HARDENED >", "< DIFFICULTY: VETERAN >"};
         for (int i = 0; i < 4; ++i)
         {
             botDifficulty.dvarStr[i] = values[i];
-            botDifficulty.dvarList[i] = labelsByDifficulty[i];
+            botDifficulty.dvarList[i] = difficultyLabels[i];
         }
         closeScript.action = "play uin_navigation_menu_lg_close ; close self ;";
         closeEvent.name = "action";
@@ -235,7 +235,23 @@ void UI_PrepareCustomBotMenu()
     botItems[3].window.rectClient.y = 190.0f - offset;
     botItems[4].window.rectClient.y = 238.0f - offset;
     botItems[7].window.rectClient.y = 226.0f - offset;
-    botText[3].text = teams ? "Bots join after you choose a team. Max 17 bots." : "Bots join after you enter the match.";
+    botText[3].text = teams ? "@OPENBLOPS_BOTS_TEAM_HINT" : "@OPENBLOPS_BOTS_SOLO_HINT";
+    I_strncpyz(botCountLabels[0], UI_SafeTranslateString("OPENBLOPS_BOTS_OFF"), sizeof(botCountLabels[0]));
+    const char *countFormat = UI_SafeTranslateString("OPENBLOPS_BOTS_COUNT");
+    const char *friendlyFormat = UI_SafeTranslateString("OPENBLOPS_BOTS_FRIENDLY");
+    const char *enemyFormat = UI_SafeTranslateString("OPENBLOPS_BOTS_ENEMY");
+    for (int i = 0; i < ARRAY_COUNT(botCountLabels); ++i)
+    {
+        if (i)
+            Com_sprintf(botCountLabels[i], sizeof(botCountLabels[i]), countFormat, i);
+        Com_sprintf(friendlyLabels[i], sizeof(friendlyLabels[i]), friendlyFormat, i);
+        Com_sprintf(enemyLabels[i], sizeof(enemyLabels[i]), enemyFormat, i);
+    }
+    const char *difficulty = UI_SafeTranslateString("MENU_BASICTRAINING_DIFFICULTY_CAPS");
+    const char *difficultyKeys[] = {"MENU_RECRUIT_CAPS", "MENU_REGULAR_CAPS", "MENU_HARDENED_CAPS", "MENU_VETERAN_CAPS"};
+    for (int i = 0; i < ARRAY_COUNT(difficultyLabels); ++i)
+        Com_sprintf(difficultyLabels[i], sizeof(difficultyLabels[i]), "%s: %s", difficulty,
+            UI_SafeTranslateString(difficultyKeys[i]));
     for (int i = 0; i < ARRAY_COUNT(botItems); ++i)
     {
         botItems[i].window.rect = botItems[i].window.rectClient;
@@ -297,7 +313,7 @@ void UI_AddCustomBotSettings(int localClientNum, UiContext *dc, menuDef_t *menu)
                 entry.item.animInfo = nullptr;
                 const float dy = entry.item.window.rect.y - source->window.rect.y;
                 entry.text = *source->typeData.textDef;
-                entry.text.text = "BOT SETTINGS";
+                entry.text.text = "@OPENBLOPS_BOT_SETTINGS";
                 entry.text.textExpData = nullptr;
                 entry.text.textTypeData.focusItemDef = &entry.focus;
                 entry.item.typeData.textDef = &entry.text;
@@ -355,7 +371,7 @@ void UI_AddCustomBotSettings(int localClientNum, UiContext *dc, menuDef_t *menu)
                         entry.copyTexts.push_back(*other->typeData.textDef);
                         textDef_s &text = entry.copyTexts.back();
                         text.textRect[0].y += dy;
-                        text.text = "BOT SETTINGS";
+                        text.text = "@OPENBLOPS_BOT_SETTINGS";
                         text.textExpData = nullptr;
                         copy.typeData.textDef = &text;
                     }

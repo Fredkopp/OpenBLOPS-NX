@@ -230,7 +230,8 @@ void OpenHost(UiContext *dc)
     ResetLocalSplit();
     configuringHost = true; hostNotice[0] = 0;
     if (ValidMap(Dvar_GetString("ui_mapname"))) selectedMap = Dvar_GetString("ui_mapname");
-    std::snprintf(mapCaption, sizeof(mapCaption), "MAP: %s", UI_GetMapDisplayName(selectedMap.c_str()));
+    std::snprintf(mapCaption, sizeof(mapCaption), "%s: %s", UI_SafeTranslateString("MENU_MAP"),
+        UI_GetMapDisplayName(selectedMap.c_str()));
     Menus_OpenByName(0, dc, hostName);
 }
 void Back(UiContext *dc, const char *name)
@@ -267,13 +268,13 @@ void PatchEntry(menuDef_t *menu)
             std::memcpy(part.item.window.foreColor, style->window.foreColor, sizeof(part.item.window.foreColor));
             if (button)
                 part.item.window.name = browser ? "directory_zombie_browser" : "directory_zombie_host";
-            part.text.text = browser ? "SERVER BROWSER" : "HOST MATCH";
+            part.text.text = browser ? "@OPENBLOPS_SERVER_BROWSER" : "@OPENBLOPS_HOST_MATCH";
             part.text.textExpData = nullptr;
             copy.items.push_back(&part.item);
             continue;
         }
         auto &part = Copy(copy.owned, source, menu);
-        part.text.text = "ONLINE";
+        part.text.text = "@MENU_ONLINE";
         part.text.textExpData = nullptr;
         copy.items.push_back(&part.item);
     }
@@ -301,16 +302,16 @@ bool Directory_ZombiesPrepareMenus(UiContext *dc)
     _Dvar_RegisterInt("bo1_zombie_maxplayers", 4, 1, 4, 1, "Maximum Zombies co-op players");
     sets.emplace_back(); auto &set = sets.back();
 
-    Panel(set.browser, source, browserName, "ZOMBIES SERVER BROWSER");
+    Panel(set.browser, source, browserName, "@OPENBLOPS_ZOMBIES_BROWSER");
     Control(set.browser, text, "directory_counts", browserCounts, 32, 65, 576, 24, 1);
     // Native feeder 2 supplies sorting, selection and the validated directory
     // rows, exactly as in MP. SP uses text for password/type columns.
-    Control(set.browser, text, "header_password", "PASSWORD", 32, 96, 76, 24, 1);
-    auto &serverHeader = Control(set.browser, text, "header_server", "SERVER", 114, 96, 220, 24);
+    Control(set.browser, text, "header_password", "@MENU_PASSWORD", 32, 96, 76, 24, 1);
+    auto &serverHeader = Control(set.browser, text, "header_server", "@PLATFORM_SERVER_NAME_CAPS", 114, 96, 220, 24);
     serverHeader.scripts[0].action = "uiScript ServerSort 3 ;";
-    auto &mapHeader = Control(set.browser, text, "header_map", "MAP", 338, 96, 172, 24);
+    auto &mapHeader = Control(set.browser, text, "header_map", "@MENU_MAP", 338, 96, 172, 24);
     mapHeader.scripts[0].action = "uiScript ServerSort 4 ;";
-    auto &playersHeader = Control(set.browser, text, "header_players", "PLAYERS", 514, 96, 90, 24);
+    auto &playersHeader = Control(set.browser, text, "header_players", "@MENU_PLAYERS", 514, 96, 90, 24);
     playersHeader.scripts[0].action = "uiScript ServerSort 5 ;";
     auto &servers = Control(set.browser, list, "browser", nullptr, 32, 124, 576, 242, 4);
     servers.list = *list->typeData.textDef->textTypeData.focusItemDef->focusTypeData.listBox;
@@ -328,51 +329,47 @@ bool Directory_ZombiesPrepareMenus(UiContext *dc)
         servers.list.columnInfo[i].rect = {x[i], 0, width[i], 22, 0, 0};
     }
     Event(servers, 3, "doubleClick", "uiScript JoinServer ;");
-    Control(set.browser, text, "directory_status", browserStatus, 32, 374, 576, 24, 1);
+    Control(set.browser, text, "directory_status", browserStatus, 32, 374, 576, 50, 1).item.window.staticFlags |= 0x800000;
 #ifdef KISAK_NX
-    // Glyph 3 draws as the Switch's Y:
-    // buttons map by position, so the Switch's Y arrives as K_BUTTON_X, the
-    // browser's refresh key (Directory_HandleControllerKey).
-    // Glyph 2 draws as the Switch's A.
-    Control(set.browser, text, "directory_refresh", "\x03 REFRESH", 32, 434, 150, 28);
-    Control(set.browser, text, "directory_join", "\x02 JOIN SERVER", 224, 434, 170, 28);
+    Control(set.browser, text, "directory_refresh", "@OPENBLOPS_ZOMBIE_REFRESH", 32, 434, 150, 28);
+    Control(set.browser, text, "directory_join", "@OPENBLOPS_ZOMBIE_JOIN", 224, 434, 170, 28);
 #else
-    Control(set.browser, text, "directory_refresh", "REFRESH", 32, 434, 150, 28);
-    Control(set.browser, text, "directory_join", "JOIN SERVER", 224, 434, 170, 28);
+    Control(set.browser, text, "directory_refresh", "@MENU_REFRESH", 32, 434, 150, 28);
+    Control(set.browser, text, "directory_join", "@MENU_JOIN_SERVER_CAPS", 224, 434, 170, 28);
 #endif
-    Control(set.browser, text, "directory_back", "BACK", 500, 434, 108, 28);
+    Control(set.browser, text, "directory_back", "@MENU_BACK", 500, 434, 108, 28);
     set.browser.open.action = "setDvar ui_netSource 0 ; setDvar ui_serverBrowserMenu server_browser_unranked ; "
         "setDvar ui_browserGameMode 0 ; setDvar ui_browserMap 0 ; setDvar ui_joinGametype 0 ; "
         "setDvar ui_browserShowEmpty 1 ; setDvar ui_browserShowFull 1 ; setDvar ui_browserShowPassword -1 ; "
         "uiScript PopulateServers ; setFocus browser ;";
     Finish(set.browser);
 
-    Panel(set.host, source, hostName, "HOST MATCH - ZOMBIES");
+    Panel(set.host, source, hostName, "@OPENBLOPS_HOST_ZOMBIES");
     Control(set.host, text, "directory_map", mapCaption, 48, 92, 544, 28, 1);
-    Control(set.host, text, "directory_change_map", "CHANGE MAP", 48, 130, 544, 28);
-    Field(set.host, text, "directory_server_name", "SERVER NAME", "bo1_directory_name", 186, 48);
-    Field(set.host, text, "directory_host_password", "PASSWORD", "g_password", 226, 32);
-    Control(set.host, text, "limit_label", "MAX PLAYERS", 48, 266, 184, 28, 1);
+    Control(set.host, text, "directory_change_map", "@OPENBLOPS_CHANGE_MAP", 48, 130, 544, 28);
+    Field(set.host, text, "directory_server_name", "@PLATFORM_SERVER_NAME_CAPS", "bo1_directory_name", 186, 48);
+    Field(set.host, text, "directory_host_password", "@MENU_PASSWORD", "g_password", 226, 32);
+    Control(set.host, text, "limit_label", "@MENU_MAXIMUM_PLAYERS", 48, 266, 184, 28, 1);
     auto &limit = Control(set.host, text, "directory_maxplayers", nullptr, 242, 266, 350, 28, 10);
     limit.item.dvar = "bo1_zombie_maxplayers"; limit.focus.focusTypeData.multi = &limit.multi;
     limit.multi.count = 4;
     static const char *values[] = {"1", "2", "3", "4"};
     for (int i = 0; i < 4; ++i) { limit.multi.dvarList[i] = values[i]; limit.multi.dvarValue[i] = float(i + 1); }
-    Control(set.host, text, "directory_host_notice", hostNotice, 48, 322, 544, 56, 1);
-    Control(set.host, text, "directory_start", "START MATCH", 48, 434, 200, 28);
-    Control(set.host, text, "directory_back", "BACK", 500, 434, 108, 28);
+    Control(set.host, text, "directory_host_notice", hostNotice, 48, 322, 544, 56, 1).item.window.staticFlags |= 0x800000;
+    Control(set.host, text, "directory_start", "@MPUI_START_MATCH_CAPS", 48, 434, 200, 28);
+    Control(set.host, text, "directory_back", "@MENU_BACK", 500, 434, 108, 28);
 #ifdef KISAK_NX
     // A controller needs a focused item to act on (Directory_HandleControllerKey).
     set.host.open.action = "setFocus directory_change_map ;";
 #endif
     Finish(set.host);
 
-    Panel(set.password, source, passwordName, "SERVER PASSWORD");
+    Panel(set.password, source, passwordName, "@OPENBLOPS_SERVER_PASSWORD");
     set.password.menu.fullScreen = 0;
-    Field(set.password, text, "directory_join_password", "PASSWORD", "ui_directory_joinPassword", 200, 32);
+    Field(set.password, text, "directory_join_password", "@MENU_PASSWORD", "ui_directory_joinPassword", 200, 32);
     Event(set.password.owned.back(), 3, "onAccept", "uiScript JoinServer ;");
-    Control(set.password, text, "directory_password_accept", "JOIN", 242, 270, 150, 28);
-    Control(set.password, text, "directory_password_cancel", "CANCEL", 442, 270, 150, 28);
+    Control(set.password, text, "directory_password_accept", "@MENU_JOIN_SERVER_CAPS", 242, 270, 150, 28);
+    Control(set.password, text, "directory_password_cancel", "@MENU_CANCEL_CAPS", 442, 270, 150, 28);
     set.password.open.action = "setFocus directory_join_password ;";
     Finish(set.password);
     for (auto *menu : {&set.browser.menu, &set.host.menu, &set.password.menu}) dc->Menus[dc->menuCount++] = menu;
@@ -468,11 +465,12 @@ bool Directory_StartZombieMapNotify(int localClientNum, const char *notify)
     if (ValidMap(map.c_str()))
     {
         selectedMap = map;
-        std::snprintf(mapCaption, sizeof(mapCaption), "MAP: %s", UI_GetMapDisplayName(selectedMap.c_str()));
+        std::snprintf(mapCaption, sizeof(mapCaption), "%s: %s", UI_SafeTranslateString("MENU_MAP"),
+            UI_GetMapDisplayName(selectedMap.c_str()));
         hostNotice[0] = 0;
     }
     else
-        I_strncpyz(hostNotice, "Choose a Zombies co-op map. Dead Ops Arcade uses solo mode.", sizeof(hostNotice));
+        I_strncpyz(hostNotice, UI_SafeTranslateString("OPENBLOPS_ZOMBIES_MAP_HINT"), sizeof(hostNotice));
     // Complete native picker callbacks first; none may re-enable solo mode
     // after the co-op launch has selected its four-client memory allocation.
     auto *dc = &UI_GetInfo(0)->uiDC;
@@ -520,6 +518,7 @@ void Directory_FrontendFrame()
     std::snprintf(browserStatus, sizeof(browserStatus), "%s", Directory_Status());
     int players = 0;
     for (int i = 0; i < cls.numunrankedservers; ++i) players += cls.unrankedServers[i].clients;
-    std::snprintf(browserCounts, sizeof(browserCounts), "%d players, %d servers", players, cls.numunrankedservers);
+    std::snprintf(browserCounts, sizeof(browserCounts), UI_SafeTranslateString("OPENBLOPS_BROWSER_COUNTS"),
+        players, cls.numunrankedservers);
 }
 #endif

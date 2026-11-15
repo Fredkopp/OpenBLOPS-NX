@@ -262,7 +262,7 @@ namespace
             item->window.dynamicFlags[0] = (item->window.dynamicFlags[0] & ~2) | 4;
             if (Item_IsTextDefType(item) && item->typeData.textDef)
             {
-                item->typeData.textDef->text = "SPLIT-SCREEN";
+                item->typeData.textDef->text = "@MENU_SPLIT_SCREEN_CAPS";
                 item->typeData.textDef->textExpData = nullptr;
             }
             row.rowItems.push_back(item);
@@ -348,7 +348,7 @@ void UI_SplitScreenAddMenus(int localClientNum, UiContext *dc, menuDef_t *menu)
         {
             item.window.name = guestButton;
             item.onEvent = &events.actionEvent;
-            copy.text.text = "SPLIT-SCREEN";
+            copy.text.text = "@MENU_SPLIT_SCREEN_CAPS";
             copy.text.textExpData = nullptr;
         }
         else

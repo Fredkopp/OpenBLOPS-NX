@@ -17,6 +17,7 @@
 #include <qcommon/net_chan_mp.h>
 #include <server_mp/sv_init_mp.h>
 #include <server_mp/sv_main_mp.h>
+#include <stringed/stringed_hooks.h>
 #include <ui/ui_feeders.h>
 #include <ui/keycodes.h>
 #include <ui/ui_main.h>
@@ -181,7 +182,7 @@ void Initialize()
         _Dvar_RegisterBool("bo1_directory_force_relay", false, 0, "Use relay immediately for testing");
     publicName = _Dvar_RegisterString("bo1_directory_name", "OpenBLOPS match", 1,
                                       "Public match label (not a player roster)");
-    _Dvar_RegisterString("bo1_directory_status", "Ready", 0x40, "Community directory status");
+    _Dvar_RegisterString("bo1_directory_status", SEH_GetPortString("OPENBLOPS_DIR_READY"), 0x40, "Community directory status");
     Cmd_AddCommandInternal("directory_browser", OpenBrowser, &browserCommand);
     Cmd_AddCommandInternal("directory_cancel", Cancel, &cancelCommand);
     Cmd_AddCommandInternal("directory_status", PrintStatus, &statusCommand);
@@ -262,7 +263,8 @@ static bool EditDirectoryText(const char *dvar, bool password, int limit)
         swkbdConfigMakePresetPassword(&keyboard);
     else
         swkbdConfigMakePresetDefault(&keyboard);
-    swkbdConfigSetHeaderText(&keyboard, password ? "Server password" : "Server name");
+    swkbdConfigSetHeaderText(&keyboard, SEH_GetPortString(
+        password ? "OPENBLOPS_SERVER_PASSWORD" : "OPENBLOPS_SERVER_NAME", true));
     swkbdConfigSetInitialText(&keyboard, Dvar_GetString(dvar));
     swkbdConfigSetStringLenMax(&keyboard, limit);
     char text[48 * 4 + 1]{};
@@ -412,7 +414,19 @@ bool Directory_IsRow(int source, int index)
 }
 const char *Directory_Status()
 {
-    return client ? client->Status().c_str() : lastStatus.c_str();
+    const std::string &status = client ? client->Status() : lastStatus;
+    const char *localized = SEH_LocalizePortText(status.c_str());
+    if (localized != status.c_str())
+        return localized;
+    constexpr char hostPrefix[] = "Public host registered: ";
+    if (status.starts_with(hostPrefix))
+        return va(SEH_GetPortString("OPENBLOPS_DIR_HOST_LISTED"), status.c_str() + sizeof(hostPrefix) - 1);
+    if (client && status.ends_with(" public multiplayer hosts"))
+        return va(SEH_GetPortString("OPENBLOPS_DIR_HOST_COUNT"), static_cast<int>(client->Rows().size()));
+    constexpr char responsePrefix[] = "Directory: ";
+    if (status.starts_with(responsePrefix))
+        return va(SEH_GetPortString("OPENBLOPS_DIR_RESPONSE"), status.c_str() + sizeof(responsePrefix) - 1);
+    return localized;
 }
 void Directory_TransportReset()
 {
@@ -548,7 +562,7 @@ void Directory_Frame()
             {
                 lastStatus = "Invalid directory IPv4:port or compatibility tag";
                 Com_PrintWarning(14, "%s\n", lastStatus.c_str());
-                Dvar_SetStringByName("bo1_directory_status", lastStatus.data());
+                Dvar_SetStringByName("bo1_directory_status", const_cast<char *>(Directory_Status()));
             }
             return;
         }
@@ -654,7 +668,7 @@ void Directory_Frame()
     if (client->Status() != lastStatus)
     {
         lastStatus = client->Status();
-        Dvar_SetStringByName("bo1_directory_status", lastStatus.data());
+        Dvar_SetStringByName("bo1_directory_status", const_cast<char *>(Directory_Status()));
         Com_Printf(14, "Directory: %s\n", lastStatus.c_str());
     }
     if (client->TakeDisconnect() && CL_GetLocalClientConnectionState(0) >= CA_CONNECTING)
@@ -758,7 +772,7 @@ bool Directory_AcceptJoinPassword()
             }
     }
     Dvar_SetStringByName("password", "");
-    Dvar_SetStringByName("ui_errorMessage", "This server is no longer available. Refresh the server list and try again.");
+    Dvar_SetStringByName("ui_errorMessage", UI_SafeTranslateString("OPENBLOPS_SERVER_GONE"));
     Menus_OpenByName(0, &ui->uiDC, "error_popmenu");
     return true;
 }
@@ -775,7 +789,7 @@ bool Directory_Join(int source, int index)
     }
     if (row.mod != ModTag(Dvar_GetString("fs_game")))
     {
-        Dvar_SetStringByName("ui_errorMessage", "This server requires a different mod.");
+        Dvar_SetStringByName("ui_errorMessage", UI_SafeTranslateString("OPENBLOPS_SERVER_OTHER_MOD"));
         Com_PrintWarning(14, "Directory: select the host's mod before joining\n");
         return true;
     }

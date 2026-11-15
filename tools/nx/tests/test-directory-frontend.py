@@ -1,7 +1,7 @@
 """Test the actual Host Match/menu patch and publication lifecycle, without running the game."""
 from pathlib import Path
 import argparse,os,re,subprocess,struct
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--compiler',default='C:/msys64/ucrt64/bin/g++.exe');a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--compiler',default='C:/msys64/ucrt64/bin/g++.exe');p.add_argument('--zone-dir',type=Path,default=Path('F:/pluto_t5_full_game/kbz'));a=p.parse_args()
 r=Path(__file__).resolve().parents[3];out=r/'build-nx/directory-frontend-tests';out.mkdir(parents=True,exist_ok=True)
 # Verify the private/ranked actions against the supplied prelinked assets.
 src=(r/'tools/nx/tests/test-splitscreen-frontend.py').read_text();start=src.index('def menu_items(');end=src.index('\nsp=menu_items',start);namespace={'Path':Path,'struct':struct}
@@ -10,7 +10,8 @@ asset_parser=src[start:end].replace('result.append(dict(', """td=ptr(item,224);e
     keys=[string(ptr(rp,k*24+16)) for k in range(num(exp,12)) if num(rp,k*24)==0 and num(rp,k*24+8)==2]
    result.append(dict(dvar=string(ptr(item,192)),expression_keys=keys,""")
 exec(asset_parser,namespace)
-rows=namespace['menu_items']('ui_mp','live_flyout')
+read_menu=namespace['menu_items']
+rows=read_menu('ui_mp','live_flyout',a.zone_dir)
 if rows:
  ranked=next(x for x in rows if x['name']=='SecondFlyout');private=next(x for x in rows if x['name']=='FifthFlyout')
  assert any('quickmatch' in x for x in ranked['actions'])
@@ -18,9 +19,9 @@ if rows:
  assert ranked['rect'][1] < private['rect'][1]
  assert '@MENU_RANKED_MATCH_CAPS' in rows[8]['expression_keys']
  assert '@MENU_RANKED_MATCH_CAPS' in rows[9]['expression_keys']
- main_rows=namespace['menu_items']('ui_mp','main_text')
+ main_rows=read_menu('ui_mp','main_text',a.zone_dir)
  assert all('@MENU_OPERATIONS_CAPS' in main_rows[i]['expression_keys'] for i in (22,34,35,36))
- settings_rows=namespace['menu_items']('ui_mp','server_settings')
+ settings_rows=read_menu('ui_mp','server_settings',a.zone_dir)
  assert next(x for x in settings_rows if x['dvar']=='sv_hostname')['type']==5
  assert next(x for x in settings_rows if x['dvar']=='g_password')['type']==5
  name_rect=next(x for x in settings_rows if x['dvar']=='sv_hostname')['rect']
@@ -29,7 +30,7 @@ if rows:
   if item['dvar'] and item['dvar'] not in ('sv_hostname','g_password'):
    assert item['rect'][0]==name_rect[0] and item['rect'][3]==name_rect[3] and item['rect'][1] not in (-131,-55)
 
- assert any('open server_settings' in action for item in namespace['menu_items']('ui_mp','menu_xboxlive_privatelobby') for action in item['actions'])
+ assert any('open server_settings' in action for item in read_menu('ui_mp','menu_xboxlive_privatelobby',a.zone_dir) for action in item['actions'])
  print('PASS: shipped expression labels in Ranked normal/highlight and all four Operations text layers verified',flush=True)
 code=r"""
 #include <cassert>
@@ -72,6 +73,9 @@ bool UI_SplitScreenIsCustomMenu(const menuDef_t*m){return m==splitTestLobby;}
 #endif
 GenericEventScript *nativePrivate=nullptr,*nativeRanked=nullptr;
 #include <openblops_directory/directory_engine.h>
+bool Directory_UpdateOpenGate(){return false;}
+char *UI_ToUpper(const char *key){return const_cast<char *>(key);}
+char *UI_SafeTranslateString(const char *key){return const_cast<char *>(key);}
 int I_stricmp(const char *a,const char *b){return std::strcmp(a,b);}
 int Item_IsTextDefType(const itemDef_s *i){return i->typeData.textDef!=nullptr;}
 void Dvar_SetBoolByName(const char *name,bool value){flags[name]=value;}
@@ -165,15 +169,15 @@ int main(){
  pendingPassword=true;assert(!Directory_HandleMenuEvent(0,&ui.uiDC,&joinButton,"onClose")&&passwordCancels==2);
  Directory_MenuOpening(0,&ui.uiDC,&popup);assert(std::string(popup.items[0]->dvar)=="password"); // Native LAN popup compatibility.
  for(int i=0;i<main.itemCount;++i){
-  assert(std::string(main.items[i]->typeData.textDef->text)=="CREATE A CLASS");
+  assert(std::string(main.items[i]->typeData.textDef->text)=="@MPUI_CREATE_A_CLASS_CAPS");
   assert(main.items[i]->typeData.textDef->textExpData==nullptr);
  }
  assert(opsText.text==nullptr&&opsText.textExpData==&opsExpr&&std::string(opsParts[0].data.constant.internals.string)=="@MENU_OPERATIONS_CAPS");
- assert(std::string(fly.items[0]->typeData.textDef->text)=="HOST MATCH");
- assert(std::string(fly.items[1]->typeData.textDef->text)=="HOST MATCH");
+ assert(std::string(fly.items[0]->typeData.textDef->text)=="@OPENBLOPS_HOST_MATCH");
+ assert(std::string(fly.items[1]->typeData.textDef->text)=="@OPENBLOPS_HOST_MATCH");
  assert(rankedText.text==nullptr&&rankedText.textExpData==&rankExpr&&std::string(rankParts[0].data.constant.internals.string)=="@MENU_RANKED_MATCH_CAPS");
  assert(fly.itemCount==6&&fly.items[2]==&other&&fly.items[3]!=&priv);
- assert(std::string(fly.items[3]->typeData.textDef->text)=="OFFLINE MATCH"&&fly.items[3]->onEvent==priv.onEvent);
+ assert(std::string(fly.items[3]->typeData.textDef->text)=="@OPENBLOPS_OFFLINE_MATCH"&&fly.items[3]->onEvent==priv.onEvent);
  assert(std::string(fly.items[4]->typeData.textDef->text).empty()&&std::string(fly.items[5]->typeData.textDef->text).empty());
  assert(fly.items[4]->onEvent==&wagerEvent&&std::string(wagerText.text)=="@MPUI_WAGER_MATCH_CAPS");
  auto *host=fly.items[0];auto **patched=fly.items;
@@ -181,11 +185,11 @@ int main(){
  assert(host->window.foreColor[0]==rank.window.foreColor[0]&&host->typeData.textDef->textExpData==nullptr);
  Directory_MenuOpening(0,&ui.uiDC,&fly);assert(fly.items==patched);
  assert(Directory_HandleMenuEvent(0,&ui.uiDC,host,"onFocus")&&focusEvents==1);
- assert(strings["ui_lobby_desc"].find("advertise")!=std::string::npos);
+ assert(strings["ui_lobby_desc"]=="OPENBLOPS_HOST_HINT");
  assert(!Directory_HandleMenuEvent(1,&ui.uiDC,host,"action"));
  assert(Directory_HandleMenuEvent(0,&ui.uiDC,host,"action"));
  assert(privateActions==1&&quickMatches==0&&!flags["bo1_directory_publish"]&&commands.empty());
- assert(std::string(lobby.items[0]->typeData.textDef->text)=="HOST MATCH"&&lobbyText.textExpData==&lobbyExpr);
+ assert(std::string(lobby.items[0]->typeData.textDef->text)=="@OPENBLOPS_HOST_MATCH"&&lobbyText.textExpData==&lobbyExpr);
  auto*hostCaption=lobby.items[0];Directory_MenuOpening(0,&ui.uiDC,&lobby);assert(lobby.items[0]==hostCaption);
  // Use the native settings panel while Host Match is configuring.
  menuDef_t settings;settings.window.name="server_settings";
@@ -211,7 +215,7 @@ int main(){
  auto*editName=settings.items[1];auto*editPassword=settings.items[3];
  auto*limit=settings.items[6];assert(limit->type==10&&limit->dataType==10&&std::string(limit->dvar)=="bo1_host_maxplayers"&&limit->window.rect.y==-55);
  auto*choices=limit->typeData.textDef->textTypeData.focusItemDef->focusTypeData.multi;
- assert(choices&&choices->count==19&&std::string(choices->dvarList[0])=="DEFAULT"&&choices->dvarValue[0]==0&&choices->dvarValue[18]==18);
+ assert(choices&&choices->count==19&&std::string(choices->dvarList[0])=="@MENU_DEFAULT"&&choices->dvarValue[0]==0&&choices->dvarValue[18]==18);
  assert(limit->visibleExp.numRpn==0&&maxField.type==7&&maxField.visibleExp.numRpn==2);
  assert(std::string(settings.items[5]->window.name)=="openblops_host_maxplayers_hl");
  Dvar_SetIntByName(limit->dvar,8);Directory_MenuOpening(0,&ui.uiDC,&settings);assert(integers["bo1_host_maxplayers"]==8);
@@ -236,7 +240,7 @@ int main(){
  running.current.enabled=false;strings["mapname"]="";Directory_FrontendFrame();assert(!flags["bo1_directory_publish"]&&!Directory_StartHostMatch());
  Directory_HandleMenuEvent(0,&ui.uiDC,host,"action");
  assert(!Directory_HandleMenuEvent(0,&ui.uiDC,&priv,"action"));assert(!Directory_StartHostMatch()&&!flags["bo1_directory_publish"]);
- Directory_MenuOpening(0,&ui.uiDC,&lobby);assert(std::string(lobby.items[0]->typeData.textDef->text)=="OFFLINE MATCH");
+ Directory_MenuOpening(0,&ui.uiDC,&lobby);assert(std::string(lobby.items[0]->typeData.textDef->text)=="@OPENBLOPS_OFFLINE_MATCH");
  Directory_HandleMenuEvent(0,&ui.uiDC,host,"action");Directory_MenuOpening(0,&ui.uiDC,&main);assert(!Directory_StartHostMatch());
  Directory_HandleMenuEvent(0,&ui.uiDC,host,"action");strings["g_password"]="";strings["ui_gametype"]="dm";integers["sv_maxclients"]=4;assert(Directory_StartHostMatch());assert(integers["sv_maxclients"]==4&&strings["g_password"].empty());
  // Explicit settings override all automatic floors and apply to private starts too.
@@ -256,8 +260,8 @@ int main(){
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
  menuDef_t split=lobby;itemDef_s splitTitle=*lobby.items[0];textDef_s splitText=*splitTitle.typeData.textDef;
  splitTitle.typeData.textDef=&splitText;splitTitle.parent=&split;itemDef_s*splitItems[]{&splitTitle};split.items=splitItems;splitTestLobby=&split;
- Directory_MenuOpening(0,&ui.uiDC,&split);assert(std::string(split.items[0]->typeData.textDef->text)=="SPLIT-SCREEN");
- assert(std::string(lobby.items[0]->typeData.textDef->text)=="HOST MATCH"&&split.items[0]!=lobby.items[0]);
+ Directory_MenuOpening(0,&ui.uiDC,&split);assert(std::string(split.items[0]->typeData.textDef->text)=="@MENU_SPLIT_SCREEN_CAPS");
+ assert(std::string(lobby.items[0]->typeData.textDef->text)=="@OPENBLOPS_HOST_MATCH"&&split.items[0]!=lobby.items[0]);
 #endif
  puts("PASS: Host Match/Offline Match captions, native row styles/ordering, Operations rename, private-setup reuse, map/mode choice, server-name/password binding, private edit state, publication lifecycle and cancellation");
 #else

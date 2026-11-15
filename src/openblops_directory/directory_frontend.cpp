@@ -126,7 +126,7 @@ void PatchServerSettings(menuDef_t *menu)
     _Dvar_RegisterString("g_password", "", 0, "Password");
     _Dvar_RegisterInt("bo1_host_maxplayers", 0, 0, 18, 1u, "Max players override (zero uses mode defaults)");
     static multiDef_s limits = {};
-    static const char *labels[] = { "DEFAULT", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    static const char *labels[] = { "@MENU_DEFAULT", "1", "2", "3", "4", "5", "6", "7", "8", "9",
         "10", "11", "12", "13", "14", "15", "16", "17", "18" };
     limits.count = 19;
     for (int i = 0; i < limits.count; ++i) { limits.dvarList[i] = labels[i]; limits.dvarValue[i] = float(i); }
@@ -219,9 +219,9 @@ std::list<ItemCopy> lobbyCaptions;
 void PatchLobbyCaption(menuDef_t *menu)
 {
     if (!menu || !Named(menu->window.name, "menu_xboxlive_privatelobby")) return;
-    const char *caption = hostPhase == HostPhase::Off ? "OFFLINE MATCH" : "HOST MATCH";
+    const char *caption = hostPhase == HostPhase::Off ? "@OPENBLOPS_OFFLINE_MATCH" : "@OPENBLOPS_HOST_MATCH";
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
-    if (UI_SplitScreenIsCustomMenu(menu)) caption = "SPLIT-SCREEN";
+    if (UI_SplitScreenIsCustomMenu(menu)) caption = "@MENU_SPLIT_SCREEN_CAPS";
 #endif
     for (int i = 0; i < menu->itemCount; ++i)
     {
@@ -230,7 +230,15 @@ void PatchLobbyCaption(menuDef_t *menu)
         if (!Named(source->window.name, "openblops_lobby_caption")
             && !HasLabel(source->typeData.textDef, "@MPUI_CUSTOM_MATCH_LOBBY_CAPS")) continue;
         for (auto &copy : lobbyCaptions)
-            if (&copy.item == source && copy.item.parent == menu) { copy.text.text = caption; return; }
+            if (&copy.item == source && copy.item.parent == menu)
+            {
+                if (copy.text.text != caption)
+                {
+                    copy.text.text = caption;
+                    copy.text.textRect[0] = {};
+                }
+                return;
+            }
         // Each normal/split-screen lobby owns its caption; leave the zone's
         // expression and any independently copied lobby untouched.
         lobbyCaptions.emplace_back(); auto &copy = lobbyCaptions.back();
@@ -295,7 +303,8 @@ void PatchMenu(menuDef_t *menu)
         {
             part.text = *source->typeData.textDef;
             item.typeData.textDef = &part.text;
-            part.text.text = wager ? "" : offline ? "OFFLINE MATCH" : ranked ? "HOST MATCH" : "CREATE A CLASS";
+            part.text.text = wager ? "" : offline ? "@OPENBLOPS_OFFLINE_MATCH"
+                : ranked ? "@OPENBLOPS_HOST_MATCH" : "@MPUI_CREATE_A_CLASS_CAPS";
             part.text.textExpData = nullptr;
             part.text.textRect[0] = {};
             if (source->dataType == 3 && part.text.textTypeData.focusItemDef)
@@ -434,7 +443,7 @@ bool Directory_HandleMenuEvent(int localClientNum, UiContext *dc, itemDef_s *ite
                     Item_RunSingleEventScript(localClientNum, dc, item, script);
                 Dvar_SetStringByName(
                     "ui_lobby_desc",
-                    const_cast<char *>("Set up a match and advertise it in the server browser."));
+                    UI_SafeTranslateString("OPENBLOPS_HOST_HINT"));
                 return true;
             }
             if (Named(event, "action"))

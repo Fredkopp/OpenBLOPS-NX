@@ -42,6 +42,48 @@ languageInfo_t g_languages[] =
 
 static const int SEH_LANGUAGE_COUNT = ARRAY_COUNT(g_languages);
 
+namespace
+{
+struct PortString
+{
+    const char *reference;
+    const char *game[10];
+    const char *utf8[10];
+};
+
+constexpr PortString portStrings[] = {
+#include "port_ui_translations.inc"
+};
+
+int SEH_PortLanguage()
+{
+    constexpr int columns[] = {0, 1, 1, 2, 2, 3, 4, 0, 5, 6, 7, 8, 9, 8};
+    static_assert(ARRAY_COUNT(columns) >= SEH_LANGUAGE_COUNT);
+    if (!loc_language || (loc_forceEnglish && loc_forceEnglish->current.enabled))
+        return 0;
+    const unsigned int language = SEH_GetCurrentLanguage();
+    return language < ARRAY_COUNT(columns) ? columns[language] : 0;
+}
+}
+
+const char *SEH_GetPortString(const char *reference, bool utf8)
+{
+    if (strncmp(reference, "OPENBLOPS_", 10))
+        return nullptr;
+    for (const PortString &entry : portStrings)
+        if (!strcmp(reference, entry.reference))
+            return (utf8 ? entry.utf8 : entry.game)[SEH_PortLanguage()];
+    return nullptr;
+}
+
+const char *SEH_LocalizePortText(const char *english)
+{
+    for (const PortString &entry : portStrings)
+        if (!strcmp(english, entry.game[0]))
+            return entry.game[SEH_PortLanguage()];
+    return english;
+}
+
 int __cdecl SEH_GetCurrentLanguage()
 {
     return loc_language->current.integer;
@@ -221,6 +263,8 @@ const char *__cdecl SEH_StringEd_GetString(char *pszReference)
 {
     if ( !loc_translate || !loc_translate->current.enabled )
         return pszReference;
+    if (const char *translation = SEH_GetPortString(pszReference))
+        return translation;
     if ( *pszReference && pszReference[1] )
         return SE_GetString(pszReference);
     return pszReference;

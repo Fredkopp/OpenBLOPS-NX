@@ -23,6 +23,7 @@
 #include <vector>
 #include <zlib/zlib.h>
 #include "nx_install.h"
+#include <stringed/stringed_hooks.h>
 
 #ifndef NX_APP_VERSION
 #define NX_APP_VERSION "0.0.0"
@@ -176,7 +177,7 @@ bool net_connected()
 int https_get(const char *url, HttpSink &sink, const std::atomic<bool> *cancel, char *error, size_t errorSize)
 {
     if (R_FAILED(sslInitialize(3))) {
-        set_error(error, errorSize, "The console's SSL service is unavailable.");
+        set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_SSL"));
         return -1;
     }
     struct SslGuard { ~SslGuard() { sslExit(); } } sslGuard;
@@ -185,18 +186,18 @@ int https_get(const char *url, HttpSink &sink, const std::atomic<bool> *cancel, 
     for (int redirect = 0; redirect <= MaxRedirects; ++redirect) {
         std::string host, path;
         if (!split_url(current.c_str(), host, path)) {
-            set_error(error, errorSize, "The server sent an address that is not HTTPS.");
+            set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_NON_HTTPS"));
             return -1;
         }
         TlsStream tls;
         if (!tls.open(host.c_str())) {
-            std::snprintf(error, errorSize, "Could not connect securely to %s.", host.c_str());
+            std::snprintf(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_CONNECT"), host.c_str());
             return -1;
         }
         std::string request = "GET " + path + " HTTP/1.0\r\nHost: " + host +
                               "\r\nUser-Agent: openblops-nx-updater\r\nAccept: */*\r\nConnection: close\r\n\r\n";
         if (!tls.write(request.data(), request.size())) {
-            std::snprintf(error, errorSize, "Could not send the request to %s.", host.c_str());
+            std::snprintf(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_SEND"), host.c_str());
             return -1;
         }
         std::string headers;
@@ -204,7 +205,7 @@ int https_get(const char *url, HttpSink &sink, const std::atomic<bool> *cancel, 
         while (bodyStart == std::string::npos) {
             int got = tls.read(buffer, sizeof(buffer));
             if (got <= 0 || headers.size() > MaxHeaders) {
-                std::snprintf(error, errorSize, "%s did not answer.", host.c_str());
+                std::snprintf(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_NO_RESPONSE"), host.c_str());
                 return -1;
             }
             headers.append(buffer, got);
@@ -214,13 +215,13 @@ int https_get(const char *url, HttpSink &sink, const std::atomic<bool> *cancel, 
         headers.resize(bodyStart + 2);
         int status = 0;
         if (std::sscanf(headers.c_str(), "HTTP/%*d.%*d %d", &status) != 1) {
-            std::snprintf(error, errorSize, "%s sent an answer that is not HTTP.", host.c_str());
+            std::snprintf(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_NON_HTTP"), host.c_str());
             return -1;
         }
         if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
             std::string location = header_value(headers, "Location");
             if (location.empty()) {
-                set_error(error, errorSize, "A redirect without a destination.");
+                set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_REDIRECT_EMPTY"));
                 return -1;
             }
             if (location[0] == '/') location = "https://" + host + location;
@@ -233,35 +234,35 @@ int https_get(const char *url, HttpSink &sink, const std::atomic<bool> *cancel, 
         uint64_t received = 0;
         if (!body.empty()) {
             if (status == 200 && !sink.data(body.data(), body.size())) {
-                set_error(error, errorSize, "The transfer stopped.");
+                set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_TRANSFER_STOPPED"));
                 return -1;
             }
             received += body.size();
         }
         while (length == 0 || received < length) {
             if (cancel && cancel->load()) {
-                set_error(error, errorSize, "Cancelled.");
+                set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_CANCELLED"));
                 return -1;
             }
             int got = tls.read(buffer, sizeof(buffer));
             if (got == 0) break;
             if (got < 0) {
-                std::snprintf(error, errorSize, "The connection to %s was lost.", host.c_str());
+                std::snprintf(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_CONNECTION_LOST"), host.c_str());
                 return -1;
             }
             if (status == 200 && !sink.data(buffer, (size_t)got)) {
-                set_error(error, errorSize, "The transfer stopped.");
+                set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_TRANSFER_STOPPED"));
                 return -1;
             }
             received += (uint64_t)got;
         }
         if (status == 200 && length != 0 && received < length) {
-            std::snprintf(error, errorSize, "The download from %s ended early.", host.c_str());
+            std::snprintf(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_DOWNLOAD_SHORT"), host.c_str());
             return -1;
         }
         return status;
     }
-    set_error(error, errorSize, "Too many redirects.");
+    set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_REDIRECT_LIMIT"));
     return -1;
 }
 
@@ -406,11 +407,11 @@ bool zip_entries(FILE *zip, std::vector<ZipEntry> &entries, char *error, size_t 
     long eocd = -1;
     for (long i = tail - 22; i >= 0; --i)
         if (le32(&end[(size_t)i]) == 0x06054b50) { eocd = i; break; }
-    if (eocd < 0) { set_error(error, errorSize, "The download is not a zip."); return false; }
+    if (eocd < 0) { set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_NOT_ZIP")); return false; }
     const unsigned count = le16(&end[(size_t)eocd + 10]);
     const uint32_t dirSize = le32(&end[(size_t)eocd + 12]), dirOffset = le32(&end[(size_t)eocd + 16]);
     if (dirOffset == 0xffffffffu || (long)dirOffset + (long)dirSize > fileSize) {
-        set_error(error, errorSize, "The zip's directory is damaged.");
+        set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_ZIP_DAMAGED"));
         return false;
     }
     std::vector<unsigned char> dir(dirSize);
@@ -419,7 +420,7 @@ bool zip_entries(FILE *zip, std::vector<ZipEntry> &entries, char *error, size_t 
     size_t at = 0;
     for (unsigned i = 0; i < count; ++i) {
         if (at + 46 > dir.size() || le32(&dir[at]) != 0x02014b50) {
-            set_error(error, errorSize, "The zip's directory is damaged.");
+            set_error(error, errorSize, SEH_GetPortString("OPENBLOPS_UPDATE_ZIP_DAMAGED"));
             return false;
         }
         ZipEntry e;
@@ -541,7 +542,7 @@ struct Updater {
     void run_check()
     {
         if (!net_connected()) {
-            std::snprintf(error, sizeof(error), "No internet connection.");
+            std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_NO_INTERNET"));
             return finish(NxUpdatePhase::CheckFailed);
         }
         std::string json, tag, report;
@@ -563,9 +564,9 @@ struct Updater {
             if (status == 200) {
                 tag = string_value(json, "tag_name", 0, &tagEnd);
                 if (!tag.empty()) break;
-                result = "no release";
+                result = SEH_GetPortString("OPENBLOPS_UPDATE_RELEASE_EMPTY");
             } else if (status == 404) {
-                result = "not found or private";
+                result = SEH_GetPortString("OPENBLOPS_UPDATE_RELEASE_NOT_FOUND");
             } else if (status > 0) {
                 result = "HTTP " + std::to_string(status);
             } else {
@@ -575,7 +576,7 @@ struct Updater {
             report += (report.empty() ? "" : "; ") + std::string(repo) + ": " + result;
         }
         if (tag.empty()) {
-            std::snprintf(error, sizeof(error), "No release found (%s).", report.c_str());
+            std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_NO_RELEASE"), report.c_str());
             return finish(NxUpdatePhase::CheckFailed);
         }
         std::snprintf(version, sizeof(version), "%s", tag.c_str());
@@ -594,7 +595,7 @@ struct Updater {
         // offered, older or newer.
         if (normal_version(tag) == normal_version(NX_APP_VERSION)) return finish(NxUpdatePhase::UpToDate);
         if (!zipUrl[0]) {
-            std::snprintf(error, sizeof(error), "Version %s is out, but its release has no %s.", version, ZipName);
+            std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_MISSING_ARCHIVE"), version, ZipName);
             return finish(NxUpdatePhase::CheckFailed);
         }
         finish(NxUpdatePhase::Available);
@@ -605,7 +606,7 @@ struct Updater {
         make_parents(ZipPart);
         FILE *file = std::fopen(ZipPart, "wb");
         if (!file) {
-            std::snprintf(error, sizeof(error), "Could not write %s (is the SD card full or locked?).", ZipPart);
+            std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_WRITE_SD"), ZipPart);
             return finish(NxUpdatePhase::Failed);
         }
         done.store(0);
@@ -619,8 +620,8 @@ struct Updater {
                 error[0] = '\0';
                 return finish(NxUpdatePhase::Available);
             }
-            if (status > 0) std::snprintf(error, sizeof(error), "The download answered HTTP %d.", status);
-            else if (!written) std::snprintf(error, sizeof(error), "Could not finish writing the download (SD card full?).");
+            if (status > 0) std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_HTTP"), status);
+            else if (!written) std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_WRITE_SHORT"));
             return finish(NxUpdatePhase::Failed);
         }
         phase.store((int)NxUpdatePhase::Extracting);
@@ -629,7 +630,7 @@ struct Updater {
         if (!zip || !zip_entries(zip, entries, error, sizeof(error))) {
             if (zip) std::fclose(zip);
             std::remove(ZipPart);
-            if (!error[0]) std::snprintf(error, sizeof(error), "The downloaded %s is not a valid zip.", ZipName);
+            if (!error[0]) std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_INVALID_ARCHIVE"), ZipName);
             return finish(NxUpdatePhase::Failed);
         }
         uint64_t bytes = 0;
@@ -645,7 +646,7 @@ struct Updater {
             const std::string staged = path + ".new";
             FILE *out = std::fopen(staged.c_str(), "wb");
             if (!out) {
-                std::snprintf(error, sizeof(error), "Could not write %s.", path.c_str());
+                std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_WRITE_FILE"), path.c_str());
                 ok = false;
                 break;
             }
@@ -653,7 +654,7 @@ struct Updater {
             const bool closed = std::fclose(out) == 0;
             if (!extracted || !closed) {
                 std::remove(staged.c_str());
-                std::snprintf(error, sizeof(error), "Could not unpack %s (SD card full, or a damaged download).", path.c_str());
+                std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_UNPACK"), path.c_str());
                 ok = false;
                 break;
             }
@@ -664,7 +665,7 @@ struct Updater {
                 bool listed = list && std::fprintf(list, "%s\n", path.c_str()) > 0;
                 if (list) listed = std::fclose(list) == 0 && listed;
                 if (!listed) {
-                    std::snprintf(error, sizeof(error), "Could not replace %s.", path.c_str());
+                    std::snprintf(error, sizeof(error), SEH_GetPortString("OPENBLOPS_UPDATE_REPLACE"), path.c_str());
                     ok = false;
                     break;
                 }
@@ -729,7 +730,7 @@ void NX_UpdateStartCheck()
     if (!u.busy()) {
         std::printf("[nx-update] checking for an update (this build %s)\n", NX_APP_VERSION);
         if (!u.start(false, NxUpdatePhase::Checking)) {
-            std::snprintf(u.error, sizeof(u.error), "Could not start the update check.");
+            std::snprintf(u.error, sizeof(u.error), SEH_GetPortString("OPENBLOPS_UPDATE_CHECK_START"));
             u.finish(NxUpdatePhase::CheckFailed);
         }
     }
@@ -743,7 +744,7 @@ void NX_UpdateStartInstall()
     if (!u.busy() && (u.state() == NxUpdatePhase::Available || u.state() == NxUpdatePhase::Failed) && u.zipUrl[0]) {
         std::printf("[nx-update] installing %s\n", u.version);
         if (!u.start(true, NxUpdatePhase::Downloading)) {
-            std::snprintf(u.error, sizeof(u.error), "Could not start the download.");
+            std::snprintf(u.error, sizeof(u.error), SEH_GetPortString("OPENBLOPS_UPDATE_DOWNLOAD_START"));
             u.finish(NxUpdatePhase::Failed);
         }
     }

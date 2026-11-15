@@ -1,6 +1,6 @@
 """Check the native graphics row with real zone layouts, without launching the game."""
 from pathlib import Path
-import argparse, ast, json, os, re, struct, subprocess
+import argparse, ast, json, os, struct, subprocess
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--compiler', default='C:/msys64/ucrt64/bin/g++.exe')
 p.add_argument('--zone-dir', type=Path, default=Path('F:/pluto_t5_full_game/kbz'))
@@ -27,6 +27,8 @@ code=r'''
 #include <cstdio>
 #include <cstdarg>
 #include <initializer_list>
+#include <map>
+#include <string>
 #define __cdecl
 #define __debugbreak() assert(false)
 #define ARRAY_COUNT(x) (sizeof(x)/sizeof(x[0]))
@@ -51,9 +53,17 @@ void _Dvar_RegisterBool(const char*n,bool def,unsigned flags,const char*){
 struct dvar_t{struct{int integer;}current;};
 dvar_t baseLimit{{60}},savedLimit{{-1}};
 const dvar_t *com_maxfps=&baseLimit;
-const char *languageName="french";
-int SEH_GetCurrentLanguage(){return 0;}
-const char *SEH_GetLanguageName(int){return languageName;}
+struct dvar_s { std::string value; };
+std::map<std::string,dvar_s> previewDvars;
+int previewWrites=0;
+const dvar_s *Dvar_FindVar(const char *name){
+ auto it=previewDvars.find(name);return it==previewDvars.end()?nullptr:&it->second;
+}
+const char *Dvar_DisplayableValue(const dvar_s *dvar){return dvar->value.c_str();}
+void Dvar_SetCommand(const char *name,char *value){previewDvars[name].value=value;++previewWrites;}
+template<class... Args>void Com_sprintf(char *dest,size_t size,const char *format,Args... args){
+ snprintf(dest,size,format,args...);
+}
 struct UiContext{int contextIndex=0,openMenuCount=1;};
 bool Item_ShouldHandleKey(UiContext*,itemDef_s* item,int){return focused==&item->window;}
 template<class... T>bool Assert_MyHandler(T...){return false;}
@@ -77,18 +87,25 @@ int Item_List_NextEntryForKey(int,int,int);
 '''
 code+=function('src/ui/ui_utils.cpp','int __cdecl Item_IsTextDefType(')+'\n'
 code+='const dvar_t *nx_fpsLimit=&savedLimit;\n'+function('src/qcommon/common.cpp','int Com_GetFrameRateLimit(')+'\n'
-code+=function('src/ui/ui_shared.cpp','struct FrameRateOptionText')+';\n'
-code+=function('src/ui/ui_shared.cpp','static const FrameRateOptionText &UI_NX_GetFrameRateOptionText(')+'\n'
+for sig in ('static void UI_NX_CopyPreviewDvar(', 'static void UI_NX_SyncSettingsPreview('):
+ code+=function('src/ui/ui_shared.cpp',sig)+'\n'
 for sig in ['static itemDef_s *UI_NX_FindItem(', 'static bool UI_NX_ItemNamed(', 'static itemDef_s *UI_NX_FindItemByDvar(', 'static void UI_NX_MoveItem(', 'static itemDef_s *UI_NX_CloneItem(', 'bool UI_NX_IsHiddenAimAssistHighlight(', 'static bool UI_AddGraphicsChoiceRow(', 'static void UI_AddPerformanceOverlayOption(', 'static void UI_NX_AddFrameRateOption(', 'static float Item_Multi_GetFloatValue(', 'int __cdecl Item_Multi_FindDvarByValue(', 'int __cdecl Item_Multi_CountSettings(', 'int __cdecl Item_List_NextEntryForKey(', 'int __cdecl Item_Multi_HandleKey(', 'const char *__cdecl Item_Multi_Setting(']:
  code+=function('src/ui/ui_shared.cpp',sig)+'\n'
 code+=function('src/ui/ui_shared.cpp','void __cdecl Item_Action(')+'\n'
-code+='int main(){\n'
-source=(root/'src/stringed/stringed_hooks.cpp').read_text()
-languages=re.findall(r'\{\s*"(\w+)",\s*"\w+_",\s*0\s*\}',source)
-assert languages
-for language in languages:
- code+=f' languageName="{language}";assert(!strcmp(UI_NX_GetFrameRateOptionText().language,languageName));\n'
-code+=' languageName="unknown";assert(!strcmp(UI_NX_GetFrameRateOptionText().label,"FPS LIMIT"));\n'
+code+='''int main(){
+ previewDvars={{"r_mode",{"1280x720"}},{"ui_r_mode",{"960x540"}},
+              {"r_vsync",{"1"}},{"ui_r_vsync",{"0"}},{"r_aspectRatio",{"auto"}}};
+ UI_NX_SyncSettingsPreview("options_graphics");
+ assert(previewDvars.at("ui_r_mode").value=="1280x720");
+ assert(previewDvars.at("ui_r_vsync").value=="1");
+ assert(previewDvars.at("ui_r_aspectRatio").value=="auto");
+ assert(previewWrites==3);
+ UI_NX_SyncSettingsPreview("options_graphics");
+ assert(previewWrites==3);
+ previewDvars.at("r_mode").value="1920x1080";
+ UI_NX_SyncSettingsPreview("options_graphics");
+ assert(previewDvars.at("ui_r_mode").value=="1920x1080"&&previewWrites==4);
+'''
 for zone in ('code_post_gfx','ui_mp','common_mp'):
  rows=menu_items(zone,'options_graphics')
  if rows is None:raise RuntimeError('Supply local '+zone+'.kbz to check its actual graphics menu')
@@ -102,12 +119,6 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
   code+=f' if(Item_IsTextDefType(&native[{i}])){{native[{i}].typeData.textDef=&texts[{i}];texts[{i}].text={json.dumps(row["text"])};}}\n'
   if row['dvar']=='sm_enable' and row['name']:code+=f' native[{i}].onEvent=&leave;\n'
  code+=f' menu.items=table;menu.itemCount={len(rows)};\n'
- language,label,unlimited={
-    'code_post_gfx':('french','LIMITE FPS','SANS LIMITE'),
-    'ui_mp':('german','FPS-LIMIT','UNBEGRENZT'),
-    'common_mp':('japanese',r'FPS \x8F\xE3\x8C\xC0',r'\x96\xB3\x90\xA7\x8C\xC0'),
- }[zone]
- code+=f' languageName="{language}";const char *label="{label}", *unlimited="{unlimited}";\n'
  code+=r'''
  auto*source=UI_NX_FindItemByDvar(&menu,"sm_enable");auto*last=UI_NX_FindItemByDvar(&menu,"cg_fov_default");
  const auto oldRect=source->window.rect;const auto oldText=source->typeData.textDef;
@@ -124,7 +135,7 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
  for(int i=0;i<menu.itemCount;++i){auto*item=menu.items[i];
   if(item->window.name&&!strncmp(item->window.name,"options_graphics_performance",28)){
    ++layers;assert(item->visibleExp.numRpn==0&&!item->dvarFlags&&!item->showBits&&item->hideBits==~0ULL);
-   if(item!=choice&&Item_IsTextDefType(item))assert(!strcmp(item->typeData.textDef->text,"PERFORMANCE OVERLAY"));
+   if(item!=choice&&Item_IsTextDefType(item))assert(!strcmp(item->typeData.textDef->text,"@OPENBLOPS_PERFORMANCE_OVERLAY"));
    if(!strcmp(item->window.name,"options_graphics_performance_hl")){
     ++highlights;assert(UI_NX_IsHiddenAimAssistHighlight(0,item));focused=&choice->window;
     assert(!UI_NX_IsHiddenAimAssistHighlight(0,item));focused=nullptr;
@@ -172,7 +183,7 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
  for(int i=0;i<menu.itemCount;++i){
   const auto* item=menu.items[i];
   if((UI_NX_ItemNamed(item,"options_graphics_frame_limit_row")||UI_NX_ItemNamed(item,"options_graphics_frame_limit_hl"))&&Item_IsTextDefType(item)){
-   assert(!strcmp(item->typeData.textDef->text,label));++localizedLabels;
+   assert(!strcmp(item->typeData.textDef->text,"@OPENBLOPS_FPS_LIMIT"));++localizedLabels;
   }
  }
  assert(localizedLabels==2);
@@ -184,7 +195,7 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
  assert(Item_Multi_HandleKey(&dc,fps,23)&&Com_GetFrameRateLimit()==75);
  assert(Item_Multi_HandleKey(&dc,fps,22)&&Com_GetFrameRateLimit()==60);
  for(int i=0;i<5;++i) assert(Item_Multi_HandleKey(&dc,fps,23));
- assert(Com_GetFrameRateLimit()==0&&!strcmp(Item_Multi_Setting(fps),unlimited));
+ assert(Com_GetFrameRateLimit()==0&&!strcmp(Item_Multi_Setting(fps),"@MENU_UNLIMITED"));
  assert(baseLimit.current.integer==60);
  assert(Item_Multi_HandleKey(&dc,fps,23)&&Com_GetFrameRateLimit()==30);
  savedLimit.current.integer=-1;baseLimit.current.integer=72;
@@ -193,7 +204,7 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
  assert(menu.itemCount==count+5&&menu.items==items);
  }
 '''
-code+='puts("PASS: all FPS limit locales, SP/MP graphics layouts, live FPS presets, native controls and repeated opening");}\n'
+code+='puts("PASS: live settings previews, SP/MP graphics layouts, live FPS presets, native controls and repeated opening");}\n'
 cpp=out/'menu.cpp';exe=cpp.with_suffix('.exe');cpp.write_text(code)
 subprocess.run([a.compiler,'-std=c++17','-w',str(cpp),'-o',str(exe)],check=True,env=env)
 subprocess.run([str(exe)],check=True,env=env)
