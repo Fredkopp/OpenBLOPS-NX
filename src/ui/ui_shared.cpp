@@ -5515,14 +5515,17 @@ static void UI_NX_FocusWeaponStats(int localClientNum, UiContext *dc, menuDef_t 
     }
 }
 
-static bool UI_NX_HandleAttachmentListRight(int localClientNum, UiContext *dc, itemDef_s *item, int key)
+static bool UI_NX_HandleClassSubmenuRight(int localClientNum, UiContext *dc, menuDef_t *menu,
+    itemDef_s *item, int key)
 {
-    if (key != K_RIGHTARROW || !item || item->type != 4 || !UI_NX_IsWeaponMenu(item->parent)
-        || !item->window.name || I_stricmp(item->window.name, "attachments_list"))
+    if (key != K_RIGHTARROW)
         return false;
-
-    UI_NX_FocusWeaponStats(localClientNum, dc, item->parent);
-    return true;
+    if (UI_NX_IsWeaponMenu(menu))
+    {
+        UI_NX_FocusWeaponStats(localClientNum, dc, menu);
+        return true;
+    }
+    return UI_NX_IsCustomClassMenu(menu) && item && item->type == 4 && Item_IsModal(item);
 }
 
 static bool UI_NX_HandleKillstreakListKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key)
@@ -5932,7 +5935,7 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
                     if (down && (UI_NX_HandleClassListFactionKey(localClientNum, dc, menu, key)
                         || UI_NX_HandleClassMenuKey(localClientNum, dc, item, key)
-                        || UI_NX_HandleAttachmentListRight(localClientNum, dc, item, key)
+                        || UI_NX_HandleClassSubmenuRight(localClientNum, dc, menu, item, key)
                         || UI_NX_HandleKillstreakListKey(localClientNum, dc, menu, key)))
                         return;
                     if (down && settingsMenu)
