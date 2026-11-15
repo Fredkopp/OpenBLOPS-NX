@@ -53,7 +53,7 @@ void _Dvar_RegisterBool(const char*n,bool def,unsigned flags,const char*){
 struct dvar_t{struct{int integer;}current;};
 dvar_t baseLimit{{60}},savedLimit{{-1}};
 const dvar_t *com_maxfps=&baseLimit;
-struct dvar_s { std::string value; };
+struct dvar_s { std::string value; struct { bool enabled=false; } current; };
 std::map<std::string,dvar_s> previewDvars;
 int previewWrites=0;
 const dvar_s *Dvar_FindVar(const char *name){
@@ -87,7 +87,7 @@ int Item_List_NextEntryForKey(int,int,int);
 '''
 code+=function('src/ui/ui_utils.cpp','int __cdecl Item_IsTextDefType(')+'\n'
 code+='const dvar_t *nx_fpsLimit=&savedLimit;\n'+function('src/qcommon/common.cpp','int Com_GetFrameRateLimit(')+'\n'
-for sig in ('static void UI_NX_CopyPreviewDvar(', 'static void UI_NX_SyncSettingsPreview('):
+for sig in ('static void UI_NX_SetPreviewDvar(', 'static void UI_NX_CopyPreviewDvar(', 'static void UI_NX_SyncSettingsPreview('):
  code+=function('src/ui/ui_shared.cpp',sig)+'\n'
 for sig in ['static itemDef_s *UI_NX_FindItem(', 'static bool UI_NX_ItemNamed(', 'static itemDef_s *UI_NX_FindItemByDvar(', 'static void UI_NX_MoveItem(', 'static itemDef_s *UI_NX_CloneItem(', 'bool UI_NX_IsHiddenAimAssistHighlight(', 'static bool UI_AddGraphicsChoiceRow(', 'static void UI_AddPerformanceOverlayOption(', 'static void UI_NX_AddFrameRateOption(', 'static float Item_Multi_GetFloatValue(', 'int __cdecl Item_Multi_FindDvarByValue(', 'int __cdecl Item_Multi_CountSettings(', 'int __cdecl Item_List_NextEntryForKey(', 'static bool Item_Multi_CycleValue(', 'int __cdecl Item_Multi_HandleKey(', 'const char *__cdecl Item_Multi_Setting(']:
  code+=function('src/ui/ui_shared.cpp',sig)+'\n'
@@ -105,6 +105,27 @@ code+='''int main(){
  previewDvars.at("r_mode").value="1920x1080";
  UI_NX_SyncSettingsPreview("options_graphics");
  assert(previewDvars.at("ui_r_mode").value=="1920x1080"&&previewWrites==4);
+ previewDvars["r_picmip"]={"0"};
+ previewDvars["r_picmip_bump"]={"2"};
+ previewDvars["r_picmip_spec"]={"3"};
+ previewDvars["r_picmip_manual"]={"0",{false}};
+ previewDvars["ui_r_picmip"]={"0"};
+ UI_NX_SyncSettingsPreview("options_graphics");
+ assert(previewDvars.at("ui_r_picmip").value=="-1");
+ assert(previewDvars.at("r_picmip").value=="0");
+ const int automaticWrites=previewWrites;
+ UI_NX_SyncSettingsPreview("options_graphics");
+ assert(previewWrites==automaticWrites);
+ UI_NX_SyncSettingsPreview("options_graphics_texture");
+ assert(previewDvars.at("ui_r_picmip").value=="0");
+ assert(previewDvars.at("ui_r_picmip_bump").value=="2");
+ assert(previewDvars.at("ui_r_picmip_spec").value=="3");
+ assert(previewDvars.at("ui_r_picmip_manual").value=="0");
+ previewDvars["r_picmip"]={"1"};
+ previewDvars["r_picmip_manual"]={"1",{true}};
+ UI_NX_SyncSettingsPreview("options_graphics");
+ assert(previewDvars.at("ui_r_picmip").value=="1");
+ assert(previewDvars.at("ui_r_picmip_manual").value=="1");
 '''
 for zone in ('code_post_gfx','ui_mp','common_mp'):
  rows=menu_items(zone,'options_graphics')
@@ -204,7 +225,7 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
  assert(menu.itemCount==count+5&&menu.items==items);
  }
 '''
-code+='puts("PASS: live settings previews, SP/MP graphics layouts, live FPS presets, native controls and repeated opening");}\n'
+code+='puts("PASS: live settings previews, automatic and manual textures, SP/MP graphics layouts, live FPS presets, native controls and repeated opening");}\n'
 cpp=out/'menu.cpp';exe=cpp.with_suffix('.exe');cpp.write_text(code)
 subprocess.run([a.compiler,'-std=c++17','-w',str(cpp),'-o',str(exe)],check=True,env=env)
 subprocess.run([str(exe)],check=True,env=env)

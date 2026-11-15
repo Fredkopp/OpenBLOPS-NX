@@ -5200,24 +5200,27 @@ static bool UI_NX_FocusSettingsCategory(int localClientNum, UiContext *dc, menuD
     return first && Item_SetFocus(localClientNum, dc, first, first->window.rect.x, first->window.rect.y);
 }
 
-static void UI_NX_CopyPreviewDvar(const char *destination, const char *source)
+static void UI_NX_SetPreviewDvar(const char *destination, const char *value)
 {
-    const dvar_s *current = Dvar_FindVar(source);
-    if (!current)
-        return;
     const dvar_s *preview = Dvar_FindVar(destination);
-    const char *value = Dvar_DisplayableValue(current);
     if (!preview || strcmp(Dvar_DisplayableValue(preview), value))
         Dvar_SetCommand(destination, const_cast<char *>(value));
 }
 
+static void UI_NX_CopyPreviewDvar(const char *destination, const char *source)
+{
+    if (const dvar_s *current = Dvar_FindVar(source))
+        UI_NX_SetPreviewDvar(destination, Dvar_DisplayableValue(current));
+}
+
 static void UI_NX_SyncSettingsPreview(const char *category)
 {
-    if (!I_stricmp(category, "options_graphics") || !I_stricmp(category, "options_graphics_texture"))
+    const bool graphics = !I_stricmp(category, "options_graphics");
+    if (graphics || !I_stricmp(category, "options_graphics_texture"))
     {
         static constexpr const char *settings[] = {
             "r_mode", "r_fullscreen", "r_aasamples", "r_aspectRatio", "r_displayRefresh", "r_vsync",
-            "r_picmip", "r_picmip_bump", "r_picmip_spec", "r_picmip_manual",
+            "r_picmip_bump", "r_picmip_spec", "r_picmip_manual",
         };
         for (const char *source : settings)
         {
@@ -5225,6 +5228,11 @@ static void UI_NX_SyncSettingsPreview(const char *category)
             Com_sprintf(destination, sizeof(destination), "ui_%s", source);
             UI_NX_CopyPreviewDvar(destination, source);
         }
+        const dvar_s *manual = Dvar_FindVar("r_picmip_manual");
+        if (graphics && manual && !manual->current.enabled)
+            UI_NX_SetPreviewDvar("ui_r_picmip", "-1");
+        else
+            UI_NX_CopyPreviewDvar("ui_r_picmip", "r_picmip");
     }
     else if (!I_stricmp(category, "options_sound"))
         UI_NX_CopyPreviewDvar("ui_sd_xa2_device_name", "sd_xa2_device_name");
