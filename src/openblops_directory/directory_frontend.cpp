@@ -351,7 +351,7 @@ const char *FirstStringConstant(const textDef_s *text)
 }
 void PatchRefreshPrompt(menuDef_t *menu)
 {
-    if (!Named(menu->window.name, "server_browser_unranked"))
+    if (!UI_NX_IsServerBrowserMenu(menu))
         return;
     static std::list<std::string> labels;
     static std::list<textDef_s> texts;

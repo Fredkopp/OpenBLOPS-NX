@@ -4216,6 +4216,38 @@ static bool UI_NX_ItemHasActionCommand(const itemDef_s *item, const char *comman
     return false;
 }
 
+bool UI_NX_IsServerBrowserMenu(const menuDef_t *menu)
+{
+    const char *name = menu ? menu->window.name : nullptr;
+    if (!name)
+        return false;
+    for (const char *tab : {"server_browser_ranked", "server_browser_unranked", "server_browser_wager",
+             "server_browser_friends", "server_browser_favorites", "server_browser_history"})
+        if (!I_stricmp(name, tab))
+            return true;
+    return false;
+}
+
+static int UI_NX_ServerBrowserShortcut(const itemDef_s *item)
+{
+    if (item->type != 3 || !UI_NX_IsServerBrowserMenu(item->parent))
+        return 0;
+    const char *name = item->window.name;
+    if ((name && !I_stricmp(name, "directory_refresh"))
+        || UI_NX_ItemHasActionCommand(item, "uiScript RefreshServers"))
+        return K_BUTTON_X;
+    if ((name && !I_stricmp(name, "directory_join"))
+        || UI_NX_ItemHasActionCommand(item, "uiScript JoinServer"))
+        return K_BUTTON_A;
+    return 0;
+}
+
+static bool UI_NX_IsServerBrowserTab(const itemDef_s *item)
+{
+    return item->type == 3 && UI_NX_IsServerBrowserMenu(item->parent)
+        && UI_NX_ItemHasActionCommand(item, "openMenuImmediate ( server_browser_");
+}
+
 static bool UI_NX_OpensSettingsCategory(const itemDef_s *item, const char *category)
 {
     char command[64];
@@ -4234,7 +4266,7 @@ static const char *UI_NX_SettingsDestination(const itemDef_s *item)
 static bool UI_NX_IsPointerOnly(itemDef_s *item)
 {
     if (UI_NX_IsBackPrompt(item) || UI_NX_IsFriendsShortcut(item) || UI_NX_IsFriendsTab(item) || UI_NX_ClassRotationButton(item)
-        || UI_NX_IsClassListFaction(item)
+        || UI_NX_IsClassListFaction(item) || UI_NX_ServerBrowserShortcut(item) || UI_NX_IsServerBrowserTab(item)
         || (item->window.name && !I_stricmp(item->window.name, "ExitFlyoutButton")))
         return true;
 
@@ -4985,6 +5017,12 @@ void    Menus_SetupOpenMenu(int localClientNum, UiContext *dc, menuDef_t *menu)
         const rectDef_s &rect = killstreakList->window.rect;
         Item_SetFocus(localClientNum, dc, killstreakList, rect.x, rect.y);
     }
+    if (UI_NX_IsServerBrowserMenu(menu) && Menu_GetFocused(dc) == menu)
+    {
+        itemDef_s *list = Menu_FindItemByName(menu, "browser");
+        if (list && list->type == 4)
+            Item_SetFocus(localClientNum, dc, list, list->window.rect.x, list->window.rect.y);
+    }
     if ((settingsPage || settingsRoot) && Menu_GetFocused(dc) == menu)
     {
         Menu_ClearFocus(localClientNum, dc, menu);
@@ -5545,6 +5583,51 @@ int    Menu_CheckOnKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
 }
 
 #ifdef KISAK_NX
+static bool UI_NX_HandleServerBrowserKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down)
+{
+    if (!down || !UI_NX_IsServerBrowserMenu(menu))
+        return false;
+    if (key == K_BUTTON_LSHLDR || key == K_BUTTON_RSHLDR)
+        return Menu_CheckOnKey(localClientNum, dc, menu, key == K_BUTTON_LSHLDR ? K_LEFTARROW : K_RIGHTARROW);
+    if (key == K_LEFTARROW || key == K_RIGHTARROW)
+        return true;
+    if (key != K_BUTTON_A && key != K_BUTTON_X)
+        return false;
+
+    if (key == K_BUTTON_A)
+    {
+        itemDef_s *browser = Menu_FindItemByName(menu, "browser");
+        const int context = dc->contextIndex;
+        const int cursor = Menu_GetCursorItem(context, menu);
+        if (cursor >= 0 && cursor < menu->itemCount && menu->items[cursor] != browser
+            && Window_HasFocus(context, &menu->items[cursor]->window)
+            && UI_NX_CanFocus(localClientNum, dc, menu->items[cursor]))
+            return false;
+        if (!browser || browser->type != 4 || !Item_IsVisible(localClientNum, context, browser))
+            return true;
+        listBoxDef_s *list = Item_GetListBoxDef(browser);
+        if (!list)
+            return true;
+        const int row = list->cursorPos[context];
+        const int count = UI_FeederCount(localClientNum, context, list->special, list);
+        if (row < 0 || row >= count)
+            return true;
+        UI_FeederSelection(localClientNum, context, list->special, row);
+    }
+
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if (UI_NX_ServerBrowserShortcut(item) == key && Item_IsVisible(localClientNum, dc->contextIndex, item)
+            && ((item->dvarFlags & 3) == 0 || Item_EnableShowViaDvar(item, 1)))
+        {
+            Item_Action(localClientNum, dc, item);
+            break;
+        }
+    }
+    return true;
+}
+
 static bool UI_NX_HandleFriendsTabKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down)
 {
     if (!down || !UI_NX_IsFriendsMenu(menu))
@@ -5618,7 +5701,8 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
     }
 #ifdef KISAK_NX
     if (UI_NX_HandleTitleKey(localClientNum, dc, menu, key, down)
-        || UI_NX_HandleFriendsTabKey(localClientNum, dc, menu, key, down))
+        || UI_NX_HandleFriendsTabKey(localClientNum, dc, menu, key, down)
+        || UI_NX_HandleServerBrowserKey(localClientNum, dc, menu, key, down))
         return;
     if ((key == K_BUTTON_LSHLDR || key == K_BUTTON_RSHLDR) && UI_NX_IsClassRotationMenu(menu))
         return;
@@ -10098,7 +10182,7 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                 }
 #endif
 #ifdef KISAK_NX
-                if (!UI_NX_IsFriendsShortcut(item))
+                if (!UI_NX_IsFriendsShortcut(item) && !UI_NX_ServerBrowserShortcut(item))
 #endif
                 Window_Paint(
                     localClientNum,
@@ -10111,7 +10195,15 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     item->type,
                     item);
 #ifdef KISAK_NX
-                if (const int button = UI_NX_ClassRotationButton(item))
+                int button = UI_NX_ClassRotationButton(item);
+                if (UI_NX_IsServerBrowserTab(item))
+                {
+                    if (UI_NX_ItemHasActionCommand(item, "openMenuImmediate ( server_browser_ranked )"))
+                        button = K_BUTTON_LSHLDR;
+                    else if (UI_NX_ItemHasActionCommand(item, "openMenuImmediate ( server_browser_history )"))
+                        button = K_BUTTON_RSHLDR;
+                }
+                if (button && item->window.rect.w > 0.0f)
                 {
                     const rectDef_s &bounds = item->window.rect;
                     const ScreenPlacement *placement = &scrPlaceView[dc->contextIndex];

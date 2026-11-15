@@ -116,6 +116,7 @@ void Item_RunSingleEventScript(int,UiContext *dc,itemDef_s *,GenericEventScript 
 void Cbuf_AddText(int,const char *s){commands.emplace_back(s);}
 char *va(const char *format,...){static char b[1024];va_list a;va_start(a,format);vsnprintf(b,sizeof(b),format,a);va_end(a);return b;}
 """
+ui=(r/'src/ui/ui_shared.cpp').read_text();code+=ui[ui.index('bool UI_NX_IsServerBrowserMenu('):ui.index('static int UI_NX_ServerBrowserShortcut(')]
 source=(r/'src/openblops_directory/directory_frontend.cpp').read_text();source=re.sub(r'^#include[^\n]*\n','',source,flags=re.M);code+=source
 code+=r"""
 int main(){

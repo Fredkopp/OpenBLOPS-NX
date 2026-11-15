@@ -42,6 +42,12 @@ void Com_Printf(int,const char *,...){}
 bool Directory_PopulateServers(int,int);
 struct {struct {int integer=0;} current;} sourceDvar;
 auto ui_netSource=&sourceDvar;
+using dvar_s=decltype(sourceDvar);
+uiInfo_s *uiInfoArray=&ui;
+int refreshStops=0;
+void UI_StopServerRefresh(){++refreshStops;}
+void Dvar_SetInt(dvar_s *var,int value){var->current.integer=value;}
+const char *Directory_UpdateGateMenu(const char *name){return name;}
 struct {struct {int currentServer=0,numDisplayServers=3,serverCount=3,displayServers[3]{0,1,2};} serverStatus;} sharedUiInfo;
 char info_7[1024],info_1[1024];int lastInfoIndex=-1;
 bool CL_GetServerList(int s,serverInfo_t **servers,int **count){*servers=backing;*count=&backingCount;return s==0;}
@@ -75,6 +81,7 @@ bool Directory_Join(int s,int i){if(!Directory_IsRow(s,i))return false;++directo
 void CL_Connect(serverInfo_t *server){++legacyCalls;lastIndex=int(server-backing);}
 """
 code+=body('src/ui/ui_main.cpp','void __cdecl UI_UpdateDisplayServers(')
+code+=body('src/ui/ui_main_pc.cpp','void __cdecl UI_NetSource_UpdateDisplayList(')
 code+=body('src/openblops_directory/directory_engine.cpp','const char *Directory_BrowserMenu(')
 code+=body('src/openblops_directory/directory_engine.cpp','bool TryOpenBrowser(')
 code+=body('src/openblops_directory/directory_engine.cpp','bool Directory_PopulateServers(')
@@ -108,14 +115,27 @@ int main(){
  assert(LAN_CompareServers(0,8,0,0,1)>0);assert(LAN_CompareServers(0,8,1,0,1)>0);
  assert(LAN_CompareServers(0,8,0,1,0)<0);assert(LAN_CompareServers(0,8,1,1,0)<0);
  assert(LAN_CompareServers(0,8,0,-1,0)==0);
- for(const char *old:{"server_browser_ranked","server_browser_wager","server_browser_friends","server_browser_favorites","server_browser_history"})
-  assert(std::string(Directory_BrowserMenu(old))=="server_browser_unranked");
+ for(const char *tab:{"server_browser_ranked","server_browser_wager","server_browser_friends","server_browser_favorites","server_browser_history"})
+#if defined(KISAK_NX) && defined(KISAK_MP)
+  assert(std::string(Directory_BrowserMenu(tab))==tab);
+ UI_NetSource_UpdateDisplayList(3);assert(sourceDvar.current.integer==3&&refreshStops==1);
+ UI_NetSource_UpdateDisplayList(3);assert(refreshStops==1);
+ UI_NetSource_UpdateDisplayList(0);assert(sourceDvar.current.integer==0&&refreshStops==2);
+#else
+  assert(std::string(Directory_BrowserMenu(tab))=="server_browser_unranked");
+ UI_NetSource_UpdateDisplayList(3);assert(sourceDvar.current.integer==0&&refreshStops==0);
+#endif
  assert(std::string(Directory_BrowserMenu("main_text"))=="main_text");
  assert(Directory_BrowserMenu(nullptr)==nullptr);
  // Reproduce the PC log: no running server, empty map, valid browser assets.
  running.current.enabled=false;menuLevel=false;sourceDvar.current.integer=1;
  populateOnOpen=true;fakeClient.refreshing=false;
- assert(Directory_PopulateServers(0,0)&&browserRequests==1);
+ assert(Directory_PopulateServers(0,0));
+#if defined(KISAK_NX) && defined(KISAK_MP)
+ assert(browserRequests==0);
+#else
+ assert(browserRequests==1);
+#endif
  assert(TryOpenBrowser());assert(sourceDvar.current.integer==0&&refreshCalls==1&&browserOpens==1);
  assert(menuChecks==0); // Never require a nonexistent PC menu map.
  running.current.enabled=true;menuLevel=false;assert(!TryOpenBrowser());
@@ -139,8 +159,8 @@ int main(){
 }
 """
 env=os.environ.copy();env['PATH']=str(Path(a.compiler).parent)+os.pathsep+env.get('PATH','')
-for mode in ('KISAK_MP','KISAK_SP'):
+for mode,flags in [('mp',['KISAK_MP']),('sp',['KISAK_SP']),('nx-mp',['KISAK_NX','KISAK_MP'])]:
  fixture=code.replace('bool TryOpenBrowser(', 'bool Directory_ZombiesPrepareMenus(DC *){return menuPresent;}\nbool TryOpenBrowser(',1)
  cpp=out/('browser-'+mode+'.cpp');cpp.write_text(fixture);exe=cpp.with_suffix('.exe')
- subprocess.run([a.compiler,'-std=c++20','-Wall','-Wextra','-Werror','-D'+mode,str(cpp),'-o',str(exe)],check=True,env=env)
+ subprocess.run([a.compiler,'-std=c++20','-Wall','-Wextra','-Werror',*['-D'+flag for flag in flags],str(cpp),'-o',str(exe)],check=True,env=env)
  subprocess.run([str(exe)],check=True,env=env)
