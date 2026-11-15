@@ -4036,9 +4036,14 @@ static bool UI_NX_IsClassListMenu(const menuDef_t *menu)
     return menu && menu->window.name && !I_stricmp(menu->window.name, "cac_main");
 }
 
+static bool UI_NX_IsClassEditorMenu(const menuDef_t *menu)
+{
+    return UI_NX_IsCustomClassMenu(menu) || (menu && menu->window.name && !I_stricmp(menu->window.name, "cac_weapon"));
+}
+
 bool UI_NX_IsClassRotationMenu(const menuDef_t *menu)
 {
-    return UI_NX_IsCustomClassMenu(menu) || UI_NX_IsClassListMenu(menu);
+    return UI_NX_IsClassEditorMenu(menu) || UI_NX_IsClassListMenu(menu);
 }
 
 static itemDef_s *UI_NX_KillstreakList(menuDef_t *menu)
@@ -5324,12 +5329,12 @@ static bool UI_NX_HandleClassListFactionKey(int localClientNum, UiContext *dc, m
 
 static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_s *item, int key)
 {
-    if (!item || !UI_NX_IsCustomClassMenu(item->parent) || !UI_NX_CanFocus(localClientNum, dc, item))
+    if (!item || !UI_NX_IsClassEditorMenu(item->parent) || !UI_NX_CanFocus(localClientNum, dc, item))
         return false;
-    const int slot = UI_NX_ClassFooterSlot(item);
 
     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
-    if (slot == 0)
+    const bool faction = UI_NX_IsClassFactionButton(item);
+    if (faction)
     {
         if (s_nxClassFactionEditMenu == item->parent)
         {
@@ -5347,9 +5352,9 @@ static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_
         }
     }
 
-    if (key == K_UPARROW || key == K_DOWNARROW)
+    if ((key == K_UPARROW || key == K_DOWNARROW) && UI_NX_IsCustomClassMenu(item->parent))
         return UI_NX_MoveClassVerticalFocus(localClientNum, dc, item->parent, item, key == K_DOWNARROW ? 1 : -1) != nullptr;
-    if (slot < 0 || !horizontal)
+    if (!horizontal || (!faction && UI_NX_ClassFooterSlot(item) < 0))
         return false;
     UI_NX_MoveHorizontalFocus(localClientNum, dc, item->parent, item, key == K_LEFTARROW ? -1 : 1);
     return true;
@@ -10468,7 +10473,8 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
             }
             float textX = textRect->x;
 #ifdef KISAK_NX
-            if (classFooterSlot == 0 && s_nxClassFactionEditMenu != item->parent)
+            if (UI_NX_IsClassFactionButton(item) && UI_NX_IsClassEditorMenu(item->parent)
+                && s_nxClassFactionEditMenu != item->parent)
                 drawArrows = false;
             if (UI_NX_IsClassListFaction(item))
                 drawArrows = true;

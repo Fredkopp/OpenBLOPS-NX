@@ -421,7 +421,7 @@ void __thiscall UIViewer::UpdateCamera(refdef_s *refdef, float deltaTime)
     }
     else if (this->mode == MODE_PLAYER_FIRST || this->mode == MODE_WEAPON_FIRST || this->mode == MODE_EDIT_PLAYER_BODY
 #ifdef KISAK_NX
-        || (classRotationMenu && this->mode == MODE_CHOOSE_CLASS_PLAYER)
+        || classRotationMenu
 #endif
     )
     {
