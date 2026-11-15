@@ -4031,9 +4031,14 @@ static bool UI_NX_IsCustomClassMenu(const menuDef_t *menu)
     return menu && menu->window.name && !I_stricmp(menu->window.name, "menu_cac_custom");
 }
 
+static bool UI_NX_IsClassListMenu(const menuDef_t *menu)
+{
+    return menu && menu->window.name && !I_stricmp(menu->window.name, "cac_main");
+}
+
 bool UI_NX_IsClassRotationMenu(const menuDef_t *menu)
 {
-    return UI_NX_IsCustomClassMenu(menu) || (menu && menu->window.name && !I_stricmp(menu->window.name, "cac_main"));
+    return UI_NX_IsCustomClassMenu(menu) || UI_NX_IsClassListMenu(menu);
 }
 
 static itemDef_s *UI_NX_KillstreakList(menuDef_t *menu)
@@ -4055,11 +4060,21 @@ static int UI_NX_ClassRotationButton(const itemDef_s *item)
     return 0;
 }
 
+static bool UI_NX_IsClassFactionButton(const itemDef_s *item)
+{
+    return item && item->type == 10 && item->window.name && !I_stricmp(item->window.name, "cac_faction_button");
+}
+
+static bool UI_NX_IsClassListFaction(const itemDef_s *item)
+{
+    return UI_NX_IsClassFactionButton(item) && UI_NX_IsClassListMenu(item->parent);
+}
+
 static int UI_NX_ClassFooterSlot(itemDef_s *item)
 {
     if (!UI_NX_IsCustomClassMenu(item->parent))
         return -1;
-    if (item->type == 10 && item->window.name && !I_stricmp(item->window.name, "cac_faction_button"))
+    if (UI_NX_IsClassFactionButton(item))
         return 0;
 
     const textDef_s *label = item->type == 3 ? Item_GetTextDef(item) : nullptr;
@@ -4214,6 +4229,7 @@ static const char *UI_NX_SettingsDestination(const itemDef_s *item)
 static bool UI_NX_IsPointerOnly(itemDef_s *item)
 {
     if (UI_NX_IsBackPrompt(item) || UI_NX_IsFriendsShortcut(item) || UI_NX_IsFriendsTab(item) || UI_NX_ClassRotationButton(item)
+        || UI_NX_IsClassListFaction(item)
         || (item->window.name && !I_stricmp(item->window.name, "ExitFlyoutButton")))
         return true;
 
@@ -5280,6 +5296,24 @@ static void UI_NX_MoveHorizontalFocus(int localClientNum, UiContext *dc, menuDef
         Item_SetFocus(localClientNum, dc, closest, closest->window.rect.x, closest->window.rect.y);
 }
 
+static bool Item_Multi_CycleValue(itemDef_s *item, const multiDef_s *multi, int key);
+
+static bool UI_NX_HandleClassListFactionKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key)
+{
+    if ((key != K_LEFTARROW && key != K_RIGHTARROW) || !UI_NX_IsClassListMenu(menu))
+        return false;
+
+    itemDef_s *faction = Menu_FindItemByName(menu, "cac_faction_button");
+    if (!UI_NX_IsClassFactionButton(faction) || !faction->dvar)
+        return false;
+
+    if (Item_IsVisible(localClientNum, dc->contextIndex, faction)
+        && ((faction->dvarFlags & 3) == 0 || Item_EnableShowViaDvar(faction, 1))
+        && Item_Multi_CycleValue(faction, Item_GetMultiDef(faction), key) && !Dvar_GetInt("ui_choice_noaction"))
+        Item_Action(localClientNum, dc, faction);
+    return true;
+}
+
 static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_s *item, int key)
 {
     if (!item || !UI_NX_IsCustomClassMenu(item->parent) || !UI_NX_CanFocus(localClientNum, dc, item))
@@ -5629,7 +5663,8 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                     const bool settingsMenu = UI_NX_IsSettingsMenu(menu);
                     const char *settingsCategory = UI_NX_SettingsCategoryMenu(menu);
                     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
-                    if (down && (UI_NX_HandleClassMenuKey(localClientNum, dc, item, key)
+                    if (down && (UI_NX_HandleClassListFactionKey(localClientNum, dc, menu, key)
+                        || UI_NX_HandleClassMenuKey(localClientNum, dc, item, key)
                         || UI_NX_HandleKillstreakListKey(localClientNum, dc, menu, key)))
                         return;
                     if (down && settingsMenu)
@@ -6817,14 +6852,26 @@ bool __cdecl Item_ContainsMouse(UiContext *dc, itemDef_s *item)
     return v6;
 }
 
+static bool Item_Multi_CycleValue(itemDef_s *item, const multiDef_s *multi, int key)
+{
+    if (!multi || multi->actionOnEnterPressOnly)
+        return false;
+
+    const int current = Item_Multi_FindDvarByValue(item);
+    int next = Item_List_NextEntryForKey(key, current, multi->count);
+    if (next == current)
+        return false;
+    while (!multi->dvarList[next] || !*multi->dvarList[next])
+        next = Item_List_NextEntryForKey(key, next, multi->count);
+    if (multi->strDef)
+        Dvar_SetFromStringByName(item->dvar, (char *)multi->dvarStr[next]);
+    else
+        Dvar_SetFromStringByName(item->dvar, va("%g", multi->dvarValue[next]));
+    return true;
+}
+
 int __cdecl Item_Multi_HandleKey(UiContext *dc, itemDef_s *item, int key)
 {
-    char *v4; // eax
-    multiDef_s *multiPtr; // [esp+8h] [ebp-10h]
-    int next; // [esp+Ch] [ebp-Ch]
-    int count; // [esp+10h] [ebp-8h]
-    int current; // [esp+14h] [ebp-4h]
-
     if ( !dc && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\ui\\ui_shared.cpp", 6392, 0, "%s", "dc") )
         __debugbreak();
     if ( !item && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\ui\\ui_shared.cpp", 6393, 0, "%s", "item") )
@@ -6834,30 +6881,8 @@ int __cdecl Item_Multi_HandleKey(UiContext *dc, itemDef_s *item, int key)
     {
         __debugbreak();
     }
-    multiPtr = Item_GetMultiDef(item);
-    if ( !multiPtr )
-        return 0;
-    if ( !Item_ShouldHandleKey(dc, item, key) )
-        return 0;
-    current = Item_Multi_FindDvarByValue(item);
-    count = Item_Multi_CountSettings(item);
-    next = Item_List_NextEntryForKey(key, current, count);
-    if ( next == current )
-        return 0;
-    if ( multiPtr->actionOnEnterPressOnly )
-        return 0;
-    while ( !multiPtr->dvarList[next] || !*multiPtr->dvarList[next] )
-        next = Item_List_NextEntryForKey(key, next, count);
-    if ( multiPtr->strDef )
-    {
-        Dvar_SetFromStringByName(item->dvar, (char *)multiPtr->dvarStr[next]);
-    }
-    else
-    {
-        v4 = va("%g", multiPtr->dvarValue[next]);
-        Dvar_SetFromStringByName(item->dvar, v4);
-    }
-    return 1;
+    const multiDef_s *multi = Item_GetMultiDef(item);
+    return multi && Item_ShouldHandleKey(dc, item, key) && Item_Multi_CycleValue(item, multi, key);
 }
 
 int __cdecl Item_Multi_CountSettings(itemDef_s *item)
@@ -10437,6 +10462,8 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
 #ifdef KISAK_NX
             if (classFooterSlot == 0 && s_nxClassFactionEditMenu != item->parent)
                 drawArrows = false;
+            if (UI_NX_IsClassListFaction(item))
+                drawArrows = true;
             if (UI_NX_IsFriendsShortcut(item))
                 textX = std::min(textX, rect->x + rect->w - textRect->w);
             float clippedWidth = 0.0f;

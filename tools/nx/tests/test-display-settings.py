@@ -89,7 +89,7 @@ code+=function('src/ui/ui_utils.cpp','int __cdecl Item_IsTextDefType(')+'\n'
 code+='const dvar_t *nx_fpsLimit=&savedLimit;\n'+function('src/qcommon/common.cpp','int Com_GetFrameRateLimit(')+'\n'
 for sig in ('static void UI_NX_CopyPreviewDvar(', 'static void UI_NX_SyncSettingsPreview('):
  code+=function('src/ui/ui_shared.cpp',sig)+'\n'
-for sig in ['static itemDef_s *UI_NX_FindItem(', 'static bool UI_NX_ItemNamed(', 'static itemDef_s *UI_NX_FindItemByDvar(', 'static void UI_NX_MoveItem(', 'static itemDef_s *UI_NX_CloneItem(', 'bool UI_NX_IsHiddenAimAssistHighlight(', 'static bool UI_AddGraphicsChoiceRow(', 'static void UI_AddPerformanceOverlayOption(', 'static void UI_NX_AddFrameRateOption(', 'static float Item_Multi_GetFloatValue(', 'int __cdecl Item_Multi_FindDvarByValue(', 'int __cdecl Item_Multi_CountSettings(', 'int __cdecl Item_List_NextEntryForKey(', 'int __cdecl Item_Multi_HandleKey(', 'const char *__cdecl Item_Multi_Setting(']:
+for sig in ['static itemDef_s *UI_NX_FindItem(', 'static bool UI_NX_ItemNamed(', 'static itemDef_s *UI_NX_FindItemByDvar(', 'static void UI_NX_MoveItem(', 'static itemDef_s *UI_NX_CloneItem(', 'bool UI_NX_IsHiddenAimAssistHighlight(', 'static bool UI_AddGraphicsChoiceRow(', 'static void UI_AddPerformanceOverlayOption(', 'static void UI_NX_AddFrameRateOption(', 'static float Item_Multi_GetFloatValue(', 'int __cdecl Item_Multi_FindDvarByValue(', 'int __cdecl Item_Multi_CountSettings(', 'int __cdecl Item_List_NextEntryForKey(', 'static bool Item_Multi_CycleValue(', 'int __cdecl Item_Multi_HandleKey(', 'const char *__cdecl Item_Multi_Setting(']:
  code+=function('src/ui/ui_shared.cpp',sig)+'\n'
 code+=function('src/ui/ui_shared.cpp','void __cdecl Item_Action(')+'\n'
 code+='''int main(){
