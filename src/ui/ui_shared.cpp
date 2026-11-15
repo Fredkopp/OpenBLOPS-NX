@@ -5323,18 +5323,18 @@ static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_
     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
     if (slot == 0)
     {
-        if (key == K_BUTTON_A)
-        {
-            s_nxClassFactionEditMenu = item->parent;
-            return true;
-        }
         if (s_nxClassFactionEditMenu == item->parent)
         {
-            if (key == K_BUTTON_B)
+            if (key == K_BUTTON_A || key == K_BUTTON_B)
                 s_nxClassFactionEditMenu = nullptr;
             else if (horizontal && Item_HandleKey(localClientNum, dc, item, key, 1)
                 && !Dvar_GetInt("ui_choice_noaction"))
                 Item_Action(localClientNum, dc, item);
+            return true;
+        }
+        if (key == K_BUTTON_A)
+        {
+            s_nxClassFactionEditMenu = item->parent;
             return true;
         }
     }
