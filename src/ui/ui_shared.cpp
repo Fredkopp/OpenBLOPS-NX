@@ -5240,27 +5240,21 @@ static bool UI_NX_RunXShortcut(int localClientNum, UiContext *dc, menuDef_t *men
     return false;
 }
 
-static bool UI_NX_IsClassFacePaintButton(const itemDef_s *item)
+static bool UI_NX_IsClassMainOption(const itemDef_s *item)
 {
-    return item->type == 3 && item->window.name && !I_stricmp(item->window.name, "grid_button_9");
+    constexpr char prefix[] = "grid_button_";
+    return item->type == 3 && item->window.name && !I_strnicmp(item->window.name, prefix, sizeof(prefix) - 1);
 }
 
-static itemDef_s *UI_NX_MoveClassVerticalFocus(int localClientNum, UiContext *dc, menuDef_t *menu,
-    itemDef_s *current, int step)
+static void UI_NX_FocusFirstClassFooterButton(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
-    const bool toFooter = step > 0 && UI_NX_IsClassFacePaintButton(current);
-    if (!toFooter && (step > 0 || UI_NX_ClassFooterSlot(current) < 0))
-        return nullptr;
-
     for (int i = 0; i < menu->itemCount; ++i)
     {
         itemDef_s *item = menu->items[i];
-        const bool target = toFooter ? UI_NX_ClassFooterSlot(item) >= 0 : UI_NX_IsClassFacePaintButton(item);
-        if (target && UI_NX_CanFocus(localClientNum, dc, item)
+        if (UI_NX_ClassFooterSlot(item) >= 0 && UI_NX_CanFocus(localClientNum, dc, item)
             && Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
-            return item;
+            return;
     }
-    return nullptr;
 }
 
 static itemDef_s *UI_NX_MoveFocusInScreenOrder(int localClientNum, UiContext *dc, menuDef_t *menu, int step)
@@ -5304,7 +5298,8 @@ static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef
     const int cursor = Menu_GetCursorItem(dc->contextIndex, menu);
     const bool hasCursor = cursor >= 0 && cursor < count;
     const bool settingsPage = UI_NX_SettingsCategoryMenu(menu) != nullptr;
-    if ((!hasCursor && !settingsPage) || (menu->window.name
+    const bool classEditor = UI_NX_IsCustomClassMenu(menu);
+    if ((!hasCursor && !settingsPage && !classEditor) || (menu->window.name
         && (!I_stricmp(menu->window.name, "basictraining_settings") || !I_stricmp(menu->window.name, "server_settings"))))
         return UI_NX_MoveFocusInScreenOrder(localClientNum, dc, menu, step);
 
@@ -5314,7 +5309,8 @@ static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef
     {
         index = (index + step + count) % count;
         itemDef_s *item = menu->items[index];
-        if (settingsPage && UI_NX_IsSettingsCategoryItem(item) != onCategories)
+        if ((settingsPage && UI_NX_IsSettingsCategoryItem(item) != onCategories)
+            || (classEditor && !UI_NX_IsClassMainOption(item)))
             continue;
         if (UI_NX_CanFocus(localClientNum, dc, item)
             && Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
@@ -5471,8 +5467,15 @@ static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_
         return false;
 
     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
-    const bool faction = UI_NX_IsClassFactionButton(item);
-    if (faction)
+    const bool vertical = key == K_UPARROW || key == K_DOWNARROW;
+    const bool footer = UI_NX_ClassFooterSlot(item) >= 0;
+    if (vertical && (footer || UI_NX_IsClassMainOption(item)))
+    {
+        UI_NX_MoveMenuFocus(localClientNum, dc, item->parent, key == K_DOWNARROW ? 1 : -1);
+        return true;
+    }
+
+    if (UI_NX_IsClassFactionButton(item))
     {
         if (s_nxClassFactionEditMenu == item->parent)
         {
@@ -5490,11 +5493,14 @@ static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_
         }
     }
 
-    if (key == K_UPARROW || key == K_DOWNARROW)
-        return UI_NX_MoveClassVerticalFocus(localClientNum, dc, item->parent, item, key == K_DOWNARROW ? 1 : -1) != nullptr;
-    if (!horizontal || (!faction && UI_NX_ClassFooterSlot(item) < 0))
+    if (!horizontal)
         return false;
-    UI_NX_MoveHorizontalFocus(localClientNum, dc, item->parent, item, key == K_LEFTARROW ? -1 : 1);
+    if (footer)
+        UI_NX_MoveHorizontalFocus(localClientNum, dc, item->parent, item, key == K_LEFTARROW ? -1 : 1);
+    else if (UI_NX_IsClassMainOption(item))
+        UI_NX_FocusFirstClassFooterButton(localClientNum, dc, item->parent);
+    else
+        return false;
     return true;
 }
 
