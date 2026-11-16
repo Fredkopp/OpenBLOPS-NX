@@ -5242,8 +5242,42 @@ static bool UI_NX_RunXShortcut(int localClientNum, UiContext *dc, menuDef_t *men
 
 static bool UI_NX_IsClassMainOption(const itemDef_s *item)
 {
-    constexpr char prefix[] = "grid_button_";
-    return item->type == 3 && item->window.name && !I_strnicmp(item->window.name, prefix, sizeof(prefix) - 1);
+    if (item->type != 3 || !item->window.name)
+        return false;
+    const char *prefix = UI_NX_IsWeaponMenu(item->parent) ? "new_frame_button_" : "grid_button_";
+    return !I_strnicmp(item->window.name, prefix, strlen(prefix));
+}
+
+static bool UI_NX_IsWeaponStatsToggle(const itemDef_s *item)
+{
+    return item->type == 3 && UI_NX_IsWeaponMenu(item->parent)
+        && UI_NX_ItemHasActionCommand(item, "setDvar ui_cac_gun_attributes_vis ");
+}
+
+static bool UI_NX_IsClassFooterButton(itemDef_s *item)
+{
+    return UI_NX_ClassFooterSlot(item) >= 0 || UI_NX_IsWeaponStatsToggle(item);
+}
+
+static bool UI_NX_IsClassDropdown(itemDef_s *item)
+{
+    return item->type == 4 && Item_IsModal(item);
+}
+
+static bool UI_NX_FocusClassDropdown(int localClientNum, UiContext *dc, menuDef_t *menu, bool last)
+{
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if (UI_NX_IsClassDropdown(item) && UI_NX_CanFocus(localClientNum, dc, item)
+            && Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
+        {
+            if (last)
+                UI_NX_SelectListBoxEdge(localClientNum, dc, item, true);
+            return true;
+        }
+    }
+    return false;
 }
 
 static void UI_NX_FocusFirstClassFooterButton(int localClientNum, UiContext *dc, menuDef_t *menu)
@@ -5251,7 +5285,7 @@ static void UI_NX_FocusFirstClassFooterButton(int localClientNum, UiContext *dc,
     for (int i = 0; i < menu->itemCount; ++i)
     {
         itemDef_s *item = menu->items[i];
-        if (UI_NX_ClassFooterSlot(item) >= 0 && UI_NX_CanFocus(localClientNum, dc, item)
+        if (UI_NX_IsClassFooterButton(item) && UI_NX_CanFocus(localClientNum, dc, item)
             && Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
             return;
     }
@@ -5298,7 +5332,7 @@ static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef
     const int cursor = Menu_GetCursorItem(dc->contextIndex, menu);
     const bool hasCursor = cursor >= 0 && cursor < count;
     const bool settingsPage = UI_NX_SettingsCategoryMenu(menu) != nullptr;
-    const bool classEditor = UI_NX_IsCustomClassMenu(menu);
+    const bool classEditor = UI_NX_IsClassEditorMenu(menu);
     if ((!hasCursor && !settingsPage && !classEditor) || (menu->window.name
         && (!I_stricmp(menu->window.name, "basictraining_settings") || !I_stricmp(menu->window.name, "server_settings"))))
         return UI_NX_MoveFocusInScreenOrder(localClientNum, dc, menu, step);
@@ -5418,13 +5452,13 @@ static void UI_NX_MoveHorizontalFocus(int localClientNum, UiContext *dc, menuDef
     }
 
     const rectDef_s from = UI_NX_ScreenRect(dc, current);
-    const bool classFooter = UI_NX_ClassFooterSlot(current) >= 0;
+    const bool classFooter = UI_NX_IsClassFooterButton(current);
     itemDef_s *closest = nullptr;
     float bestDistance = FLT_MAX;
     for (int i = 0; i < menu->itemCount; ++i)
     {
         itemDef_s *candidate = menu->items[i];
-        if (candidate == current || (classFooter && UI_NX_ClassFooterSlot(candidate) < 0)
+        if (candidate == current || (classFooter && !UI_NX_IsClassFooterButton(candidate))
             || !UI_NX_CanFocus(localClientNum, dc, candidate))
             continue;
         const rectDef_s to = UI_NX_ScreenRect(dc, candidate);
@@ -5461,17 +5495,27 @@ static bool UI_NX_HandleClassListFactionKey(int localClientNum, UiContext *dc, m
     return true;
 }
 
-static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_s *item, int key)
+static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, menuDef_t *menu, itemDef_s *item, int key)
 {
-    if (!item || !UI_NX_IsCustomClassMenu(item->parent) || !UI_NX_CanFocus(localClientNum, dc, item))
+    if (!UI_NX_IsClassEditorMenu(menu))
         return false;
 
     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
     const bool vertical = key == K_UPARROW || key == K_DOWNARROW;
-    const bool footer = UI_NX_ClassFooterSlot(item) >= 0;
-    if (vertical && (footer || UI_NX_IsClassMainOption(item)))
+    if (item && !UI_NX_CanFocus(localClientNum, dc, item))
+        item = nullptr;
+    const bool footer = item && UI_NX_IsClassFooterButton(item);
+    if (vertical)
     {
-        UI_NX_MoveMenuFocus(localClientNum, dc, item->parent, key == K_DOWNARROW ? 1 : -1);
+        const bool up = key == K_UPARROW;
+        if (item && UI_NX_IsClassDropdown(item))
+        {
+            Item_ListBox_HandleKey(localClientNum, dc, item, key, 1, 0);
+            return true;
+        }
+        if ((footer || !item) && UI_NX_FocusClassDropdown(localClientNum, dc, menu, up))
+            return true;
+        UI_NX_MoveMenuFocus(localClientNum, dc, menu, up ? -1 : 1);
         return true;
     }
 
@@ -5496,42 +5540,10 @@ static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_
     if (!horizontal)
         return false;
     if (footer)
-        UI_NX_MoveHorizontalFocus(localClientNum, dc, item->parent, item, key == K_LEFTARROW ? -1 : 1);
-    else if (UI_NX_IsClassMainOption(item))
-        UI_NX_FocusFirstClassFooterButton(localClientNum, dc, item->parent);
-    else
-        return false;
+        UI_NX_MoveHorizontalFocus(localClientNum, dc, menu, item, key == K_LEFTARROW ? -1 : 1);
+    else if (!item || UI_NX_IsWeaponMenu(menu) || !UI_NX_IsClassDropdown(item))
+        UI_NX_FocusFirstClassFooterButton(localClientNum, dc, menu);
     return true;
-}
-
-static bool UI_NX_IsWeaponStatsToggle(const itemDef_s *item)
-{
-    return item->type == 3 && UI_NX_IsWeaponMenu(item->parent)
-        && UI_NX_ItemHasActionCommand(item, "setDvar ui_cac_gun_attributes_vis ");
-}
-
-static void UI_NX_FocusWeaponStats(int localClientNum, UiContext *dc, menuDef_t *menu)
-{
-    for (int i = 0; i < menu->itemCount; ++i)
-    {
-        itemDef_s *candidate = menu->items[i];
-        if (UI_NX_IsWeaponStatsToggle(candidate) && UI_NX_CanFocus(localClientNum, dc, candidate)
-            && Item_SetFocus(localClientNum, dc, candidate, candidate->window.rect.x, candidate->window.rect.y))
-            return;
-    }
-}
-
-static bool UI_NX_HandleClassSubmenuRight(int localClientNum, UiContext *dc, menuDef_t *menu,
-    itemDef_s *item, int key)
-{
-    if (key != K_RIGHTARROW)
-        return false;
-    if (UI_NX_IsWeaponMenu(menu))
-    {
-        UI_NX_FocusWeaponStats(localClientNum, dc, menu);
-        return true;
-    }
-    return UI_NX_IsCustomClassMenu(menu) && item && item->type == 4 && Item_IsModal(item);
 }
 
 static bool UI_NX_HandleKillstreakListKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key)
@@ -5940,8 +5952,7 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                     const char *settingsCategory = UI_NX_SettingsCategoryMenu(menu);
                     const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
                     if (down && (UI_NX_HandleClassListFactionKey(localClientNum, dc, menu, key)
-                        || UI_NX_HandleClassMenuKey(localClientNum, dc, item, key)
-                        || UI_NX_HandleClassSubmenuRight(localClientNum, dc, menu, item, key)
+                        || UI_NX_HandleClassMenuKey(localClientNum, dc, menu, item, key)
                         || UI_NX_HandleKillstreakListKey(localClientNum, dc, menu, key)))
                         return;
                     if (down && settingsMenu)
@@ -5995,7 +6006,7 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                     if (!item && down && key == K_BUTTON_A)
                     {
                         item = UI_NX_MoveMenuFocus(localClientNum, dc, menu, 1);
-                        if (UI_NX_HandleClassMenuKey(localClientNum, dc, item, key))
+                        if (UI_NX_HandleClassMenuKey(localClientNum, dc, menu, item, key))
                             return;
                     }
                     if (down && key == K_BUTTON_Y && item && item->type == 4 && menu->window.name
@@ -7844,7 +7855,7 @@ static void UI_NX_RestoreWeaponStatsFocus(int localClientNum, UiContext *dc, ite
     if (!UI_NX_IsWeaponStatsToggle(item) || Menu_GetFocused(dc) != menu
         || !Window_HasFocus(context, &item->window) || Item_IsVisible(localClientNum, context, item))
         return;
-    UI_NX_FocusWeaponStats(localClientNum, dc, menu);
+    UI_NX_FocusFirstClassFooterButton(localClientNum, dc, menu);
 }
 #endif
 
