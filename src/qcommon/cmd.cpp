@@ -1311,6 +1311,13 @@ static void Cmd_UnsupportedPlatformAction_f()
 }
 #endif
 
+#ifdef KISAK_SP
+static void Cmd_UpdateSaveGameAvailable_f()
+{
+    Dvar_SetBoolByName("sv_saveGameAvailable", false);
+}
+#endif
+
 void __cdecl Cmd_Init()
 {
     Cmd_ResetArgs(g_cmd_args);
@@ -1321,6 +1328,10 @@ void __cdecl Cmd_Init()
     Cmd_AddCommandInternal("exec_addtext", Cmd_ExecAddText_f, &Cmd_ExecAddText_f_VAR);
     Cmd_AddCommandInternal("vstr", Cmd_Vstr_f, &Cmd_Vstr_f_VAR);
     Cmd_AddCommandInternal("wait", Cmd_Wait_f, &Cmd_Wait_f_VAR);
+#ifdef KISAK_SP
+    static cmd_function_s updateSaveGameAvailable;
+    Cmd_AddCommandInternal("update_sv_savegameavailable", Cmd_UpdateSaveGameAvailable_f, &updateSaveGameAvailable);
+#endif
 #ifdef KISAK_NX
     static const char *const legacyPlatformCommands[] = {
         "select_save_device",

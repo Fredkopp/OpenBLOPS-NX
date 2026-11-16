@@ -5257,7 +5257,19 @@ static void UI_NX_FocusFirstClassFooterButton(int localClientNum, UiContext *dc,
     }
 }
 
-static itemDef_s *UI_NX_MoveFocusInScreenOrder(int localClientNum, UiContext *dc, menuDef_t *menu, int step)
+static bool UI_NX_IsCustomGameEditor(const menuDef_t *menu)
+{
+    return menu->window.name && !I_stricmp(menu->window.name, "custom_game_create");
+}
+
+static bool UI_NX_IsCustomGameEditButton(itemDef_s *item)
+{
+    const textDef_s *text = item->type == 3 ? Item_GetTextDef(item) : nullptr;
+    return text && text->text && !I_stricmp(text->text, "@PLATFORM_EDIT");
+}
+
+static itemDef_s *UI_NX_MoveFocusInScreenOrder(int localClientNum, UiContext *dc, menuDef_t *menu, int step,
+    const itemDef_s *anchor = nullptr)
 {
     struct Row
     {
@@ -5265,18 +5277,19 @@ static itemDef_s *UI_NX_MoveFocusInScreenOrder(int localClientNum, UiContext *dc
         rectDef_s rect;
     };
     std::vector<Row> rows;
+    const bool gameEditor = UI_NX_IsCustomGameEditor(menu);
     for (int i = 0; i < menu->itemCount; ++i)
     {
         itemDef_s *item = menu->items[i];
-        if (UI_NX_CanFocus(localClientNum, dc, item))
+        if ((!gameEditor || !UI_NX_IsCustomGameEditButton(item)) && UI_NX_CanFocus(localClientNum, dc, item))
             rows.push_back({item, UI_NX_ScreenRect(dc, item)});
     }
     std::stable_sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
         return a.rect.y != b.rect.y ? a.rect.y < b.rect.y : a.rect.x < b.rect.x;
     });
 
-    const auto focused = std::find_if(rows.begin(), rows.end(), [dc](const Row &row) {
-        return Window_HasFocus(dc->contextIndex, &row.item->window);
+    const auto focused = std::find_if(rows.begin(), rows.end(), [dc, anchor](const Row &row) {
+        return anchor ? row.item == anchor : Window_HasFocus(dc->contextIndex, &row.item->window);
     });
     const int count = static_cast<int>(rows.size());
     int index = focused != rows.end() ? static_cast<int>(focused - rows.begin()) : (step > 0 ? -1 : count);
@@ -5288,6 +5301,52 @@ static itemDef_s *UI_NX_MoveFocusInScreenOrder(int localClientNum, UiContext *dc
             return item;
     }
     return nullptr;
+}
+
+static bool UI_NX_IsCustomGameEditPair(const itemDef_s *row, const itemDef_s *edit)
+{
+    if (row->type != 10 || !row->dvar
+        || fabsf(row->window.rectClient.y - edit->window.rectClient.y) > 1.0f)
+        return false;
+
+    const char *action = nullptr;
+    if (!I_stricmp(row->dvar, "custom_class_mode"))
+        action = "open \"custom_classes\"";
+    else if (!I_stricmp(row->dvar, "custom_killstreak_mode"))
+        action = "open \"custom_killstreaks\"";
+    else if (!I_stricmp(row->dvar, "scr_game_perks"))
+        action = "open \"custom_specialty_editor\"";
+    return action && UI_NX_ItemHasActionCommand(edit, action);
+}
+
+static bool UI_NX_HandleCustomGameVerticalKey(int localClientNum, UiContext *dc, menuDef_t *menu,
+    itemDef_s *current, int key)
+{
+    if ((key != K_UPARROW && key != K_DOWNARROW) || !UI_NX_IsCustomGameEditor(menu))
+        return false;
+
+    const bool down = key == K_DOWNARROW;
+    const bool onEdit = current && UI_NX_IsCustomGameEditButton(current);
+    itemDef_s *anchor = nullptr;
+    if (current && (onEdit || down))
+    {
+        for (int i = 0; i < menu->itemCount; ++i)
+        {
+            itemDef_s *item = menu->items[i];
+            const bool paired = onEdit ? UI_NX_IsCustomGameEditPair(item, current)
+                : UI_NX_IsCustomGameEditButton(item) && UI_NX_IsCustomGameEditPair(current, item);
+            if (!paired || !UI_NX_CanFocus(localClientNum, dc, item))
+                continue;
+
+            if (onEdit && down)
+                anchor = item;
+            else if (Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
+                return true;
+            break;
+        }
+    }
+    UI_NX_MoveFocusInScreenOrder(localClientNum, dc, menu, down ? 1 : -1, anchor);
+    return true;
 }
 
 static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef_t *menu, int step)
@@ -5397,7 +5456,12 @@ static menuDef_t *UI_NX_SettingsPreview(UiContext *dc, menuDef_t *menu, int &nat
     UI_NX_PrepareSettingsMenu(dc, root);
 
     const char *category = UI_NX_SettingsDestination(menu->items[cursor]);
-    menuDef_t *preview = category ? Menus_FindByName(dc, category) : nullptr;
+    if (!category)
+    {
+        nativeItemCount = std::min(menu->itemCount, root->itemCount);
+        return nullptr;
+    }
+    menuDef_t *preview = Menus_FindByName(dc, category);
     if (preview == menu)
         return nullptr;
     if (!preview)
@@ -5419,12 +5483,14 @@ static void UI_NX_MoveHorizontalFocus(int localClientNum, UiContext *dc, menuDef
 
     const rectDef_s from = UI_NX_ScreenRect(dc, current);
     const bool classFooter = UI_NX_ClassFooterSlot(current) >= 0;
+    const bool gameEditor = UI_NX_IsCustomGameEditor(menu);
     itemDef_s *closest = nullptr;
     float bestDistance = FLT_MAX;
     for (int i = 0; i < menu->itemCount; ++i)
     {
         itemDef_s *candidate = menu->items[i];
         if (candidate == current || (classFooter && UI_NX_ClassFooterSlot(candidate) < 0)
+            || (gameEditor && UI_NX_IsCustomGameEditButton(candidate))
             || !UI_NX_CanFocus(localClientNum, dc, candidate))
             continue;
         const rectDef_s to = UI_NX_ScreenRect(dc, candidate);
@@ -5942,6 +6008,7 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                     if (down && (UI_NX_HandleClassListFactionKey(localClientNum, dc, menu, key)
                         || UI_NX_HandleClassMenuKey(localClientNum, dc, item, key)
                         || UI_NX_HandleClassSubmenuRight(localClientNum, dc, menu, item, key)
+                        || UI_NX_HandleCustomGameVerticalKey(localClientNum, dc, menu, item, key)
                         || UI_NX_HandleKillstreakListKey(localClientNum, dc, menu, key)))
                         return;
                     if (down && settingsMenu)
@@ -10393,21 +10460,7 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     item->type,
                     item);
 #ifdef KISAK_NX
-                const int button = UI_NX_ClassRotationButton(item);
-                if (button && item->window.rect.w > 0.0f)
-                {
-                    const rectDef_s &bounds = item->window.rect;
-                    const ScreenPlacement *placement = &scrPlaceView[dc->contextIndex];
-                    constexpr float scale = 0.30f;
-                    Font_s *font = UI_GetFontHandle(placement, 0, scale);
-                    char caption[4];
-                    I_strncpyz(caption, Key_KeynumToString(button, 1), sizeof(caption));
-                    const float width = UI_TextWidth(caption, 0, font, scale);
-                    const float x = button == K_BUTTON_LSHLDR ? bounds.x - 4.0f - width : bounds.x + bounds.w + 4.0f;
-                    const float y = bounds.y + (bounds.h + UI_TextHeight(font, scale)) * 0.5f;
-                    UI_DrawText(placement, caption, 0x7FFFFFFF, font, x, y, bounds.horzAlign,
-                        bounds.vertAlign, scale, item->window.foreColor, 0);
-                }
+
                 if (Window_HasFocus(dc->contextIndex, &parent->window)
                     && Window_HasFocus(dc->contextIndex, &item->window)
                     && UI_NX_CanFocus(localClientNum, dc, item)
@@ -10575,7 +10628,7 @@ static bool UI_NX_FormatControlPrompt(const char *reference, char *buffer, int s
     return false;
 }
 
-static float UI_NX_SettingTextOffset(UiContext *dc, const itemDef_s *item, const char *text, float distance)
+static float UI_NX_SettingTextOffset(const itemDef_s *item, const char *text, float distance)
 {
     struct ScrollState
     {
@@ -10585,7 +10638,7 @@ static float UI_NX_SettingTextOffset(UiContext *dc, const itemDef_s *item, const
         unsigned int seen;
     };
     static ScrollState states[24]{};
-    const unsigned int now = dc->realTime;
+    const unsigned int now = Sys_Milliseconds();
     ScrollState *state = &states[0];
     for (ScrollState &candidate : states)
     {
@@ -10598,11 +10651,11 @@ static float UI_NX_SettingTextOffset(UiContext *dc, const itemDef_s *item, const
             state = &candidate;
     }
     const int hash = Com_HashKey(text, 1024);
-    if (state->item != item || state->textHash != hash || now - state->seen > 250u)
+    if (state->item != item || state->textHash != hash || now - state->seen > 500u)
         *state = {item, hash, now, now};
     state->seen = now;
 
-    constexpr float pause = 850.0f;
+    constexpr float pause = 600.0f;
     const float travel = std::max(650.0f, distance * (1000.0f / 38.0f));
     const float halfCycle = pause + travel;
     float phase = fmodf(static_cast<float>(now - state->start), 2.0f * halfCycle);
@@ -10784,13 +10837,14 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                 const rectDef_s &frame = item->parent->items[0]->window.rectClient;
                 if (rect->horzAlign == frame.horzAlign && rect->vertAlign == frame.vertAlign)
                 {
-                    const float right = frame.x + frame.w + item->parent->window.rect.x - 12.0f - textRect->h;
+                    const float right = frame.x + frame.w + item->parent->window.rect.x
+                        - 12.0f - (drawArrows ? textRect->h : 0.0f);
                     const float available = right - textRect->x;
                     const float width = textRect->w;
                     if (available > 0.0f && width > available)
                     {
                         clippedWidth = available;
-                        textX -= UI_NX_SettingTextOffset(dc, item, textPtr, width - available);
+                        textX -= UI_NX_SettingTextOffset(item, textPtr, width - available);
                     }
                 }
             }
@@ -13214,13 +13268,19 @@ static void UI_NX_LayoutSettingsRows(menuDef_t *menu, float sidebarRight)
     {
         itemDef_s *item = menu->items[i];
         const rectDef_s &rect = item->window.rectClient;
-        if (!inSettingsColumn(rect))
+        const textDef_s *label = Item_GetTextDef(item);
+        rectDef_s valueRect = rect;
+        if (label)
+            valueRect.x += label->textalignx;
+        const bool offsetValue = rect.x >= panelRight && label && inSettingsColumn(valueRect);
+        if (!offsetValue && !inSettingsColumn(rect))
             continue;
-        const auto row = std::lower_bound(rowPositions.begin(), rowPositions.end(), rect.y);
-        if (row != rowPositions.end() && *row == rect.y)
-            UI_NX_ResizeSettingsRow(item, firstRowY + (row - rowPositions.begin()) * rowPitch * scale, scale);
-        else if (const textDef_s *label = Item_GetTextDef(item);
-                 footerHeight > 0.0f && label && label->text && !I_stricmp(label->text, "@MENU_APPLY"))
+        const float tolerance = offsetValue ? 1.0f : 0.0f;
+        const auto row = std::lower_bound(rowPositions.begin(), rowPositions.end(), rect.y - tolerance);
+        if (row != rowPositions.end() && fabsf(*row - rect.y) <= tolerance)
+            UI_NX_ResizeSettingsRow(item,
+                firstRowY + ((row - rowPositions.begin()) * rowPitch + rect.y - *row) * scale, scale);
+        else if (footerHeight > 0.0f && label && label->text && !I_stricmp(label->text, "@MENU_APPLY"))
             UI_NX_MoveItem(item, panelBottom - rect.h - rect.y);
     }
 }
