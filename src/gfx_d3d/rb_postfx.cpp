@@ -1315,11 +1315,6 @@ void    RB_SetVisionSetColorCorrection(const GfxViewInfo *viewInfo)
 }
 
 #ifdef KISAK_NX
-// Bloom can write straight to R_RENDERTARGET_BLOOM_APPLIED (saving a resolve)
-// only when the bloom and colour-correction materials are the shipped ones:
-// one pass each, with the pixel shaders and blend/depth state checked here.
-// Anything else (other assets, MSAA, split views, debug modes) takes the
-// original path.
 static bool RB_CanRenderBloomToTexture(const GfxViewInfo *viewInfo)
 {
     const GfxRenderTarget &scene = gfxRenderTargets[R_RENDERTARGET_SCENE];

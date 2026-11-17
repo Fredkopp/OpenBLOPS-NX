@@ -78,10 +78,6 @@ static bool UI_NX_IsAllowedChar(unsigned char ch, UiNxTextFilter filter)
     }
 }
 
-// A non-ASCII character as game text, when the field takes the language's
-// letters and the language can show it. A Shift-JIS character whose second
-// byte the game treats as markup ('@', '\', '^', '{', '}') is refused, as
-// UI_VerifyString would refuse the text.
 static int UI_NX_EncodeNativeChar(const UiNxTextRequest &request, unsigned int code, char *encoded)
 {
     if (!request.nativeText || (request.filter != UI_NX_TEXT_ANY && request.filter != UI_NX_TEXT_PLAIN
@@ -93,8 +89,6 @@ static int UI_NX_EncodeNativeChar(const UiNxTextRequest &request, unsigned int c
     return count;
 }
 
-// Converts the keyboard's UTF-8 to game text of at most limit bytes. On
-// refusal, writes the message the keyboard shows into message.
 static bool UI_NX_ConvertText(const UiNxTextRequest &request, int limit, const char *text, char *out,
     size_t outSize, char *message, size_t messageSize)
 {
@@ -136,8 +130,6 @@ static bool UI_NX_ConvertText(const UiNxTextRequest &request, int limit, const c
 static const UiNxTextRequest *s_nxTextRequest;
 static int s_nxTextLimit;
 
-// Runs when the player confirms. text is UTF-8; on refusal it is overwritten
-// with the message the keyboard shows before letting the player edit again.
 static SwkbdTextCheckResult UI_NX_CheckText(char *text, size_t size)
 {
     char game[512];
@@ -174,8 +166,6 @@ bool UI_NX_EditText(const UiNxTextRequest &request, char *out, size_t outSize)
     }
     SEH_GameTextToUtf8(request.initialText, utf8, sizeof(utf8));
     swkbdConfigSetInitialText(&keyboard, utf8);
-    // The keyboard counts characters; a two-byte Hangul or kana character
-    // takes two of the game's bytes, which the text check counts.
     const int limit = std::clamp(std::min(request.maxChars, static_cast<int>(outSize) - 1), 1, 255);
     swkbdConfigSetStringLenMax(&keyboard, limit);
     s_nxTextRequest = &request;
@@ -194,13 +184,9 @@ static void UI_NX_OpenVirtualKeyboard(int keyboardType, const char *title, const
     if (uiKeyboard.keyboardActive || size < 2)
         return;
     UiNxTextRequest request;
-    // Menus pass the title as a string reference ("@MENU_..."), as their text.
     request.header = title && *title == '@' ? UI_SafeTranslateString(title + 1) : title;
     request.initialText = initialText;
     request.maxChars = size - 1;
-    // UI_KeyboardComplete checks the text with UI_VerifyString, which on the
-    // original PC game also refused every non-ASCII byte; refuse the same
-    // characters while the keyboard is still open.
     request.filter = UI_NX_TEXT_SAFE;
     char value[256];
     if (!UI_NX_EditText(request, value, sizeof(value)))

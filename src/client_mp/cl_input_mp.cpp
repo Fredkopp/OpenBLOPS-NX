@@ -900,10 +900,8 @@ void __cdecl CL_GamepadMove(int localClientNum, usercmd_s *cmd)
 #if defined(KISAK_NX) && defined(KISAK_SP)
                 if (Com_IsMenuLevel(localClientNum) && UI_MenuIsUI3D(localClientNum))
                 {
-                    // The right stick looks around a 3D menu scene. Squared
-                    // response for fine aim; full deflection turns this fast.
-                    constexpr float menuYawSpeed = 55.0f;     // degrees per second
-                    constexpr float menuPitchSpeed = 40.0f;   // degrees per second
+                    constexpr float menuYawSpeed = 55.0f;
+                    constexpr float menuPitchSpeed = 40.0f;
                     const int port = Com_LocalClient_GetControllerIndex(localClientNum);
                     const float dt = fminf(0.1f, cls.frametime * 0.001f);
                     const float x = GPad_GetStick(port, GPAD_RX);

@@ -151,20 +151,10 @@ int __cdecl SEH_StringEd_SetLanguageStrings(unsigned int iLanguage);
 const char *__cdecl SE_GetString(char *psPackageAndStringReference);
 const char *__cdecl SE_GetString_FastFile(char *psPackageAndStringReference);
 const char *__cdecl SEH_StringEd_GetString(char *pszReference);
-// Never null for an OPENBLOPS_ key (an unknown key returns itself); null for
-// any other reference.
 const char *SEH_GetPortString(const char *reference, bool utf8 = false);
-// Game text is in the current language's encoding: Windows-1252, -1251 or
-// -1250, two-byte Hangul (cp949) or Shift-JIS (cp932), as SEH_DecodeLetter
-// reads it. These convert between it and UTF-8 (the Switch keyboard, GitHub).
-// A character with no equivalent becomes '?', and the text is cut whole
-// characters at a time; either makes the conversion return false.
 bool SEH_GameTextToUtf8(const char *text, char *out, size_t size);
 bool SEH_Utf8ToGameText(const char *text, char *out, size_t size);
-// Reads one UTF-8 character and advances text (U+FFFD when malformed).
 unsigned int SEH_ReadUtf8Char(const char **text);
-// Writes a code point as game text for the current language into out (two
-// bytes at most). Returns the byte count, or 0 when the language can't show it.
 int SEH_EncodeGameChar(unsigned int code, char *out);
 const char *SEH_LocalizePortText(const char *english);
 char *__cdecl SEH_SafeTranslateString(const char *pszReference);

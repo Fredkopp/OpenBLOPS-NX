@@ -90,9 +90,6 @@ scrollInfo_s scrollInfo;
 int g_editingField;
 itemDef_s *g_editItem;
 
-// The port adds rows to some menus when they open: the copies, their texts and
-// the menus' new item arrays come from the heap. They belong to the menu asset
-// they were added to and are freed with it, in Menus_RemoveMenu.
 static std::unordered_map<const menuDef_t *, std::vector<void *>> s_menuPatchMemory;
 
 static void *UI_NX_MenuAlloc(const menuDef_t *menu, size_t size)
@@ -4055,9 +4052,6 @@ static bool UI_NX_IsSettingsMenu(const menuDef_t *menu)
         || (menu && menu->window.name && !I_stricmp(menu->window.name, "options_graphics_defaults"));
 }
 
-// Item_IsVisible asks which menu an item belongs to for every item, every
-// frame. Items are drawn menu by menu, so remembering the last menu's answer
-// leaves one name comparison per menu instead of several per item.
 enum UiNxMenuKind : unsigned char
 {
     UI_NX_MENU_OTHER,
@@ -4090,7 +4084,6 @@ static UiNxMenuKind UI_NX_MenuKind(const menuDef_t *menu)
     return kind;
 }
 
-// A freed menu's address can be reused by the next menu loaded.
 static void UI_NX_ForgetMenuKind(const menuDef_t *menu)
 {
     if (s_nxKindMenu == menu)
@@ -4785,9 +4778,6 @@ bool __cdecl Item_IsTextField(const itemDef_s *item)
 }
 
 #ifdef KISAK_NX
-// Text other players see or type: player and clan names, server names and
-// passwords. Their game may run in another language, which reads non-ASCII
-// bytes in a different encoding, so these stay ASCII.
 static bool UI_NX_IsSharedText(const char *dvar)
 {
     static constexpr const char *names[] = {"name", "ui_name", "sv_hostname", "ui_hostname"};
@@ -4808,7 +4798,6 @@ static void UI_NX_EditTextField(int localClientNum, UiContext *dc, itemDef_s *it
     if (!field || !item->dvar)
         return;
 
-    // Edit field item types (itemDef_s::type).
     constexpr int numericField = 7, fileNameField = 13, upperCaseField = 14, alphaNumericField = 22,
                   decimalField = 30;
     UiNxTextRequest request;
@@ -4822,7 +4811,6 @@ static void UI_NX_EditTextField(int localClientNum, UiContext *dc, itemDef_s *it
         : item->type == fileNameField ? UI_NX_TEXT_FILENAME
         : item->type == alphaNumericField ? UI_NX_TEXT_ALNUM
         : UI_NX_TEXT_PLAIN;
-    // Upper-casing works byte by byte, which would alter two-byte characters.
     request.nativeText = item->type != upperCaseField && !UI_NX_IsSharedText(item->dvar);
     char value[256];
     if (!UI_NX_EditText(request, value, sizeof(value)))
@@ -13553,7 +13541,7 @@ static void UI_NX_ReplaceGamepadSidebar(menuDef_t *menu, const menuDef_t *root)
         const itemDef_s *source = root->items[i];
         itemDef_s *item = UI_NX_CloneItem(menu, source, source->window.name, 0.0f, false);
         if (!item)
-            return;   // the copies made so far are freed with the menu
+            return;
         item->onEvent = source->onEvent;
         item->rectExpData = source->rectExpData;
         item->window.dynamicFlags[0] &= ~2;
@@ -13698,7 +13686,7 @@ static void UI_NX_AddAimAssistOption(menuDef_t *menu)
     memcpy(&items[lastIndex + 1], added, addedCount * sizeof(itemDef_s *));
     memcpy(&items[lastIndex + 1 + addedCount], &menu->items[lastIndex + 1],
            (menu->itemCount - lastIndex - 1) * sizeof(itemDef_s *));
-    menu->items = items;   // the zone's array stays as it was; this one is freed with the menu
+    menu->items = items;
     menu->itemCount += addedCount;
     UI_NX_FitGamepadDiagram(menu, invert->window.rect.y + dy + rowStep + invert->window.rect.h,
                             invert->window.rect.vertAlign);

@@ -84,7 +84,6 @@ int Item_Multi_FindDvarByValue(itemDef_s*);
 int Item_Multi_CountSettings(itemDef_s*);
 int Item_List_NextEntryForKey(int,int,int);
 '''
-# Menu patches allocate through the per-menu registry.
 s=(root/'src/ui/ui_shared.cpp').read_text();code+='#include <unordered_map>\n#include <vector>\n'+s[s.index('static std::unordered_map<const menuDef_t *'):s.index('#ifdef KISAK_NX\nstatic const menuDef_t *s_nxClassFactionEditMenu;')]
 code+=function('src/ui/ui_utils.cpp','int __cdecl Item_IsTextDefType(')+'\n'
 code+='const dvar_t *nx_fpsLimit=&savedLimit;\n'+function('src/qcommon/common.cpp','int Com_GetFrameRateLimit(')+'\n'

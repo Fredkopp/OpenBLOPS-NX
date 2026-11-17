@@ -22,8 +22,6 @@ out.mkdir(parents=True, exist_ok=True)
 with (root / 'src/stringed/port_ui_translations.tsv').open(encoding='utf-8', newline='') as source:
     keys = {'OPENBLOPS_' + row['key'] for row in csv.DictReader(source, delimiter='\t')}
 
-# Button prompt references: the menus show them through
-# UI_NX_FormatControlPrompt, which swaps in the game's own label.
 prompts = {'OPENBLOPS_ZOMBIE_REFRESH', 'OPENBLOPS_ZOMBIE_JOIN'}
 shared = (root / 'src/ui/ui_shared.cpp').read_text(encoding='utf-8')
 for prompt in prompts:
@@ -58,8 +56,6 @@ def literal(data):
     return '"' + ''.join(chr(b) if 32 <= b < 127 and b not in (34, 92, 63) else f'\\{b:03o}' for b in data) + '"'
 
 
-# Every translation must survive UTF-8 -> game text -> UTF-8 in its language,
-# giving the same bytes as the generator's encoding.
 with (root / 'src/stringed/port_ui_translations.tsv').open(encoding='utf-8', newline='') as source:
     rows = list(csv.DictReader(source, delimiter='\t'))
 samples = ',\n'.join(

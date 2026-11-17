@@ -181,8 +181,6 @@ bool Build(UiContext *dc)
     return true;
 }
 
-// GitHub text is UTF-8 Markdown. Keep printable text without the markup
-// characters the game would read as formatting ('^' starts a colour code).
 std::string CleanGitHubText(const std::string &text)
 {
     std::string clean;
@@ -195,8 +193,6 @@ std::string CleanGitHubText(const std::string &text)
     return clean;
 }
 
-// The release notes as a few short lines: Markdown marks dropped, wrapped,
-// converted to the game's encoding for the current language.
 void FillNotes(const char *notes)
 {
     constexpr size_t lineChars = 80;
@@ -214,8 +210,6 @@ void FillNotes(const char *notes)
         std::string clean = CleanGitHubText(line.substr(start));
         while (!clean.empty() && row < 5)
         {
-            // Wrap at the last space within lineChars characters (not bytes),
-            // or cut there when the line has no space.
             size_t cut = clean.size(), lastSpace = std::string::npos, chars = 0;
             for (const char *ch = clean.c_str(); *ch;)
             {

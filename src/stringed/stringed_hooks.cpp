@@ -73,8 +73,6 @@ const char *SEH_GetPortString(const char *reference, bool utf8)
     for (const PortString &entry : portStrings)
         if (!strcmp(reference, entry.reference))
             return (utf8 ? entry.utf8 : entry.game)[SEH_PortLanguage()];
-    // A key missing from port_ui_translations.tsv shows as its name. Callers
-    // pass the result to printf-style formatting, so it must never be null.
     return reference;
 }
 
@@ -84,16 +82,15 @@ namespace
 
 enum class GameEncoding { Western, Cyrillic, CentralEuropean, Korean, Japanese };
 
-// The encoding of the game's text in the current language, by port column.
 GameEncoding SEH_PortEncoding()
 {
     switch (SEH_PortLanguage())
     {
-    case 5: return GameEncoding::Cyrillic;          // Russian, Windows-1251
-    case 6: case 9: return GameEncoding::CentralEuropean;   // Polish, Czech, Windows-1250
-    case 7: return GameEncoding::Korean;            // Hangul, cp949
-    case 8: return GameEncoding::Japanese;          // Shift-JIS, cp932
-    default: return GameEncoding::Western;          // Windows-1252
+    case 5: return GameEncoding::Cyrillic;
+    case 6: case 9: return GameEncoding::CentralEuropean;
+    case 7: return GameEncoding::Korean;
+    case 8: return GameEncoding::Japanese;
+    default: return GameEncoding::Western;
     }
 }
 
@@ -104,7 +101,7 @@ const unsigned short *SEH_SingleByteTable(GameEncoding encoding)
     case GameEncoding::Cyrillic: return cp1251High;
     case GameEncoding::CentralEuropean: return cp1250High;
     case GameEncoding::Japanese: return cp932High;
-    case GameEncoding::Korean: return nullptr;   // the game reads only two-byte Hangul
+    case GameEncoding::Korean: return nullptr;
     default: return cp1252High;
     }
 }
@@ -121,8 +118,6 @@ int SEH_ShiftJisIndex(unsigned char lead, unsigned char trail)
     return row * 188 + column;
 }
 
-// One character of game text, read by the same rules as SEH_DecodeLetter.
-// Returns its code point (0 when it has none) and sets its length in bytes.
 unsigned int SEH_DecodeGameChar(GameEncoding encoding, const unsigned char *text, int *length)
 {
     *length = 1;

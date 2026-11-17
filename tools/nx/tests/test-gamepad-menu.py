@@ -48,7 +48,6 @@ Box diagram(const menuDef_t&menu){Box b;for(int i=0;i<menu.itemCount;++i){const 
  b.x0=fminf(b.x0,fminf(r.x,r.x+r.w));b.x1=fmaxf(b.x1,fmaxf(r.x,r.x+r.w));b.y0=fminf(b.y0,fminf(r.y,r.y+r.h));b.y1=fmaxf(b.y1,fmaxf(r.y,r.y+r.h));++b.count;}return b;}
 bool near(float a,float b,float e=.01f){return fabsf(a-b)<=e;}
 '''
-# Menu patches allocate through the per-menu registry.
 s=(root/'src/ui/ui_shared.cpp').read_text();code+='#include <unordered_map>\n#include <vector>\n'+s[s.index('static std::unordered_map<const menuDef_t *'):s.index('#ifdef KISAK_NX\nstatic const menuDef_t *s_nxClassFactionEditMenu;')]
 code+=function('src/ui/ui_utils.cpp','int __cdecl Item_IsTextDefType(')+'\n'
 for sig in ['static itemDef_s *UI_NX_FindItem(', 'static bool UI_NX_ItemNamed(', 'static itemDef_s *UI_NX_FindItemByDvar(',

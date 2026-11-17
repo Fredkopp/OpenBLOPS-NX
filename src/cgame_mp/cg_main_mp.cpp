@@ -3482,11 +3482,6 @@ void __cdecl CG_Init(int localClientNum, int serverMessageNum, int serverCommand
 #ifdef KISAK_SP
     CG_RegisterHudMaterials_SP();
 #else
-    // The field names in cgMedia_t (cg_local_mp.h) sit four pointers off the
-    // retail layout their XREFs describe; register by meaning, as the shared
-    // HUD code reads them. Registered by the shifted names, the D-pad slot
-    // highlights got nightvision_overlay_goggles, which MP zones lack, and
-    // were drawn as the $default checkerboard.
     cgMedia.nightVisionOverlay = Material_RegisterHandle("nightvision_overlay_goggles", 7);
     cgMedia.hudIconNVG = Material_RegisterHandle("hud_icon_nvg", 7);
     cgMedia.hudDpadArrow = Material_RegisterHandle("hud_dpad_arrow", 7);
