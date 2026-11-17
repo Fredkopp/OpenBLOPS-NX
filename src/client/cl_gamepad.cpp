@@ -25,6 +25,9 @@
 #ifdef KISAK_SP
 #include <dec20/dec20_terminal.h>
 #endif
+#ifdef KISAK_NX
+#include <ui_mp/ui_main_mp.h>
+#endif
 
 int lastGamepadEventTimeGlobal;
 GpadAxesGlob gaGlobs[MAX_LOCAL_CLIENTS];
@@ -550,6 +553,18 @@ void __cdecl CL_GamepadResetMenuScrollTime(int localClientNum, int key, int down
     }
 }
 
+#ifdef KISAK_NX
+// The menu togglemenu opens in a level: SP stores its own enum value.
+static bool CL_NX_IsPauseMenu(uiMenuCommand_t menu)
+{
+#ifdef KISAK_SP
+    return static_cast<int>(menu) == UISP_PAUSEDMENU;
+#else
+    return menu == UIMENU_INGAME;
+#endif
+}
+#endif
+
 void __cdecl CL_GamepadButtonEvent(
                 int localClientNum,
                 int controllerIndex,
@@ -697,6 +712,18 @@ void __cdecl CL_GamepadButtonEvent(
             }
             else if ( !v15 || !CL_CheckForIgnoreDueToRepeat(localClientNum, key, keys[key].repeats, time) || buttonEvent == 2 )
             {
+#ifdef KISAK_NX
+                // Start is bound to togglemenu, which opens the pause menu.
+                // With a menu open the press goes to the menu instead, where
+                // Start counts as accept, so pressing it again chose the
+                // focused option. Close the pause menu, as togglemenu means.
+                if ( key == K_BUTTON_START && buttonEvent == 1 && kb && !I_stricmp(kb, "togglemenu")
+                    && clcState == CA_ACTIVE && CL_NX_IsPauseMenu(ActiveMenu) )
+                {
+                    UI_SetActiveMenu(localClientNum, UIMENU_NONE);
+                    return;
+                }
+#endif
                 if ( kb && !I_stricmp(kb, "mainmenu") && buttonEvent == 1 )
                 {
                     if ( (LocalClientUIGlobals->keyCatchers & 0x10) != 0 || clcState != CA_ACTIVE )
