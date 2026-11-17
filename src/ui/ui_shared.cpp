@@ -4785,6 +4785,23 @@ bool __cdecl Item_IsTextField(const itemDef_s *item)
 }
 
 #ifdef KISAK_NX
+// Text other players see or type: player and clan names, server names and
+// passwords. Their game may run in another language, which reads non-ASCII
+// bytes in a different encoding, so these stay ASCII.
+static bool UI_NX_IsSharedText(const char *dvar)
+{
+    static constexpr const char *names[] = {"name", "ui_name", "sv_hostname", "ui_hostname"};
+    for (const char *name : names)
+        if (!I_stricmp(dvar, name))
+            return true;
+    char lower[64];
+    I_strncpyz(lower, dvar, sizeof(lower));
+    for (char *ch = lower; *ch; ++ch)
+        *ch = static_cast<char>(tolower(static_cast<unsigned char>(*ch)));
+    return strstr(lower, "password") || strstr(lower, "clan") || strstr(lower, "hostname")
+        || strstr(lower, "directory");
+}
+
 static void UI_NX_EditTextField(int localClientNum, UiContext *dc, itemDef_s *item)
 {
     const editFieldDef_s *field = Item_GetEditFieldDef(item);
@@ -4805,6 +4822,8 @@ static void UI_NX_EditTextField(int localClientNum, UiContext *dc, itemDef_s *it
         : item->type == fileNameField ? UI_NX_TEXT_FILENAME
         : item->type == alphaNumericField ? UI_NX_TEXT_ALNUM
         : UI_NX_TEXT_PLAIN;
+    // Upper-casing works byte by byte, which would alter two-byte characters.
+    request.nativeText = item->type != upperCaseField && !UI_NX_IsSharedText(item->dvar);
     char value[256];
     if (!UI_NX_EditText(request, value, sizeof(value)))
         return;

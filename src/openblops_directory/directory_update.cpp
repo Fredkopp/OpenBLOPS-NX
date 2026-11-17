@@ -181,9 +181,25 @@ bool Build(UiContext *dc)
     return true;
 }
 
-// The release notes as a few short lines: Markdown marks dropped, wrapped.
+// GitHub text is UTF-8 Markdown. Keep printable text without the markup
+// characters the game would read as formatting ('^' starts a colour code).
+std::string CleanGitHubText(const std::string &text)
+{
+    std::string clean;
+    for (char c : text)
+    {
+        const unsigned char byte = static_cast<unsigned char>(c);
+        if ((byte >= 0x20 && byte != 0x7f && c != '*' && c != '`' && c != '^') || byte >= 0x80)
+            clean += c;
+    }
+    return clean;
+}
+
+// The release notes as a few short lines: Markdown marks dropped, wrapped,
+// converted to the game's encoding for the current language.
 void FillNotes(const char *notes)
 {
+    constexpr size_t lineChars = 80;
     for (auto &line : s_notes) line[0] = 0;
     int row = 0;
     std::string text(notes);
@@ -195,16 +211,28 @@ void FillNotes(const char *notes)
         at = end == std::string::npos ? text.size() : end + 1;
         size_t start = line.find_first_not_of(" #*->\t");
         if (start == std::string::npos) continue;
-        line = line.substr(start);
-        std::string clean;
-        for (char c : line)
-            if ((unsigned char)c >= 0x20 && (unsigned char)c < 0x7f && c != '*' && c != '`' && c != '^') clean += c;
+        std::string clean = CleanGitHubText(line.substr(start));
         while (!clean.empty() && row < 5)
         {
-            size_t cut = clean.size() <= 80 ? clean.size() : clean.rfind(' ', 80);
-            if (cut == std::string::npos || cut == 0) cut = clean.size() < 80 ? clean.size() : 80;
-            std::snprintf(s_notes[row++], sizeof(s_notes[0]), "%s", clean.substr(0, cut).c_str());
-            clean = cut < clean.size() ? clean.substr(cut + 1) : std::string();
+            // Wrap at the last space within lineChars characters (not bytes),
+            // or cut there when the line has no space.
+            size_t cut = clean.size(), lastSpace = std::string::npos, chars = 0;
+            for (const char *ch = clean.c_str(); *ch;)
+            {
+                if (chars == lineChars)
+                {
+                    cut = ch - clean.c_str();
+                    break;
+                }
+                if (*ch == ' ')
+                    lastSpace = ch - clean.c_str();
+                SEH_ReadUtf8Char(&ch);
+                ++chars;
+            }
+            if (cut < clean.size() && lastSpace != std::string::npos && lastSpace > 0)
+                cut = lastSpace;
+            SEH_Utf8ToGameText(clean.substr(0, cut).c_str(), s_notes[row++], sizeof(s_notes[0]));
+            clean = cut < clean.size() ? clean.substr(clean[cut] == ' ' ? cut + 1 : cut) : std::string();
         }
     }
 }
@@ -215,7 +243,7 @@ void Refresh()
     NX_UpdateGetInfo(info);
     std::snprintf(s_versionLine, sizeof(s_versionLine), SEH_GetPortString("OPENBLOPS_UPDATE_VERSION"),
                   info.version[0] ? info.version : "?", info.current);
-    std::snprintf(s_releaseLine, sizeof(s_releaseLine), "%s", info.title);
+    SEH_Utf8ToGameText(CleanGitHubText(info.title).c_str(), s_releaseLine, sizeof(s_releaseLine));
     FillNotes(info.notes);
     const double mb = 1.0 / (1024.0 * 1024.0);
     s_secondary[0] = 0;

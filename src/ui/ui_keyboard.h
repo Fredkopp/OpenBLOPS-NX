@@ -13,14 +13,14 @@ struct keyBoardUtitlity // sizeof=0x8
 #ifdef KISAK_NX
 #include <stddef.h>
 
-// Which characters the Switch keyboard accepts. Every filter takes printable
-// ASCII only: game text is ASCII-safe in every language's encoding, while the
-// keyboard returns UTF-8. All but UI_NX_TEXT_ANY also refuse '@' (a string
-// reference) and '^' (a colour code).
+// Which ASCII characters the Switch keyboard accepts. All but UI_NX_TEXT_ANY
+// refuse '@' (a string reference) and '^' (a colour code); UI_NX_TEXT_SAFE
+// also refuses what UI_VerifyString does ({ } % \ ; ").
 enum UiNxTextFilter
 {
     UI_NX_TEXT_ANY,
     UI_NX_TEXT_PLAIN,
+    UI_NX_TEXT_SAFE,
     UI_NX_TEXT_FILENAME,
     UI_NX_TEXT_ALNUM,
     UI_NX_TEXT_DIGITS,
@@ -32,9 +32,13 @@ struct UiNxTextRequest
     const char *header = nullptr;    // localized text in the game's encoding
     bool headerIsUtf8 = false;
     const char *initialText = "";    // in the game's encoding
-    int maxChars = 255;
+    int maxChars = 255;              // in bytes of game text
     bool password = false;
     UiNxTextFilter filter = UI_NX_TEXT_ANY;
+    // Also accept the letters of the game's language (é, ß, Cyrillic, Hangul,
+    // kana...) with UI_NX_TEXT_ANY, _PLAIN or _SAFE. Leave it off for text
+    // other players see: their game may read the bytes in another encoding.
+    bool nativeText = false;
 };
 
 // Shows the Switch software keyboard. A refused character is reported inside

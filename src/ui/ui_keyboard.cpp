@@ -55,8 +55,6 @@ void __cdecl UI_ClearKeyboardActive()
 }
 
 #ifdef KISAK_NX
-static UiNxTextFilter s_nxTextFilter;
-
 static bool UI_NX_IsAllowedChar(unsigned char ch, UiNxTextFilter filter)
 {
     if (ch < 32 || ch >= 127)
@@ -65,6 +63,8 @@ static bool UI_NX_IsAllowedChar(unsigned char ch, UiNxTextFilter filter)
         return false;
     switch (filter)
     {
+    case UI_NX_TEXT_SAFE:
+        return !strchr("{}%\\;\"", ch);
     case UI_NX_TEXT_FILENAME:
         return I_isforfilename(ch);
     case UI_NX_TEXT_ALNUM:
@@ -78,26 +78,71 @@ static bool UI_NX_IsAllowedChar(unsigned char ch, UiNxTextFilter filter)
     }
 }
 
+// A non-ASCII character as game text, when the field takes the language's
+// letters and the language can show it. A Shift-JIS character whose second
+// byte the game treats as markup ('@', '\', '^', '{', '}') is refused, as
+// UI_VerifyString would refuse the text.
+static int UI_NX_EncodeNativeChar(const UiNxTextRequest &request, unsigned int code, char *encoded)
+{
+    if (!request.nativeText || (request.filter != UI_NX_TEXT_ANY && request.filter != UI_NX_TEXT_PLAIN
+                                   && request.filter != UI_NX_TEXT_SAFE))
+        return 0;
+    const int count = SEH_EncodeGameChar(code, encoded);
+    if (count == 2 && strchr("@\\^{}", encoded[1]))
+        return 0;
+    return count;
+}
+
+// Converts the keyboard's UTF-8 to game text of at most limit bytes. On
+// refusal, writes the message the keyboard shows into message.
+static bool UI_NX_ConvertText(const UiNxTextRequest &request, int limit, const char *text, char *out,
+    size_t outSize, char *message, size_t messageSize)
+{
+    size_t length = 0;
+    for (const char *ch = text; *ch;)
+    {
+        const char *start = ch;
+        const unsigned int code = SEH_ReadUtf8Char(&ch);
+        char encoded[2];
+        int count = 0;
+        if (code < 0x80)
+        {
+            if (UI_NX_IsAllowedChar(static_cast<unsigned char>(code), request.filter))
+                encoded[count++] = static_cast<char>(code);
+        }
+        else
+            count = UI_NX_EncodeNativeChar(request, code, encoded);
+        if (!count)
+        {
+            char character[5]{};
+            memcpy(character, start, std::min<size_t>(ch - start, 4));
+            snprintf(message, messageSize, SEH_GetPortString("OPENBLOPS_KEYBOARD_INVALID_CHAR", true), character);
+            return false;
+        }
+        if (length + count > static_cast<size_t>(limit) || length + count >= outSize)
+        {
+            snprintf(message, messageSize, "%s", SEH_GetPortString("OPENBLOPS_KEYBOARD_TOO_LONG", true));
+            return false;
+        }
+        if (request.filter == UI_NX_TEXT_DECIMAL && encoded[0] == Com_GetDecimalDelimiter())
+            encoded[0] = '.';
+        memcpy(out + length, encoded, count);
+        length += count;
+    }
+    out[length] = 0;
+    return true;
+}
+
+static const UiNxTextRequest *s_nxTextRequest;
+static int s_nxTextLimit;
+
 // Runs when the player confirms. text is UTF-8; on refusal it is overwritten
 // with the message the keyboard shows before letting the player edit again.
 static SwkbdTextCheckResult UI_NX_CheckText(char *text, size_t size)
 {
-    for (size_t i = 0; text[i];)
-    {
-        const unsigned char lead = static_cast<unsigned char>(text[i]);
-        if (lead < 0x80 && UI_NX_IsAllowedChar(lead, s_nxTextFilter))
-        {
-            ++i;
-            continue;
-        }
-        const size_t length = lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;
-        char character[5]{};
-        for (size_t j = 0; j < length && text[i + j]; ++j)
-            character[j] = text[i + j];
-        snprintf(text, size, SEH_GetPortString("OPENBLOPS_KEYBOARD_INVALID_CHAR", true), character);
-        return SwkbdTextCheckResult_Bad;
-    }
-    return SwkbdTextCheckResult_OK;
+    char game[512];
+    return UI_NX_ConvertText(*s_nxTextRequest, s_nxTextLimit, text, game, sizeof(game), text, size)
+        ? SwkbdTextCheckResult_OK : SwkbdTextCheckResult_Bad;
 }
 
 bool UI_NX_EditText(const UiNxTextRequest &request, char *out, size_t outSize)
@@ -129,28 +174,19 @@ bool UI_NX_EditText(const UiNxTextRequest &request, char *out, size_t outSize)
     }
     SEH_GameTextToUtf8(request.initialText, utf8, sizeof(utf8));
     swkbdConfigSetInitialText(&keyboard, utf8);
+    // The keyboard counts characters; a two-byte Hangul or kana character
+    // takes two of the game's bytes, which the text check counts.
     const int limit = std::clamp(std::min(request.maxChars, static_cast<int>(outSize) - 1), 1, 255);
     swkbdConfigSetStringLenMax(&keyboard, limit);
-    s_nxTextFilter = request.filter;
+    s_nxTextRequest = &request;
+    s_nxTextLimit = limit;
     swkbdConfigSetTextCheckCallback(&keyboard, UI_NX_CheckText);
 
     char value[1024]{};
     const Result result = swkbdShow(&keyboard, value, sizeof(value));
     swkbdClose(&keyboard);
-    // The text check lets ASCII through only, so a byte is a character here.
-    if (R_FAILED(result) || strlen(value) > static_cast<size_t>(limit))
-        return false;
-    for (char &ch : value)
-    {
-        if (!ch)
-            break;
-        if (!UI_NX_IsAllowedChar(static_cast<unsigned char>(ch), request.filter))
-            return false;
-        if (request.filter == UI_NX_TEXT_DECIMAL && ch == Com_GetDecimalDelimiter())
-            ch = '.';
-    }
-    I_strncpyz(out, value, static_cast<int>(outSize));
-    return true;
+    char message[256];
+    return R_SUCCEEDED(result) && UI_NX_ConvertText(request, limit, value, out, outSize, message, sizeof(message));
 }
 
 static void UI_NX_OpenVirtualKeyboard(int keyboardType, const char *title, const char *initialText, int size)
@@ -162,6 +198,10 @@ static void UI_NX_OpenVirtualKeyboard(int keyboardType, const char *title, const
     request.header = title && *title == '@' ? UI_SafeTranslateString(title + 1) : title;
     request.initialText = initialText;
     request.maxChars = size - 1;
+    // UI_KeyboardComplete checks the text with UI_VerifyString, which on the
+    // original PC game also refused every non-ASCII byte; refuse the same
+    // characters while the keyboard is still open.
+    request.filter = UI_NX_TEXT_SAFE;
     char value[256];
     if (!UI_NX_EditText(request, value, sizeof(value)))
         return;

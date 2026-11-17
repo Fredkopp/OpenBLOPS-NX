@@ -78,46 +78,222 @@ const char *SEH_GetPortString(const char *reference, bool utf8)
     return reference;
 }
 
+namespace
+{
+#include "game_encodings.inc"
+
+enum class GameEncoding { Western, Cyrillic, CentralEuropean, Korean, Japanese };
+
+// The encoding of the game's text in the current language, by port column.
+GameEncoding SEH_PortEncoding()
+{
+    switch (SEH_PortLanguage())
+    {
+    case 5: return GameEncoding::Cyrillic;          // Russian, Windows-1251
+    case 6: case 9: return GameEncoding::CentralEuropean;   // Polish, Czech, Windows-1250
+    case 7: return GameEncoding::Korean;            // Hangul, cp949
+    case 8: return GameEncoding::Japanese;          // Shift-JIS, cp932
+    default: return GameEncoding::Western;          // Windows-1252
+    }
+}
+
+const unsigned short *SEH_SingleByteTable(GameEncoding encoding)
+{
+    switch (encoding)
+    {
+    case GameEncoding::Cyrillic: return cp1251High;
+    case GameEncoding::CentralEuropean: return cp1250High;
+    case GameEncoding::Japanese: return cp932High;
+    case GameEncoding::Korean: return nullptr;   // the game reads only two-byte Hangul
+    default: return cp1252High;
+    }
+}
+
+int SEH_ShiftJisIndex(unsigned char lead, unsigned char trail)
+{
+    int row, column;
+    if (lead >= 0x81 && lead <= 0x9F) row = lead - 0x81;
+    else if (lead >= 0xE0 && lead <= 0xEF) row = lead - 0xE0 + 31;
+    else return -1;
+    if (trail >= 0x40 && trail <= 0x7E) column = trail - 0x40;
+    else if (trail >= 0x80 && trail <= 0xFC) column = trail - 0x80 + 63;
+    else return -1;
+    return row * 188 + column;
+}
+
+// One character of game text, read by the same rules as SEH_DecodeLetter.
+// Returns its code point (0 when it has none) and sets its length in bytes.
+unsigned int SEH_DecodeGameChar(GameEncoding encoding, const unsigned char *text, int *length)
+{
+    *length = 1;
+    const unsigned char lead = text[0];
+    if (lead < 0x80)
+        return lead;
+    if (encoding == GameEncoding::Korean && lead >= 0xB0 && lead <= 0xC8 && text[1] > 0xA0 && text[1] != 0xFF)
+    {
+        *length = 2;
+        return koreanHangul[(lead - 0xB0) * 94 + text[1] - 0xA1];
+    }
+    if (encoding == GameEncoding::Japanese)
+    {
+        const int index = SEH_ShiftJisIndex(lead, text[1]);
+        if (index >= 0)
+        {
+            *length = 2;
+            return japaneseShiftJis[index];
+        }
+    }
+    const unsigned short *table = SEH_SingleByteTable(encoding);
+    return table ? table[lead - 0x80] : 0;
+}
+
+size_t SEH_WriteUtf8(unsigned int code, char *out)
+{
+    if (code < 0x80)
+    {
+        out[0] = static_cast<char>(code);
+        return 1;
+    }
+    if (code < 0x800)
+    {
+        out[0] = static_cast<char>(0xC0 | (code >> 6));
+        out[1] = static_cast<char>(0x80 | (code & 0x3F));
+        return 2;
+    }
+    out[0] = static_cast<char>(0xE0 | (code >> 12));
+    out[1] = static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+    out[2] = static_cast<char>(0x80 | (code & 0x3F));
+    return 3;
+}
+}
+
 bool SEH_GameTextToUtf8(const char *text, char *out, size_t size)
 {
-    // The port's first five language columns (English, French, German,
-    // Italian, Spanish) use Windows-1252. Its 0x80-0x9F range needs a table;
-    // 0xA0-0xFF match the Unicode code points. 0 marks an unassigned byte.
-    static constexpr unsigned short cp1252[32] = {
-        0x20AC, 0, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
-        0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017D, 0,
-        0, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
-        0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0, 0x017E, 0x0178,
-    };
     if (!size)
         return false;
-    const bool latin = SEH_PortLanguage() <= 4;
+    const GameEncoding encoding = SEH_PortEncoding();
     bool exact = true;
     size_t length = 0;
-    for (const unsigned char *ch = reinterpret_cast<const unsigned char *>(text ? text : ""); *ch; ++ch)
+    const unsigned char *ch = reinterpret_cast<const unsigned char *>(text ? text : "");
+    while (*ch)
     {
-        unsigned int code = *ch;
-        if (code >= 0x80)
-            code = latin ? (code < 0xA0 ? cp1252[code - 0x80] : code) : 0;
+        int used;
+        unsigned int code = SEH_DecodeGameChar(encoding, ch, &used);
+        ch += used;
         if (!code)
         {
             code = '?';
             exact = false;
         }
         char encoded[3];
-        size_t count = 0;
-        if (code < 0x80)
-            encoded[count++] = static_cast<char>(code);
-        else if (code < 0x800)
+        const size_t count = SEH_WriteUtf8(code, encoded);
+        if (length + count >= size)
         {
-            encoded[count++] = static_cast<char>(0xC0 | (code >> 6));
-            encoded[count++] = static_cast<char>(0x80 | (code & 0x3F));
+            exact = false;
+            break;
         }
-        else
+        memcpy(out + length, encoded, count);
+        length += count;
+    }
+    out[length] = 0;
+    return exact;
+}
+
+unsigned int SEH_ReadUtf8Char(const char **text)
+{
+    const unsigned char *s = reinterpret_cast<const unsigned char *>(*text);
+    if (s[0] < 0x80)
+    {
+        *text += 1;
+        return s[0];
+    }
+    const int trailing = s[0] >= 0xF8 ? -1 : s[0] >= 0xF0 ? 3 : s[0] >= 0xE0 ? 2 : s[0] >= 0xC0 ? 1 : -1;
+    if (trailing < 0)
+    {
+        *text += 1;
+        return 0xFFFD;
+    }
+    unsigned int code = s[0] & (0x3F >> trailing);
+    for (int i = 1; i <= trailing; ++i)
+    {
+        if ((s[i] & 0xC0) != 0x80)
         {
-            encoded[count++] = static_cast<char>(0xE0 | (code >> 12));
-            encoded[count++] = static_cast<char>(0x80 | ((code >> 6) & 0x3F));
-            encoded[count++] = static_cast<char>(0x80 | (code & 0x3F));
+            *text += i;
+            return 0xFFFD;
+        }
+        code = (code << 6) | (s[i] & 0x3F);
+    }
+    *text += trailing + 1;
+    return code;
+}
+
+int SEH_EncodeGameChar(unsigned int code, char *out)
+{
+    if (!code)
+        return 0;
+    if (code < 0x80)
+    {
+        out[0] = static_cast<char>(code);
+        return 1;
+    }
+    if (code > 0xFFFF)
+        return 0;
+    const GameEncoding encoding = SEH_PortEncoding();
+    if (const unsigned short *table = SEH_SingleByteTable(encoding))
+    {
+        for (int i = 0; i < 128; ++i)
+        {
+            if (table[i] == code)
+            {
+                out[0] = static_cast<char>(0x80 + i);
+                return 1;
+            }
+        }
+    }
+    if (encoding == GameEncoding::Korean)
+    {
+        for (int i = 0; i < static_cast<int>(ARRAY_COUNT(koreanHangul)); ++i)
+        {
+            if (koreanHangul[i] == code)
+            {
+                out[0] = static_cast<char>(0xB0 + i / 94);
+                out[1] = static_cast<char>(0xA1 + i % 94);
+                return 2;
+            }
+        }
+    }
+    if (encoding == GameEncoding::Japanese)
+    {
+        for (int i = 0; i < static_cast<int>(ARRAY_COUNT(japaneseShiftJis)); ++i)
+        {
+            if (japaneseShiftJis[i] == code)
+            {
+                const int lead = i / 188, trail = i % 188;
+                out[0] = static_cast<char>(lead < 31 ? 0x81 + lead : 0xE0 + lead - 31);
+                out[1] = static_cast<char>(trail < 63 ? 0x40 + trail : 0x80 + trail - 63);
+                return 2;
+            }
+        }
+    }
+    return 0;
+}
+
+bool SEH_Utf8ToGameText(const char *text, char *out, size_t size)
+{
+    if (!size)
+        return false;
+    bool exact = true;
+    size_t length = 0;
+    const char *ch = text ? text : "";
+    while (*ch)
+    {
+        char encoded[2];
+        int count = SEH_EncodeGameChar(SEH_ReadUtf8Char(&ch), encoded);
+        if (!count)
+        {
+            encoded[0] = '?';
+            count = 1;
+            exact = false;
         }
         if (length + count >= size)
         {
