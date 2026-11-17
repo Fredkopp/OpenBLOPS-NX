@@ -3482,17 +3482,22 @@ void __cdecl CG_Init(int localClientNum, int serverMessageNum, int serverCommand
 #ifdef KISAK_SP
     CG_RegisterHudMaterials_SP();
 #else
-    cgMedia.hudDpadLeftHighlight = Material_RegisterHandle("nightvision_overlay_goggles", 7);
-    cgMedia.ammoCounterBullet = Material_RegisterHandle("hud_icon_nvg", 7);
-    cgMedia.ammoCounterBeltBullet = Material_RegisterHandle("hud_dpad_arrow", 7);
-    cgMedia.ammoCounterRifleBullet = Material_RegisterHandle("hud_dpad_eqip_count_backing", 7);
-    cgMedia.ammoCounterRocket = Material_RegisterHandle("hud_dpad_outer_frame_highlight_side", 7);
-    cgMedia.ammoCounterShotgunShell = Material_RegisterHandle("ammo_counter_bullet", 7);
-    cgMedia.ammoCounterSingle = Material_RegisterHandle("ammo_counter_beltbullet", 7);
-    cgMedia.lifeCounterAlive = Material_RegisterHandle("ammo_counter_riflebullet", 7);
-    cgMedia.lifeCounterDead = Material_RegisterHandle("ammo_counter_rocket", 7);
-    cgMedia.textDecodeCharacters = Material_RegisterHandle("ammo_counter_shotgunshell", 7);
-    cgMedia.textDecodeCharactersGlow = Material_RegisterHandle("ammo_counter_single", 7);
+    // The field names in cgMedia_t (cg_local_mp.h) sit four pointers off the
+    // retail layout their XREFs describe; register by meaning, as the shared
+    // HUD code reads them. Registered by the shifted names, the D-pad slot
+    // highlights got nightvision_overlay_goggles, which MP zones lack, and
+    // were drawn as the $default checkerboard.
+    cgMedia.nightVisionOverlay = Material_RegisterHandle("nightvision_overlay_goggles", 7);
+    cgMedia.hudIconNVG = Material_RegisterHandle("hud_icon_nvg", 7);
+    cgMedia.hudDpadArrow = Material_RegisterHandle("hud_dpad_arrow", 7);
+    cgMedia.hudDpadCircle = Material_RegisterHandle("hud_dpad_eqip_count_backing", 7);
+    cgMedia.hudDpadLeftHighlight = Material_RegisterHandle("hud_dpad_outer_frame_highlight_side", 7);
+    cgMedia.ammoCounterBullet = Material_RegisterHandle("ammo_counter_bullet", 7);
+    cgMedia.ammoCounterBeltBullet = Material_RegisterHandle("ammo_counter_beltbullet", 7);
+    cgMedia.ammoCounterRifleBullet = Material_RegisterHandle("ammo_counter_riflebullet", 7);
+    cgMedia.ammoCounterRocket = Material_RegisterHandle("ammo_counter_rocket", 7);
+    cgMedia.ammoCounterShotgunShell = Material_RegisterHandle("ammo_counter_shotgunshell", 7);
+    cgMedia.ammoCounterSingle = Material_RegisterHandle("ammo_counter_single", 7);
     cgMedia.lifeCounterAlive = Material_RegisterHandle("life_counter_alive", 7);
     cgMedia.lifeCounterDead = Material_RegisterHandle("life_counter_dead", 7);
     cgMedia.textDecodeCharacters = Material_RegisterHandle("decode_characters", 7);
