@@ -75,7 +75,7 @@ struct BodyState // sizeof=0x88
 
 struct PhysImpulse // sizeof=0x1C
 {                                       // XREF: .data:PhysImpulse * gImpulseCache/r
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t id;
 #else
     int id;
@@ -141,7 +141,7 @@ struct __declspec(align(4)) phys_surface_type_info // sizeof=0x10
     // padding byte
     // padding byte
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(phys_surface_type_info) == 16);
 #endif
 
@@ -299,7 +299,7 @@ bool __cdecl Phys_ObjIsAsleepSingle(intptr_t id);
 
 void __cdecl Phys_SetHingeParams(rigid_body_constraint_ragdoll *id, float motorSpeed, float damp);
 struct rigid_body_constraint_ragdoll * Phys_CreateHinge(
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 intptr_t obj1,
                 intptr_t obj2,
 #else
@@ -314,7 +314,7 @@ struct rigid_body_constraint_ragdoll * Phys_CreateHinge(
                 float highStop);
 void __cdecl Phys_SetAngularMotorParams(struct rigid_body_constraint_ragdoll *id, const float *motorSpeeds, float *damp);
 struct rigid_body_constraint_ragdoll * Phys_CreateSwivel(
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 intptr_t obj1,
                 intptr_t obj2,
 #else

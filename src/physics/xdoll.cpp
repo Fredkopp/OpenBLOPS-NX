@@ -443,7 +443,7 @@ char __cdecl XDoll_CreatePhysObj(
         bone->physPreset = physPreset;
         bone->rigidBody = (intptr_t)Phys_ObjCreate(0, origin, quat, vec3_origin, physPreset, &gjk_geom_list, 1, -1);
         userData = (PhysObjUserData *)bone->rigidBody;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         // With nx_physics 0 (the solver is not LP64-ported) Phys_ObjCreate
         // returns null: an MP destructible (a car) breaking crashed here. The
         // code below already treats a missing rigid body as failure.

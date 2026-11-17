@@ -4,7 +4,7 @@
 
 #include <ShlObj.h>
 #include <qcommon/threads.h>
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 #include <mutex>
 static std::mutex s_nxIwdReferenceLock;
 #endif
@@ -551,7 +551,7 @@ void __cdecl FS_FCloseFile(int h)
     {
         if (fsh[h].handleFiles.iwdIsClone)
         {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             unzCloseEntry(fsh[h].zipFile->handle, fsh[h].handleFiles.file.z);
 #else
             unzClose(fsh[h].handleFiles.file.z);
@@ -824,7 +824,7 @@ unsigned int __cdecl FS_FOpenFileReadForThread(const char *filename, int *file, 
                                         impureIwd = (const char *)v14;
                                         break;
                                     }
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                                     {
                                         std::lock_guard<std::mutex> lock(s_nxIwdReferenceLock);
                                         if (!v14->referenced && !FS_FilesAreLoadedGlobally(sanitizedName)) {
@@ -1037,7 +1037,7 @@ unsigned int __cdecl FS_FOpenFileReadForThread(const char *filename, int *file, 
     }
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 bool FS_NX_OpenWorkerFile(const char *filename, FsNxWorkerFile *out)
 {
     char sanitizedName[256];
@@ -1367,7 +1367,7 @@ int __cdecl FS_Seek(int f, int offset, int origin)
         v6 = FS_FileForHandle(f);
         return FS_FileSeek(v6, offset, origin);
     }
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     const int64_t current = unztell(fsh[f].handleFiles.file.z);
     const int64_t length = FS_filelength(f);
     int64_t target;

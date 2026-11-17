@@ -1,4 +1,4 @@
-#include "nx_bink_audio.h"
+#include <binklib/bink_audio.h>
 #include <switch.h>
 
 namespace
@@ -30,7 +30,7 @@ void focusChanged(AppletHookType type, void *)
 }
 }
 
-void NX_BinkInitClock()
+void Sys_BinkInitClock()
 {
     std::lock_guard<std::mutex> lock(mutex);
     if (initialized)
@@ -41,13 +41,13 @@ void NX_BinkInitClock()
     appletHook(&hook, focusChanged, nullptr);
 }
 
-bool NX_BinkHasFocus()
+bool Sys_BinkHasFocus()
 {
     std::lock_guard<std::mutex> lock(mutex);
     return focused;
 }
 
-uint64_t NX_BinkTimeUs()
+uint64_t Sys_BinkTimeUs()
 {
     std::lock_guard<std::mutex> lock(mutex);
     return (focused ? systemTime() : backgroundAt) - backgroundTime;

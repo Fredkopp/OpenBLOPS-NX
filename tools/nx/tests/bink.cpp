@@ -1,5 +1,5 @@
-#include "nx_bink.h"
-#include "nx_bink_audio.h"
+#include "bink_ffmpeg.h"
+#include "bink_audio.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -14,13 +14,13 @@ extern "C" {
 #include <libavutil/mem.h>
 }
 
-static NxBinkAudio *activeAudio;
+static BinkAudioQueue *activeAudio;
 static uint64_t nowUs;
 static bool outputAvailable = true;
 
-uint64_t NX_BinkTimeUs() { return nowUs; }
-bool NX_BinkHasFocus() { return true; }
-bool NX_AttachCinematicAudio(NxBinkAudio *audio)
+uint64_t Sys_BinkTimeUs() { return nowUs; }
+bool Sys_BinkHasFocus() { return true; }
+bool Snd_AttachCinematicAudio(BinkAudioQueue *audio)
 {
     assert(!activeAudio);
     if (!outputAvailable)
@@ -28,7 +28,7 @@ bool NX_AttachCinematicAudio(NxBinkAudio *audio)
     activeAudio = audio;
     return true;
 }
-void NX_DetachCinematicAudio(NxBinkAudio *audio)
+void Snd_DetachCinematicAudio(BinkAudioQueue *audio)
 {
     assert(activeAudio == audio);
     activeAudio = nullptr;
@@ -94,7 +94,7 @@ struct Buffers
 
 void audioTests()
 {
-    NxBinkAudio audio;
+    BinkAudioQueue audio;
     assert(!audio.initialize(0));
     assert(audio.initialize(48000));
     float input[8] = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -124,16 +124,16 @@ void invalidTests(const std::vector<uint8_t> &file)
 {
     outputAvailable = false;
     for (size_t size : {size_t(0), size_t(3), size_t(43), file.size() - 1})
-        assert(!NX_BinkOpenMemory(file.data(), size, 0));
+        assert(!Bink_OpenMemory(file.data(), size, 0));
     for (unsigned at : {0u, 8u, 20u, 24u, 28u, 32u, 40u})
     {
         auto corrupt = file;
         std::memset(corrupt.data() + at, 0xff, 4);
-        assert(!NX_BinkOpenMemory(corrupt.data(), corrupt.size(), 0));
+        assert(!Bink_OpenMemory(corrupt.data(), corrupt.size(), 0));
     }
     for (unsigned i = 0; i < 30; ++i)
     {
-        HBINK movie = NX_BinkOpenMemory(file.data(), file.size(), 0);
+        HBINK movie = Bink_OpenMemory(file.data(), file.size(), 0);
         assert(movie);
         Buffers buffers(movie);
         assert(BinkDoFrame(movie) == 0);
@@ -152,11 +152,11 @@ void invalidTests(const std::vector<uint8_t> &file)
         BinkClose(movie);
     }
     outputAvailable = true;
-    HBINK bad = NX_BinkOpenMemory(file.data(), file.size(), 0);
+    HBINK bad = Bink_OpenMemory(file.data(), file.size(), 0);
     assert(bad);
     Buffers buffers(bad);
     buffers.info.Frames[0].YPlane.BufferPitch = 1;
-    assert(BinkDoFrame(bad) < 0 && bad->ReadError && NX_BinkFinished(bad));
+    assert(BinkDoFrame(bad) < 0 && bad->ReadError && Bink_Finished(bad));
     BinkClose(bad);
     assert(!activeAudio);
 }
@@ -172,7 +172,7 @@ int main(int argc, char **argv)
     BinkSetSoundTrack(1, const_cast<unsigned *>(&track));
     invalidTests(file);
     nowUs = 0;
-    HBINK movie = std::strcmp(argv[4], "memory") == 0 ? NX_BinkOpenMemory(file.data(), file.size(), 0) : BinkOpen(argv[1], 0);
+    HBINK movie = std::strcmp(argv[4], "memory") == 0 ? Bink_OpenMemory(file.data(), file.size(), 0) : BinkOpen(argv[1], 0);
     if (!movie) { std::fprintf(stderr, "%s\n", BinkGetError()); return 1; }
     Buffers buffers(movie);
     std::ofstream hashes(std::string(argv[2]) + ".md5");
@@ -185,7 +185,7 @@ int main(int argc, char **argv)
         for (unsigned i = 0; i < movie->Frames; ++i)
         {
             assert(movie->FrameNum == i + 1);
-            assert(!NX_BinkFinished(movie));
+            assert(!Bink_Finished(movie));
             if (BinkDoFrame(movie) < 0) { std::fprintf(stderr, "frame %u: %s\n", i, BinkGetError()); return 1; }
             auto hash = buffers.hash();
             hashes << hash << '\n';
@@ -211,7 +211,7 @@ int main(int argc, char **argv)
     if (activeAudio)
         activeAudio->mix(tail, 1024, 0, nowUs);
     nowUs += 100000;
-    assert(NX_BinkFinished(movie));
+    assert(Bink_Finished(movie));
     BinkClose(movie);
     assert(!activeAudio);
     std::printf("Decoded %s: %u cycle(s), video planes, audio, pause, bounds and cleanup passed\n", argv[1], loops);

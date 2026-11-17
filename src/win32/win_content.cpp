@@ -71,7 +71,7 @@ static bool Content_IsPackInstalled(int mask)
     appId = Content_GetSteamAppIdForPack(mask);
     if ( !appId )
         return 0;
-#ifndef KISAK_NX   // no Steam: the zone probe below decides
+#ifndef KISAK_64BIT   // no Steam: the zone probe below decides
     if ( SteamApps() )
     {
         if ( SteamApps()->BIsDlcInstalled(appId) )

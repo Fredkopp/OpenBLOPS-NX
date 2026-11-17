@@ -31,8 +31,8 @@ void __cdecl FX_RegisterDvars()
     fx_cull_elem_spawn = _Dvar_RegisterBool("fx_cull_elem_spawn", 1, 0, "Culls effect elems for spawning");
     fx_cull_elem_draw = _Dvar_RegisterBool("fx_cull_elem_draw", 1, 0, "Culls effect elems for drawing");
     fx_cull_effect_spawn = _Dvar_RegisterBool("fx_cull_effect_spawn", 0, 0, "Culls entire effects for spawning");
-#ifdef KISAK_NX
-    // Switch default: off (bullet impact marks; Com_SetRecommended's NX block too)
+#if defined(KISAK_NX) && !defined(KISAK_NX2)
+    // Switch 1 default: off (bullet impact marks; Com_SetRecommended's NX block too)
     fx_marks = _Dvar_RegisterBool("fx_marks", 0, 1u, "Toggles whether bullet hits leave marks");
 #else
     fx_marks = _Dvar_RegisterBool("fx_marks", 1, 1u, "Toggles whether bullet hits leave marks");

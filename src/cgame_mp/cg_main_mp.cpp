@@ -634,8 +634,7 @@ void __cdecl CG_RegisterDvars()
                                  0,
                                  0,
                                  "Toggles the display of the conspicuous FPS meter in non-development builds only.");
-    _Dvar_RegisterBool("cg_performanceOverlay", false, 1u /* archive */, "Show FPS and performance statistics");
-    cg_drawFPS = _Dvar_RegisterEnum("cg_drawFPS", cg_drawFpsNames, 1, 1u, "Draw frames per second");
+    cg_drawFPS = _Dvar_RegisterEnum("cg_drawFPS", cg_drawFpsNames, 0, 1u, "Draw frames per second");
     cg_drawFPSScale = _Dvar_RegisterFloat("cg_drawFPSScale", 0.0, 0.0, 100.0, 1u, "Draw FPS size scale");
     cg_drawBudgets = _Dvar_RegisterEnum("cg_drawBudgets", cg_drawBudgetNames, 1, 0, "Draw asset type budgets");
     cg_drawDynSModelBudget = _Dvar_RegisterBool("cg_drawDynSModelBudget", 1, 0, "Draw dynamic static model budget");

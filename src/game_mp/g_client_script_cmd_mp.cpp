@@ -773,10 +773,28 @@ static void __cdecl PlayerCmd_SetAutoPickup_SP(scr_entref_t entref)
         return;
     self->client->autoPickupDisabled = Scr_GetInt(0, SCRIPTINSTANCE_SERVER) == 0;
 }
-PlayerSPStub_DEFINE(PlayerCmd_SPStub_attachtodec20terminal, "attachtodec20terminal", "0x007d7690")
-    // TODO(SP-STUB) 1 GSC ref(s) in the frontend closure, e.g. maps/frontend:685 get_players()[0] AttachToDec20Terminal();
-PlayerSPStub_DEFINE(PlayerCmd_SPStub_detachdec20terminal, "detachdec20terminal", "0x007d7700")
-    // TODO(SP-STUB) 1 GSC ref(s) in the frontend closure, e.g. maps/frontend:699 get_players()[0] DetachDec20Terminal();
+// Retail SP 0x007D7630 / 0x007D7690 / 0x007D7700: the frontend's DEC-20 terminal.
+// The client loads terminal.ff on 'I', takes the keyboard on 'D' and lets it go on
+// 'E'; the frontend script polls dec20_inuse to notice the player leaving.
+static void __cdecl PlayerCmd_InitDec20Terminal_SP(scr_entref_t entref)
+{
+    if (PlayerCmd_ViewModelSelf_SP(entref))
+        SV_GameSendServerCommand(entref.entnum, SV_CMD_RELIABLE, va("%c", 'I'));
+}
+static void __cdecl PlayerCmd_AttachToDec20Terminal_SP(scr_entref_t entref)
+{
+    if (!PlayerCmd_ViewModelSelf_SP(entref))
+        return;
+    Dvar_SetIntByName("dec20_inuse", 1);
+    SV_GameSendServerCommand(entref.entnum, SV_CMD_RELIABLE, va("%c", 'D'));
+}
+static void __cdecl PlayerCmd_DetachDec20Terminal_SP(scr_entref_t entref)
+{
+    if (!PlayerCmd_ViewModelSelf_SP(entref))
+        return;
+    Dvar_SetIntByName("dec20_inuse", 0);
+    SV_GameSendServerCommand(entref.entnum, SV_CMD_RELIABLE, va("%c", 'E'));
+}
 static void PlayerCmd_GetPlayerViewHeight_SP(scr_entref_t entref)
 {
     gentity_s *self;
@@ -806,8 +824,6 @@ static void __cdecl PlayerCmd_GetWeaponRenderOptions_SP(scr_entref_t entref)
     if (held)
         Scr_AddInt(held->options.i, SCRIPTINSTANCE_SERVER);
 }
-PlayerSPStub_DEFINE(PlayerCmd_SPStub_initdec20terminal, "initdec20terminal", "0x007d7630")
-    // TODO(SP-STUB) 1 GSC ref(s) in the frontend closure, e.g. maps/frontend:625 get_players()[0] initdec20terminal();
 static void PlayerCmd_ReloadButtonPressed_SP(scr_entref_t entref)
 {
     gentity_s *ent;
@@ -1243,11 +1259,11 @@ const BuiltinMethodDef methods[] =
   { "getnormalizedmovement", &PlayerCmd_GetNormalizedMovement_SP, 0 },
   { "islookingat", &G_SPIsLookingAt, 0 },                                   // Retail SP 0x007D7950
   { "setautopickup", &PlayerCmd_SetAutoPickup_SP, 0 },
-  { "attachtodec20terminal", &PlayerCmd_SPStub_attachtodec20terminal, 0 },   // TODO(SP-STUB) SP 0x00A52A80 idx 70, 0x007d7690
-  { "detachdec20terminal", &PlayerCmd_SPStub_detachdec20terminal, 0 },       // TODO(SP-STUB) SP 0x00A52A80 idx 71, 0x007d7700
+  { "attachtodec20terminal", &PlayerCmd_AttachToDec20Terminal_SP, 0 },      // SP 0x007D7690
+  { "detachdec20terminal", &PlayerCmd_DetachDec20Terminal_SP, 0 },          // SP 0x007D7700
   { "getplayerviewheight", &PlayerCmd_GetPlayerViewHeight_SP, 0 },
   { "getweaponrenderoptions", &PlayerCmd_GetWeaponRenderOptions_SP, 0 },
-  { "initdec20terminal", &PlayerCmd_SPStub_initdec20terminal, 0 },           // TODO(SP-STUB) SP 0x00A52A80 idx 69, 0x007d7630
+  { "initdec20terminal", &PlayerCmd_InitDec20Terminal_SP, 0 },              // SP 0x007D7630
   { "reloadbuttonpressed", &PlayerCmd_ReloadButtonPressed_SP, 0 },
   { "resetadswidthandlerp", &PlayerCmd_ResetADSWidthAndLerp_SP, 0 },
   { "setadswidthandlerp", &PlayerCmd_SetADSWidthAndLerp_SP, 0 },

@@ -41,8 +41,8 @@ char __cdecl _Image_LoadFromFileWithReader(
                 bool loadHighmip,
                 int (__cdecl *OpenFileRead)(const char *, int *));
 bool __cdecl Image_LoadFromFile(GfxImage *image, bool loadHighmip);
-#ifdef KISAK_NX
-struct NxImageFileData
+#ifdef KISAK_64BIT
+struct KbzImageFileData
 {
     GfxImage *image;
     GfxImageFileHeader header;
@@ -50,12 +50,12 @@ struct NxImageFileData
     unsigned __int8 *data;
     int readSize;
 };
-void Image_NX_FreeFileData(NxImageFileData *file);
-bool Image_NX_ReadFile(GfxImage *image, NxImageFileData *out);
-bool Image_NX_ReadFileAnyThread(GfxImage *image, NxImageFileData *out);
-void Image_NX_LockImageLoad(bool lock);
-void Image_NX_AbortImageLoad();
-void Image_NX_CreateFromFileData(NxImageFileData *file);
+void Image_Kbz_FreeFileData(KbzImageFileData *file);
+bool Image_Kbz_ReadFile(GfxImage *image, KbzImageFileData *out);
+bool Image_Kbz_ReadFileAnyThread(GfxImage *image, KbzImageFileData *out);
+void Image_Kbz_LockImageLoad(bool lock);
+void Image_Kbz_AbortImageLoad();
+void Image_Kbz_CreateFromFileData(KbzImageFileData *file);
 #endif
 char __cdecl Image_LoadFromFileWithReader(
                 GfxImage *image,

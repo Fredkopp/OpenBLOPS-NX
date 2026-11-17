@@ -141,6 +141,8 @@ struct languageInfo_t // sizeof=0xC
 int __cdecl SEH_GetCurrentLanguage();
 void __cdecl SEH_InitLanguage();
 void SEH_UpdateCurrentLanguage();
+// loc_language back to the installed language after the config (win_localize.cpp).
+void SEH_ApplyInstalledLanguage();
 void __cdecl SEH_UpdateLanguageInfo();
 int __cdecl SEH_VerifyLanguageSelection(int iLanguageSelection);
 void __cdecl SEH_Init_StringEd();

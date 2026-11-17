@@ -242,7 +242,7 @@ void __cdecl Sys_UpdateHotkeyBlock()
     Sys_SetBlockSystemHotkeys(block);
 }
 
-int __stdcall MainWndProc(HWND__ *hWnd, UINT uMsg, signed int wParam, LPARAM lParam)
+LRESULT __stdcall MainWndProc(HWND__ *hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     int result; // eax
     HANDLE v5; // eax
@@ -260,7 +260,7 @@ int __stdcall MainWndProc(HWND__ *hWnd, UINT uMsg, signed int wParam, LPARAM lPa
     SetThreadExecutionState(2u);
     if ( uMsg == MSH_MOUSEWHEEL )
     {
-        if ( wParam <= 0 )
+        if ( (int)wParam <= 0 )
         {
             Sys_QueEvent(g_msgTime, SE_KEY, 205, 1, 0, 0);
             Sys_QueEvent(g_msgTime, SE_KEY, 205, 0, 0, 0);
@@ -466,7 +466,7 @@ LABEL_60:
                 return DefWindowProcA(hWnd, uMsg, wParam, lParam);
             case 0x7Eu:
                 monitorHandle = MonitorFromWindow(hWnd, 2u);
-                monitorInfo.cbSize = 40;
+                monitorInfo.cbSize = sizeof(monitorInfo);
                 GetMonitorInfoA(monitorHandle, &monitorInfo);
                 GetWindowRect(hWnd, &rc);
                 if ( rc.right - rc.left == monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left

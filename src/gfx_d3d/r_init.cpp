@@ -1,4 +1,7 @@
 #include "r_init.h"
+#ifdef KISAK_NX2
+#include <nx/nx_display.h>
+#endif
 #include <win32/win_main.h>
 #include <qcommon/common.h>
 
@@ -518,7 +521,7 @@ bool __cdecl R_GetMonitorDimensions(int *width, int *height)
     HMONITOR__ *adapterMonitor; // [esp+28h] [ebp-4h]
 
     adapterMonitor = dx.d3d9->GetAdapterMonitor(dx.adapterIndex);
-    mi.cbSize = 40;
+    mi.cbSize = sizeof(mi);
     if ( GetMonitorInfoA(adapterMonitor, &mi) )
     {
         *width = mi.rcMonitor.right - mi.rcMonitor.left;
@@ -564,7 +567,11 @@ void __cdecl R_CheckResizeWindow()
         || Dvar_HasLatchedValue(r_mode)
         || Dvar_HasLatchedValue(r_fullscreen)
         || Dvar_HasLatchedValue(r_aaSamples)
+#ifndef KISAK_NX2
+        // Switch 2 applies the refresh rate without a device reset
+        // (src/nx/nx_display.cpp).
         || Dvar_HasLatchedValue(r_displayRefresh)
+#endif
 #ifndef KISAK_NX
         || Dvar_HasLatchedValue(r_vsync)
 #endif
@@ -737,6 +744,11 @@ void __cdecl R_SetWndParms(GfxWindowParms *wndParms)
     int refreshRate; // [esp+4h] [ebp-8h] BYREF
     const char *refreshRateString; // [esp+8h] [ebp-4h]
 
+#ifdef KISAK_NX2
+    // The window's size, which follows the display (src/nx/nx_display.cpp).
+    wndParms->fullscreen = 0;
+    NX_DisplayRenderSize(&wndParms->displayWidth, &wndParms->displayHeight);
+#else
     wndParms->fullscreen = Dvar_GetBool("r_fullscreen");
     if ( wndParms->fullscreen || !R_SetCustomResolution(wndParms) )
     {
@@ -753,6 +765,7 @@ void __cdecl R_SetWndParms(GfxWindowParms *wndParms)
             wndParms->displayHeight = dx.adapterNativeHeight;
         }
     }
+#endif
     wndParms->sceneWidth = wndParms->displayWidth;
     wndParms->sceneHeight = wndParms->displayHeight;
     if ( wndParms->fullscreen )
@@ -1077,8 +1090,9 @@ void __cdecl R_SetShadowmapFormats_DX(unsigned int adapterIndex)
     *(_QWORD *)&formats[2][0] = 0x160000004BLL;
     *(_QWORD *)&formats[3][0] = 0x150000004BLL;
 
+    // The first choice's colour target becomes NULL.
     if ( NV_UseShadowNullColorRenderTarget() )
-        formats[0][0] = (_D3DFORMAT)1280070990;
+        formats[0][1] = (_D3DFORMAT)1280070990;
 
     for ( formatIndex = 0; formatIndex < 4; ++formatIndex )
     {

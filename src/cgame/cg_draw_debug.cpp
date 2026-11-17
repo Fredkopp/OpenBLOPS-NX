@@ -139,7 +139,7 @@ void __cdecl CG_DrawUpperRightDebugInfo(int localClientNum)
     y = cg_debugInfoCornerOffset->current.vector[1];
     if ( Dvar_GetInt("debug_show_viewpos") )
         y = CG_DrawViewpos(&scrPlaceFull, y, localClientNum);
-    if ( Dvar_GetBool("cg_performanceOverlay") )
+    if ( cg_drawFPS->current.integer )
         y = CG_DrawFPS(localClientNum, &scrPlaceFull, y, &meminfo);
     if ( com_statmon->current.enabled )
         y = CG_DrawStatmon(&scrPlaceFull, y);

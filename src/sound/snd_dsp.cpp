@@ -2,6 +2,7 @@
 #include <universal/com_math.h>
 #include "snd.h"
 #include "snd_occlusion.h"
+#include <xmmintrin.h>
 
 void __cdecl SND_DspMul(unsigned int count, const float *a, const float *b, float *c)
 {

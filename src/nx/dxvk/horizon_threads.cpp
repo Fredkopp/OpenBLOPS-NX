@@ -11,15 +11,21 @@ extern "C" int __real_pthread_create(pthread_t*, const pthread_attr_t*, void*(*)
 namespace {
 struct WorkerCores {
     u64 mask = 0;
+    u64 shared = 0;      // cores for renderer threads; 0 leaves them as created
     bool core3 = false;
 
     WorkerCores() {
-        u64 priorities = 0;
         const Result coresResult = svcGetInfo(&mask, InfoType_CoreMask, CUR_PROCESS_HANDLE, 0);
-        const Result priorityResult = svcGetInfo(&priorities, InfoType_PriorityMask, CUR_PROCESS_HANDLE, 0);
         if (R_FAILED(coresResult)) mask = 0;
+#ifdef KISAK_NX2
+        shared = mask;
+#else
+        u64 priorities = 0;
+        const Result priorityResult = svcGetInfo(&priorities, InfoType_PriorityMask, CUR_PROCESS_HANDLE, 0);
+        shared = (mask & 7) == 7 ? 7 : 0;
         core3 = R_SUCCEEDED(coresResult) && R_SUCCEEDED(priorityResult)
             && (mask & 8) && (mask & 7) && (priorities & (u64(1) << 63));
+#endif
     }
 };
 
@@ -34,12 +40,12 @@ void* rendererThreadEntry(void* opaque) {
     delete static_cast<Start*>(opaque);
     Result result=svcSetThreadPriority(CUR_THREAD_HANDLE, 0x2c);
     if (R_FAILED(result)) std::fprintf(stderr,"[nx-dxvk] worker priority failed: %08x\n",unsigned(result));
-    // Any of the three application cores. libnx starts a pthread on the process's
+    // Any of the application cores. libnx starts a pthread on the process's
     // default core (0) with only that core in its mask, which put DXVK's and Mesa's
     // threads on the main thread's core when core 3 was not available.
     const auto& cores = workerCores();
-    if ((cores.mask & 7) == 7)
-        svcSetThreadCoreMask(CUR_THREAD_HANDLE, -1, 7);
+    if (cores.shared)
+        svcSetThreadCoreMask(CUR_THREAD_HANDLE, -1, cores.shared);
     return start.entry(start.argument);
 }
 }
@@ -55,13 +61,20 @@ extern "C" void NX_DxvkSetThreadName(const char* name) {
     Result result = svcSetThreadPriority(CUR_THREAD_HANDLE, priority);
     if (R_FAILED(result)) std::fprintf(stderr, "[nx-dxvk] %s priority failed: %08x\n", name, unsigned(result));
     // DXVK's command-stream thread (every D3D9 call becomes Vulkan there) starts on
-    // core 1, away from the main thread on core 0, and may still move to any of the
-    // three. Its priority is one step above the engine's threads (0x2c): Horizon
-    // does not time-slice threads of equal priority, so on a shared core it waited
-    // for a busy engine thread to block before it could take the next commands.
+    // core 1 (on Switch 2 the last core), away from the main thread on core 0, and may
+    // still move to any of the application cores. Its priority is one step above the
+    // engine's threads (0x2c): Horizon does not time-slice threads of equal priority,
+    // so on a shared core it waited for a busy engine thread to block before it could
+    // take the next commands.
     if (!std::strcmp(name, "dxvk-cs")) {
-        if ((workerCores().mask & 7) == 7)
-            svcSetThreadCoreMask(CUR_THREAD_HANDLE, 1, 7);
+        const u64 shared = workerCores().shared;
+#ifdef KISAK_NX2
+        const int core = shared ? 63 - __builtin_clzll(shared) : 1;
+#else
+        const int core = 1;
+#endif
+        if (shared & (u64(1) << core))
+            svcSetThreadCoreMask(CUR_THREAD_HANDLE, core, shared);
         svcSetThreadPriority(CUR_THREAD_HANDLE, 0x2b);
     }
     if (std::strcmp(name, "dxvk-writer") || !workerCores().core3) return;

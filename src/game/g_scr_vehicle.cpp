@@ -41,6 +41,9 @@
 #include "g_load_utils.h"
 #include <cgame/cg_scr_main.h>
 #include <sound/snd_bank.h>
+#ifdef KISAK_SP
+#include <game_mp/g_scr_main_mp.h>
+#endif
 
 
 #ifdef KISAK_SP
@@ -3363,7 +3366,7 @@ void __cdecl G_SpawnVehicle(gentity_s *ent, char *typeName, int load)
     static colgeom_visitor_inlined_t<200> dummy_0;
 
     //veh->vehicle_cache.proximity_data.__vftable = dummy_0.__vftable;
-#if defined(KISAK_SP) || defined(KISAK_NX)
+#if defined(KISAK_SP) || defined(KISAK_64BIT)
     // RESTORE THE VTABLE POINTER. The memset above zeroes all of vehicle_cache_t, which includes
     // the embedded colgeom_visitor_inlined_t<200> -- and that object is POLYMORPHIC, so the
     // memset destroys its vptr. The `= dummy_0` on the next line cannot put it back: it
@@ -5798,9 +5801,34 @@ void __cdecl Scr_Vehicle_Think(gentity_s *pSelf)
             defaultPitch = vehHelicopterDefaultPitch->current.value;
         veh->phys.angles[0] = veh->phys.angles[0] + defaultPitch;
     }
+#ifdef KISAK_SP
+    // Retail 0x678B97: scripted animations drive the vehicle physics state.
+    if ( (pSelf->flags & FL_SUPPORTS_ANIMSCRIPTED) != 0 && pSelf->scriptedAnim_SP )
+    {
+        GScr_UpdateScriptedAnim_SP(pSelf);
+        vehicle_physic_t *phys = &veh->phys;
+        for ( int i = 0; i < 3; ++i )
+        {
+            phys->origin[i] = pSelf->r.currentOrigin[i];
+            phys->angles[i] = pSelf->r.currentAngles[i];
+        }
+        for ( int i = 0; i < 3; ++i )
+        {
+            phys->vel[i] = (phys->origin[i] - phys->prevOrigin[i]) * 20.0f;
+            phys->rotVel[i] = (phys->angles[i] - phys->prevAngles[i]) * 20.0f;
+        }
+    }
+#endif
     nitrousVeh = pSelf->scr_vehicle->nitrousVehicle;
     if ( nitrousVeh && nitrousVeh->m_phys_user_data )
-        VEH_UpdateNitrousPosition(pSelf);
+    {
+#ifdef KISAK_SP
+        if ( pSelf->scriptedAnim_SP )
+            VEH_Teleport(pSelf, veh->phys.origin, veh->phys.angles, veh->phys.vel);
+        else
+#endif
+            VEH_UpdateNitrousPosition(pSelf);
+    }
     else
         VEH_SetPosition(pSelf, veh->phys.origin, veh->phys.vel, veh->phys.angles);
     if ( (veh->flags & 2) != 0 )
@@ -7553,9 +7581,12 @@ void __cdecl VEH_UpdateMoveToGoal(gentity_s *ent, const float *goalPos)
     float axis[3][3]; // [esp+88h] [ebp-DCh] BYREF
     float dotVec[2]; // [esp+ACh] [ebp-B8h] BYREF
     float dt; // [esp+B4h] [ebp-B0h]
-    float v17; // [esp+B8h] [ebp-ACh] BYREF
-    float v18; // [esp+BCh] [ebp-A8h]
-    float v19; // [esp+C0h] [ebp-A4h]
+    // The unit direction to the goal, [esp+B8h..C0h]. One array: it is passed
+    // to VEH_UpdateMoveOrientation as a 3-component vector, and three separate
+    // locals left [1] and [2] reading whatever the compiler put next to [0]
+    // (a garbage or NaN yaw: helicopters turned to random facings, and a NaN
+    // crashed in SV_LinkEntity).
+    float goalDir[3];
     float newVerticalSpeed; // [esp+C4h] [ebp-A0h] BYREF
     float startMoveAngle; // [esp+C8h] [ebp-9Ch]
     float desiredVel[3]; // [esp+CCh] [ebp-98h]
@@ -7650,20 +7681,24 @@ void __cdecl VEH_UpdateMoveToGoal(gentity_s *ent, const float *goalPos)
         if ( startMoveAngle <= fabs(angleDiff) )
             speedScale = 0.0f;
         else
-            speedScale = 1.0 - (float)(angleDiff / startMoveAngle);
+            // The size of the angle, as the test above: a signed angle took a
+            // vehicle turned one way up to twice its set speed (Rebirth's stealth
+            // helicopter flew sideways at 1.68x, reached its path point before
+            // its spotlight sweep ended and the mission waited forever).
+            speedScale = 1.0 - (float)(fabs(angleDiff) / startMoveAngle);
         VEH_GetNewSpeedAndAccel(veh, dt, hovering, speedScale, &newSpeed, &accelMax);
         VEH_GetNewSpeedAndAccel(veh, dt, hovering, 0.5, &newVerticalSpeed, &accelMax);
         if ( info->type == 6 && newVerticalSpeed > (float)(vehHelicopterMaxSpeedVertical->current.value * 17.6) )
             newVerticalSpeed = vehHelicopterMaxSpeedVertical->current.value * 17.6;
-        v17 = (float)(1.0 / distToGoal) * vecToGoal[0];
-        v18 = (float)(1.0 / distToGoal) * vecToGoal[1];
-        v19 = (float)(1.0 / distToGoal) * vecToGoal[2];
-        desiredVel[0] = newSpeed * v17;
-        desiredVel[1] = newSpeed * v18;
-        desiredVel[2] = v19 * newVerticalSpeed;
-        accelVec[0] = (float)(newSpeed * v17) - prevVel[0];
-        accelVec[1] = (float)(newSpeed * v18) - prevVel[1];
-        accelVec[2] = (float)(v19 * newVerticalSpeed) - prevVel[2];
+        goalDir[0] = (float)(1.0 / distToGoal) * vecToGoal[0];
+        goalDir[1] = (float)(1.0 / distToGoal) * vecToGoal[1];
+        goalDir[2] = (float)(1.0 / distToGoal) * vecToGoal[2];
+        desiredVel[0] = newSpeed * goalDir[0];
+        desiredVel[1] = newSpeed * goalDir[1];
+        desiredVel[2] = goalDir[2] * newVerticalSpeed;
+        accelVec[0] = (float)(newSpeed * goalDir[0]) - prevVel[0];
+        accelVec[1] = (float)(newSpeed * goalDir[1]) - prevVel[1];
+        accelVec[2] = (float)(goalDir[2] * newVerticalSpeed) - prevVel[2];
         if ( !veh->stopping
             && veh->manualSpeed >= veh->speed
             && (float)((float)(prevVel[0] * desiredVel[0]) + (float)(prevVel[1] * desiredVel[1])) > 0.0
@@ -7756,7 +7791,7 @@ void __cdecl VEH_UpdateMoveToGoal(gentity_s *ent, const float *goalPos)
         phys->origin[1] = (float)(dt * averageVel[1]) + phys->origin[1];
         phys->origin[2] = (float)(dt * averageVel[2]) + phys->origin[2];
         if ( info->type != 2 )
-            VEH_UpdateMoveOrientation(ent, &v17);
+            VEH_UpdateMoveOrientation(ent, goalDir);
         if ( info->type == 6 )
             VEH_UpdateVelocityWithRotation(ent);
         if ( info->type == 2 )

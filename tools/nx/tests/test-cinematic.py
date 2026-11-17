@@ -34,7 +34,7 @@ for name in ('R_Cinematic_UploadPlane', 'Unlock_Bink_textures2', 'Unlock_Bink_te
     functions.append(source[match.start():end])
 (output/'cinematic-functions.inc').write_text('\n'.join(functions))
 exe = output/'cinematic.exe'
-subprocess.run([args.compiler, '-std=c++17', '-O2', '-Wno-attributes', '-DKISAK_NX',
+subprocess.run([args.compiler, '-std=c++17', '-O2', '-Wno-attributes', '-DKISAK_NX', '-DKISAK_BINK_FFMPEG',
                 '-I'+str(include.parent), '-I'+str(root/'src'), '-I'+str(output),
                 str(root/'tools/nx/tests/cinematic.cpp'), '-o', str(exe)], check=True)
 subprocess.run([str(exe)], check=True)
@@ -49,7 +49,8 @@ AppletFocusState appletGetFocusState();
 void appletHook(AppletHookCookie *, void (*)(AppletHookType, void *), void *);
 ''')
 clock = output/'bink-clock.exe'
-subprocess.run([args.compiler, '-std=c++17', '-O2', '-I'+str(include.parent), '-I'+str(root/'src/nx'),
+subprocess.run([args.compiler, '-std=c++17', '-O2', '-I'+str(include.parent), '-I'+str(root/'src/binklib'),
+                '-I'+str(root/'src'),
                 str(root/'tools/nx/tests/bink-clock.cpp'), str(root/'src/nx/nx_bink_clock.cpp'),
                 '-o', str(clock)], check=True)
 subprocess.run([str(clock)], check=True)

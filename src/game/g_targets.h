@@ -14,6 +14,20 @@ struct target_t // sizeof=0x1C
 };
 
 void __cdecl G_InitTargets();
+
+// A target slot as SP checkpoints save it: the entity by number (-1 for a
+// free slot). A checkpoint restore frees every entity, which empties the
+// list (Targ_RemoveAll), so it is restored from these afterwards.
+struct TargetCheckpointSlot
+{
+    int entnum = -1;
+    float offset[3] = {};
+    int materialIndex = -1;
+    int offscreenMaterialIndex = -1;
+    int flags = 0;
+};
+void G_GetTargetsForCheckpoint(TargetCheckpointSlot (&slots)[MAX_TARGETS]);
+void G_SetTargetsFromCheckpoint(const TargetCheckpointSlot (&slots)[MAX_TARGETS]);
 void __cdecl Scr_Target_SetShader();
 void __cdecl Scr_Target_SetOffscreenShader();
 void __cdecl Scr_Target_GetArray();

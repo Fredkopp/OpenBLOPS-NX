@@ -610,6 +610,43 @@ bool __cdecl SD_XAudio2Init()
     return g_sd.xa2 != 0;
 }
 
+#ifdef XAUDIO2_DLL
+// XAudio2 2.8+ has no device enumeration: the default device is the only one.
+char __cdecl SD_XAudio2EnumerateDevices()
+{
+    if ( sd_xa2_num_devices->current.integer )
+        return 1;
+    IXAudio2 *xa2 = 0;
+    if ( XAudio2Create(&xa2, 0, XAUDIO2_DEFAULT_PROCESSOR) < 0 )
+        return 0;
+    if ( SD_XAudio2CheckDevice(xa2, &g_sd.details) )
+    {
+        Dvar_SetInt((dvar_s *)sd_xa2_num_devices, 1);
+        I_strncpyz(sd_xa2_device_names[0], "Default", 256);
+        sd_xa2_device_guids[0][0] = 0;
+        memset(&sd_deviceGUIDs[0], 0, sizeof(sd_deviceGUIDs[0]));
+        sd_xa2_devices_value_list[0] = sd_xa2_device_names[0];
+        sd_xa2_device_guids_value_list[0] = sd_xa2_device_guids[0];
+        sd_xa2_device_indices[0] = 0;
+    }
+    sd_xa2_devices_value_list[sd_xa2_num_devices->current.integer] = 0;
+    sd_xa2_device_guids_value_list[sd_xa2_num_devices->current.integer] = 0;
+    sd_xa2_device_guid = _Dvar_RegisterEnum(
+                                                 "sd_xa2_device_guid",
+                                                 sd_xa2_device_guids_value_list,
+                                                 0,
+                                                 1u,
+                                                 "prefered audio device");
+    sd_xa2_device_name = _Dvar_RegisterEnum(
+                                                 "sd_xa2_device_name",
+                                                 sd_xa2_devices_value_list,
+                                                 sd_xa2_device_guid->current.integer,
+                                                 0,
+                                                 "Available Sound devices");
+    xa2->Release();
+    return 1;
+}
+#else
 char __cdecl SD_XAudio2EnumerateDevices()
 {
     int v1; // [esp+0h] [ebp-45Ch]
@@ -672,6 +709,7 @@ char __cdecl SD_XAudio2EnumerateDevices()
     xa2->Release();
     return 1;
 }
+#endif
 
 char __cdecl SD_XAudio2GetDeviceGUID(wchar_t *inGUID, _GUID *guid, char *outGUID, int size)
 {
@@ -687,6 +725,17 @@ char __cdecl SD_XAudio2GetDeviceGUID(wchar_t *inGUID, _GUID *guid, char *outGUID
     return 0;
 }
 
+#ifdef XAUDIO2_DLL
+char __cdecl SD_XAudio2CheckDevice(IXAudio2 *pXAudio2, XAUDIO2_VOICE_DETAILS *deviceDetails)
+{
+    IXAudio2MasteringVoice *testVoice = 0;
+    if ( pXAudio2->CreateMasteringVoice(&testVoice) )
+        return 0;
+    testVoice->GetVoiceDetails(deviceDetails);
+    testVoice->DestroyVoice();
+    return deviceDetails->InputChannels >= 2u;
+}
+#else
 char __cdecl SD_XAudio2CheckDevice(
                 IXAudio2 *pXAudio2,
                 const XAUDIO2_DEVICE_DETAILS *deviceDetails,
@@ -714,6 +763,7 @@ char __cdecl SD_XAudio2CheckDevice(
     testVoice->DestroyVoice();
     return 1;
 }
+#endif
 
 void SD_SwitchDevice()
 {
@@ -723,9 +773,13 @@ void SD_SwitchDevice()
         int deviceIndex = sd_xa2_device_indices[sd_xa2_device_guid->current.integer];
         iassert(g_sd.deviceIndex != deviceIndex);
         g_sd.deviceIndex = deviceIndex;
+#ifdef XAUDIO2_DLL
+        g_sd.deviceGUIDValid = 0;
+#else
         g_sd.xa2->GetDeviceDetails(deviceIndex, &g_sd.details);
         g_sd.deviceGUID = sd_deviceGUIDs[deviceIndex];
         g_sd.deviceGUIDValid = 1;
+#endif
         R_CinematicInitSound(&g_sd.deviceGUID);
     }
 }
@@ -739,10 +793,17 @@ void SND_InitMasterVoice()
     int inputChannels; // [esp+11Ch] [ebp-8h]
     int inputSampleRate; // [esp+120h] [ebp-4h]
 
+#ifdef XAUDIO2_DLL
+    inputChannels = g_sd.details.InputChannels <= 8u ? 0 : 8;
+    inputSampleRate = g_sd.details.InputSampleRate > 48000 ? 48000 : 0;
+
+    hr = g_sd.xa2->CreateMasteringVoice(&g_sd.masterVoice, inputChannels, inputSampleRate, 0, 0, 0, AudioCategory_GameEffects);
+#else
     inputChannels = g_sd.details.OutputFormat.Format.nChannels <= 8u ? 0 : 8;
     inputSampleRate = g_sd.details.OutputFormat.Format.nSamplesPerSec > 48000 ? 48000 : 0;
 
     hr = g_sd.xa2->CreateMasteringVoice(&g_sd.masterVoice, inputChannels, inputSampleRate, 0, g_sd.deviceIndex < 0 ? 0 : g_sd.deviceIndex, 0);
+#endif
 
     iassert(hr == S_OK);
     
@@ -865,6 +926,9 @@ void SND_ShutdownMasterVoice()
     {
         SND_StopVoice(i);
     }
+#ifdef KISAK_BINK_FFMPEG
+    SND_ShutdownCinematicVoice();
+#endif
 
     g_sd.radverbBus->DestroyVoice();
     g_sd.radverbBus = 0;

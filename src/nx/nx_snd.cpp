@@ -35,7 +35,7 @@
 #include <string.h>
 
 #include <switch.h>
-#include "nx_bink_audio.h"
+#include <binklib/bink_audio.h>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -105,7 +105,7 @@ struct NxVoice {
 
 NxVoice s_voice[SND_MAX_VOICES];
 RMutex s_lock;
-NxBinkAudio *s_cinematicAudio;
+BinkAudioQueue *s_cinematicAudio;
 
 // A WMA decoder per voice slot, kept across sounds (flushed when the next one
 // has the same rate and channels) and apart from NxVoice, which is cleared on
@@ -455,7 +455,7 @@ void mixInto(int16_t *out)
             ++running;
             mixVoice(v);
         }
-        if (s_cinematicAudio && NX_BinkHasFocus())
+        if (s_cinematicAudio && Sys_BinkHasFocus())
         {
             unsigned queued = (NX_OUT_BUFFERS - 1) * NX_MIX_FRAMES;
             u64 played;
@@ -465,7 +465,7 @@ void mixInto(int16_t *out)
                 if (pending <= NX_OUT_BUFFERS * NX_MIX_FRAMES)
                     queued = unsigned(pending);
             }
-            s_cinematicAudio->mix(s_mix, NX_MIX_FRAMES, queued, NX_BinkTimeUs());
+            s_cinematicAudio->mix(s_mix, NX_MIX_FRAMES, queued, Sys_BinkTimeUs());
         }
     }
     if (running > s_peakRunning)
@@ -812,7 +812,7 @@ void report()
 
 } // namespace
 
-bool NX_AttachCinematicAudio(NxBinkAudio *audio)
+bool Snd_AttachCinematicAudio(BinkAudioQueue *audio)
 {
     if (!s_threadRunning)
         return false;
@@ -823,7 +823,7 @@ bool NX_AttachCinematicAudio(NxBinkAudio *audio)
     return true;
 }
 
-void NX_DetachCinematicAudio(NxBinkAudio *audio)
+void Snd_DetachCinematicAudio(BinkAudioQueue *audio)
 {
     Lock lock;
     if (s_cinematicAudio == audio)

@@ -27,7 +27,7 @@
 
 #define TOTAL_IMAGE_PARTS 4608 // Same as POOLSIZE_IMAGE
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 #include <mutex>
 // nx-port: the sorted image list (sortedImages / totalBytesWanted /
 // imageInSortedListBits) is appended to by the frontend and the combine job,
@@ -1127,7 +1127,7 @@ void  R_StreamUpdate_EndQuery_Internal()
     sortedIndex = 0;
 
     PROF_SCOPED("R_Stream EndQuery");
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // nx-port: walk a copy taken under the list lock (see s_nxSortedListMutex);
     // the allocation and read requests below then run without holding it. Its
     // only caller holds R_StreamAlloc_Lock, so one static copy is enough.
@@ -1175,7 +1175,7 @@ LABEL_3:
         while (sortedIndex < NX_SORTED_COUNT)
         {
             imagePartIndex = NX_SORTED_ENTRY(sortedIndex);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             if ( imagePartIndex < 0 || imagePartIndex >= 4224 )   // nx-port: never index with a bad entry
             {
                 ++sortedIndex;
@@ -2240,7 +2240,7 @@ void __cdecl MultiplePointDistSqFromBounds(
     float4 v6; // [esp-20h] [ebp-120h]
     float4 v7; // [esp-10h] [ebp-110h]
 
-#ifndef KISAK_NX // nx-port: SSE alignment checks; the loads below are plain on AArch64
+#ifndef KISAK_64BIT // nx-port: SSE alignment checks; the loads below are plain on AArch64
     if ( ((unsigned int)&s_viewPos & 0xF) != 0
         && !Assert_MyHandler(
                     "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\r_stream.cpp",
@@ -2351,7 +2351,7 @@ void __cdecl R_StreamUpdate_EndQuerySort(bool diskOrder)
         // sort runs on a worker beside the frontend's importance pass, and an entry
         // can briefly lack its bit; the next pass re-adds or drops it. Fatal here
         // (asserts break on the Switch), it crashed mid-match on mp_array.
-#ifndef KISAK_NX
+#ifndef KISAK_64BIT
         if ((streamFrontendGlob.imageInSortedListBits[imagePartIndex >> 5]
             & (1 << (BYTE2(streamFrontendGlob.sortedImages[index]) & 0x1F))) == 0
             && !Assert_MyHandler(

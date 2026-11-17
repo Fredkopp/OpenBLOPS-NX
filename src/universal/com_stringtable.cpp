@@ -372,7 +372,7 @@ int __cdecl StringTable_Checksum(
 
 void __cdecl StringTable_GetAsset_FastFile(const char *filename, XAssetHeader *tablePtr)
 {
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
     // errorIfMissing=0: return null on a missing table instead of loading the
     // default and fatal-erroring. Lets boot proceed past optional stringtables
     // (e.g. the dev-console restricted-access lists) while the fastfile asset

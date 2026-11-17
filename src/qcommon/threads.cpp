@@ -136,10 +136,10 @@ unsigned int Win_InitThreads()
     HANDLE CurrentProcess; // eax
     DWORD result; // eax
     DWORD cpuCount; // [esp+0h] [ebp-94h]
-    DWORD systemAffinityMask; // [esp+4h] [ebp-90h] BYREF
+    DWORD_PTR systemAffinityMask; // [esp+4h] [ebp-90h] BYREF
     DWORD threadAffinityMask; // [esp+8h] [ebp-8Ch]
     DWORD affinityMaskBits[33]; // [esp+Ch] [ebp-88h]
-    DWORD processAffinityMask; // [esp+90h] [ebp-4h] BYREF
+    DWORD_PTR processAffinityMask; // [esp+90h] [ebp-4h] BYREF
 
     CurrentProcess = GetCurrentProcess();
     result = GetProcessAffinityMask(CurrentProcess, &processAffinityMask, &systemAffinityMask);
@@ -283,7 +283,7 @@ void __cdecl SetThreadName(unsigned int dwThreadID, const char *szThreadName)
 #ifndef KISAK_NX
     // LWSS: this try/except needs to be here, otherwise it wont run without a debugger :D
     __try {
-        RaiseException(0x406D1388, 0, sizeof(info) / sizeof(DWORD), (ULONG_PTR *)&info);
+        RaiseException(0x406D1388, 0, sizeof(info) / sizeof(ULONG_PTR), (ULONG_PTR *)&info);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
     }
@@ -689,7 +689,7 @@ bool __cdecl Sys_IsRenderThread()
 // and the only path that always terminates.
 bool __cdecl Sys_CanCreateDeviceResourcesInline()
 {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     return true;
 #else
     return Sys_IsRenderThread();

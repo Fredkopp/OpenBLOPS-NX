@@ -209,6 +209,7 @@ void __cdecl BG_EvaluateTrajectory(const trajectory_t *tr, int atTime, float *re
 void __cdecl BG_EvaluateTrajectoryDelta(const trajectory_t *tr, int atTime, float *result);
 bool __cdecl BG_ValidateOrigin(const float *pos, char xyBits, char zBits, const float *mapCenter);
 bool __cdecl BG_ValidateOriginValue(float val, char bits, float mapCenterValue);
+void __cdecl BG_ClampOrigin(float *pos, char xyBits, char zBits, const float *mapCenter);
 void __cdecl BG_AddPredictableEventToPlayerstate(unsigned int newEvent, unsigned int eventParm, playerState_s *ps);
 void __cdecl BG_AddUnpredictableEventToPlayerstate(unsigned int newEvent, unsigned int eventParm, playerState_s *ps);
 void __cdecl BG_AddEntityStateEvent(unsigned int newEvent, unsigned int eventParm, entityState_s *es, int eventTime);

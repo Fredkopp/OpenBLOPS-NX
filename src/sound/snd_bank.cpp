@@ -248,13 +248,13 @@ snd_alias_list_t *__cdecl SND_FindAliasFromId(unsigned int hash)
     if ( !SND_Active() || !hash )
         return NULL;
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     Sys_EnterCriticalSection(CRITSECT_SOUND_BANK);
 #endif
     Sys_EnterCriticalSection(CRITSECT_SOUND_LOOKUP_CACHE);
     snd_alias_list_t *list = SND_BankAliasLookup(hash);
     Sys_LeaveCriticalSection(CRITSECT_SOUND_LOOKUP_CACHE);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     Sys_LeaveCriticalSection(CRITSECT_SOUND_BANK);
 #endif
     return list;
@@ -443,7 +443,7 @@ void __cdecl SND_PatchValue(unsigned int table, char *asset, unsigned int field,
     {
         const snd_csv_entry_t *meta = &SND_TABLE_METADATA[table][field];
         unsigned int offset = meta->offset;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         if (table == 0)
             offset += offsetof(snd_alias_t, flags) - 20;
 #endif

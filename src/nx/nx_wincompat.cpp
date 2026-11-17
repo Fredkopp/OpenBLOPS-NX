@@ -393,6 +393,42 @@ static void nxThreadEntry(void *arg)
     mutexUnlock(&t->mutex);
 }
 
+// The cores engine threads may use: 0-2 for a Switch 1 application (core 3 is
+// the system's); on Switch 2, every core the process's core mask allows.
+static u32 nxAppCoreMask(void)
+{
+#ifdef KISAK_NX2
+    static const u32 s_mask = [] {
+        u64 mask = 0;
+        if (R_FAILED(svcGetInfo(&mask, InfoType_CoreMask, CUR_PROCESS_HANDLE, 0)) || !(mask & 0xFF))
+            mask = 0x7;
+        return (u32)(mask & 0xFF);
+    }();
+    return s_mask;
+#else
+    return 0x7;
+#endif
+}
+
+// The core a new thread starts on (-1: its creator's). Switch 2 spreads them
+// over the cores after the main (0) and render (1) threads.
+static int nxNewThreadCore(void)
+{
+#ifdef KISAK_NX2
+    static unsigned s_next;
+    const u32 cores = nxAppCoreMask() & ~3u;
+    if (!cores)
+        return -1;
+    int pick = (int)(__atomic_fetch_add(&s_next, 1, __ATOMIC_RELAXED) % (unsigned)__builtin_popcount(cores));
+    for (int core = 0; core < 32; ++core)
+        if (((cores >> core) & 1) && pick-- == 0)
+            return core;
+    return -1;
+#else
+    return -1;
+#endif
+}
+
 HANDLE CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T stackSize, LPTHREAD_START_ROUTINE start,
                     LPVOID param, DWORD flags, LPDWORD threadId)
 {
@@ -414,13 +450,13 @@ HANDLE CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T stackSize, LPTHREAD_START_ROUT
         SetLastError(ERROR_NOT_ENOUGH_MEMORY);
         return NULL;
     }
-    // Any of the three application cores, as a Windows thread may run anywhere.
+    // Any of the application cores, as a Windows thread may run anywhere.
     // libnx gives a thread made on the creator's core only that core, which put
     // the server thread and both job-queue workers on the main thread's core 0;
     // Horizon does not time-slice threads of equal priority, so a busy worker
     // kept the server thread off the core for seconds. SetThreadAffinityMask
     // and SetThreadIdealProcessor still narrow it later.
-    svcSetThreadCoreMask(t->thread.handle, -1, 0x7);
+    svcSetThreadCoreMask(t->thread.handle, nxNewThreadCore(), nxAppCoreMask());
     if (threadId) {
         u64 id = 0;
         svcGetThreadId(&id, t->thread.handle);
@@ -493,18 +529,22 @@ int GetThreadPriority(HANDLE) { return THREAD_PRIORITY_NORMAL; }
 
 DWORD_PTR SetThreadAffinityMask(HANDLE handle, DWORD_PTR mask)
 {
-    u32 m = (u32)(mask & 0x7);
-    if (!m) m = 0x7;
+    const u32 cores = nxAppCoreMask();
+    u32 m = (u32)(mask & cores);
+    if (!m) m = cores;
     int ideal = __builtin_ctz(m);
     svcSetThreadCoreMask(nxThreadKernelHandle(handle), ideal, m);
-    return 0x7;
+    return cores;
 }
 
 DWORD SetThreadIdealProcessor(HANDLE handle, DWORD processor)
 {
+    // A core the process does not have becomes its highest one.
+    const u32 cores = nxAppCoreMask();
     int core = (int)processor;
-    if (core > 2) core = 2;
-    svcSetThreadCoreMask(nxThreadKernelHandle(handle), core, 0x7);
+    if (processor >= 32 || !(cores & (1u << processor)))
+        core = 31 - __builtin_clz(cores);
+    svcSetThreadCoreMask(nxThreadKernelHandle(handle), core, cores);
     return 0;
 }
 
@@ -1414,15 +1454,21 @@ extern "C" void nx_mem_report(const char *why, size_t request)
 {
     uint64_t total = 0, avail = 0;
     nx_mem_status(&total, &avail);
-    struct mallinfo mi = mallinfo();
     int regions = 0;
     size_t vtotal = nxVmemTotal(&regions);
+#ifdef KISAK_NX2
+    printf("[nx-mem] %s (request %zu KB): free heap %llu MB of %llu MB, VirtualAlloc %zu MB in %d regions\n",
+           why, request >> 10, (unsigned long long)(avail >> 20),
+           (unsigned long long)(heapGetTotalSize() >> 20), vtotal >> 20, regions);
+#else
+    struct mallinfo mi = mallinfo();
     char *brk = (char *)sbrk(0);
     printf("[nx-mem] %s (request %zu KB): free heap %llu MB, arena %zu MB, in use %zu MB, "
            "top chunk %zu KB, VirtualAlloc %zu MB in %d regions, break at heap+%zu MB of %zu MB\n",
            why, request >> 10, (unsigned long long)(avail >> 20), (size_t)mi.arena >> 20,
            (size_t)mi.uordblks >> 20, (size_t)mi.keepcost >> 10, vtotal >> 20, regions,
            (size_t)(brk - fake_heap_start) >> 20, (size_t)(fake_heap_end - fake_heap_start) >> 20);
+#endif
 }
 struct NxVMemRegion { uintptr_t base; size_t size; void *guard; };
 static NxVMemRegion s_vmem[NX_MAX_VMEM];
@@ -1483,10 +1529,23 @@ static void nxGuardRelease(void *page)
     __atomic_sub_fetch(&s_guardsLive, 1, __ATOMIC_RELAXED);
 }
 
+#ifdef KISAK_NX2
+// Switch 2's allocator (mimalloc) keeps no block header, so only VirtualAlloc
+// regions get guard pages.
+static void nxFreeRegion(void *p)
+{
+    free(p);
+}
+#else
 extern "C" void *__real_malloc(size_t size);
 extern "C" void __real_free(void *p);
 extern "C" void *__real_calloc(size_t n, size_t size);
 extern "C" void *__real_realloc(void *p, size_t size);
+
+static void nxFreeRegion(void *p)
+{
+    __real_free(p);
+}
 
 // A guarded block is [base: NxGuardHdr ... tag | user bytes | guard page].
 // The tag is the 16 bytes right before the user pointer: the base, then the
@@ -1593,6 +1652,7 @@ extern "C" void *__wrap_realloc(void *p, size_t size)
     __wrap_free(p);
     return n;
 }
+#endif
 
 LPVOID VirtualAlloc(LPVOID address, SIZE_T size, DWORD type, DWORD)
 {
@@ -1605,6 +1665,7 @@ LPVOID VirtualAlloc(LPVOID address, SIZE_T size, DWORD type, DWORD)
         void *p = memalign(NX_PAGE, rounded + NX_PAGE);
         if (!p) {
             nx_mem_report("VirtualAlloc failed", rounded);
+#ifndef KISAK_NX2
             ptrdiff_t lastIncr;
             void *lastResult;
             unsigned calls;
@@ -1613,6 +1674,7 @@ LPVOID VirtualAlloc(LPVOID address, SIZE_T size, DWORD type, DWORD)
             printf("[nx-mem] last sbrk %td bytes -> %p (%u calls); errno %d; plain malloc of the same size -> %p\n",
                    lastIncr, lastResult, calls, errno, plain);
             free(plain);
+#endif
             SetLastError(ERROR_NOT_ENOUGH_MEMORY);
             return NULL;
         }
@@ -1655,7 +1717,7 @@ BOOL VirtualFree(LPVOID address, SIZE_T, DWORD type)
         mutexUnlock(&s_vmemLock);
         if (guard)
             nxGuardRelease(guard);
-        __real_free(address);
+        nxFreeRegion(address);
     }
     // MEM_DECOMMIT keeps the mapping (our reserve already committed real
     // memory), so it is a no-op.
@@ -1729,6 +1791,7 @@ BOOL GlobalUnlock(HGLOBAL) { return TRUE; }
 extern "C" char *fake_heap_start;
 extern "C" char *fake_heap_end;
 
+#ifndef KISAK_NX2
 // Every heap growth goes through _sbrk_r (linked with --wrap=_sbrk_r). Log
 // large steps and every refusal, with the break position, to tell a heap that
 // is really full from one malloc cannot grow. This runs under malloc's lock,
@@ -1777,16 +1840,24 @@ extern "C" void *__wrap__sbrk_r(struct _reent *r, ptrdiff_t incr)
                   (size_t)(s_heapBreak - fake_heap_start) >> 20);
     return p;
 }
+#endif
 
 extern "C" void nx_mem_status(uint64_t *totalOut, uint64_t *availOut)
 {
     u64 totalMem = 0;
     svcGetInfo(&totalMem, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
 
+#ifdef KISAK_NX2
+    // libounce's allocator (mimalloc) manages the whole heap; newlib's figures
+    // do not describe it (switch2/memory/heap.h).
+    size_t heapSize = (size_t)heapGetTotalSize();
+    size_t freeHeap = (size_t)heapGetFreeSize();
+#else
     size_t heapSize = (size_t)(fake_heap_end - fake_heap_start);
     struct mallinfo mi = mallinfo();
     size_t usedHeap = (size_t)mi.uordblks;
     size_t freeHeap = heapSize > usedHeap ? heapSize - usedHeap : 0;
+#endif
 
     if (totalOut) *totalOut = totalMem ? totalMem : (u64)heapSize;
     if (availOut) *availOut = freeHeap;
@@ -1839,8 +1910,8 @@ void GetSystemInfo(LPSYSTEM_INFO info)
 {
     memset(info, 0, sizeof(*info));
     info->dwPageSize = 0x1000;
-    info->dwNumberOfProcessors = 3; // cores available to applications
-    info->dwActiveProcessorMask = 0x7;
+    info->dwNumberOfProcessors = (DWORD)__builtin_popcount(nxAppCoreMask()); // cores available to applications
+    info->dwActiveProcessorMask = nxAppCoreMask();
     info->dwAllocationGranularity = 0x10000;
     info->wProcessorLevel = 8; // ARMv8
 }
@@ -1916,8 +1987,8 @@ BOOL OpenProcessToken(HANDLE, DWORD, PHANDLE) { return FALSE; }
 BOOL OpenThreadToken(HANDLE, DWORD, BOOL, PHANDLE) { return FALSE; }
 BOOL GetProcessAffinityMask(HANDLE, DWORD_PTR *processMask, DWORD_PTR *systemMask)
 {
-    if (processMask) *processMask = 0x7;
-    if (systemMask) *systemMask = 0x7;
+    if (processMask) *processMask = nxAppCoreMask();
+    if (systemMask) *systemMask = nxAppCoreMask();
     return TRUE;
 }
 BOOL SetProcessAffinityMask(HANDLE, DWORD_PTR) { return TRUE; }

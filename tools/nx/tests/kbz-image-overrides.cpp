@@ -14,7 +14,7 @@ static void load(const std::string &directory, const char *name) {
 #ifdef NX_KBZ_HAS_STORAGE
     zones.emplace_back();
     const std::string ff=directory+"/"+name+".ff";
-    require(NX_TryLoadKbz(name,ff.c_str(),&zones.back())==1,"fixture load failed");
+    require(DB_TryLoadKbz(name,ff.c_str(),&zones.back())==1,"fixture load failed");
     require(zones.back().kbz && !zones.back().kbz->metadata,"zone must retain blocks, not metadata");
 #else
     std::ifstream file(path,std::ios::binary);
@@ -25,12 +25,12 @@ static void load(const std::string &directory, const char *name) {
 }
 static void checkImages() {
     for (const auto &image : pending)
-        require(NX_D3D_IsTexture(image->texture.basemap),"delayed replacement was registered without a texture");
+        require(Sys_KbzIsTexture(image->texture.basemap),"delayed replacement was registered without a texture");
     publishOverrides();
     for (const auto &item : active)
-        require(NX_D3D_IsTexture(item.second->texture.basemap),"active image is not a texture");
+        require(Sys_KbzIsTexture(item.second->texture.basemap),"active image is not a texture");
     for (const auto &image : inactive)
-        require(NX_D3D_IsTexture(image->texture.basemap),"inactive override is not a texture");
+        require(Sys_KbzIsTexture(image->texture.basemap),"inactive override is not a texture");
 }
 int main(int argc, char **argv) {
     try {
@@ -62,11 +62,11 @@ int main(int argc, char **argv) {
         require(uploads==beforeAlias+1,"shared pixels uploaded more than once");
         require(uploadQueue.empty(),"texture creation not flushed before registration");
 #ifdef NX_KBZ_HAS_IMAGE_AUDIT
-        NX_KBZ_ValidateImages();
+        DB_KbzValidateImages();
         GfxImageLoadDef bad{};
         identity->texture.loadDef=&bad;
         bool rejected=false;
-        try { NX_KBZ_ValidateImages(); } catch (const std::runtime_error &) { rejected=true; }
+        try { DB_KbzValidateImages(); } catch (const std::runtime_error &) { rejected=true; }
         require(rejected,"post-override check accepted a raw load definition");
         identity->texture.basemap=original;
         dx.device=nullptr;
@@ -80,9 +80,9 @@ int main(int argc, char **argv) {
 #ifdef NX_KBZ_HAS_STORAGE
         active.clear(); pending.clear(); inactive.clear(); liveTextures.clear();
         for (auto &zone : zones) {
-            NX_FreeKbz(&zone);
+            DB_FreeKbz(&zone);
             require(!zone.kbz,"zone retained ownership after unload");
-            NX_FreeKbz(&zone);
+            DB_FreeKbz(&zone);
         }
 #endif
         puts("PASS: retail Zombies overrides, stable identities, inactive fallback, aliases, queued uploads and image validation");

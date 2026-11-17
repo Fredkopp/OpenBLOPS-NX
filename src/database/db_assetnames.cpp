@@ -159,7 +159,7 @@ void(__cdecl *DB_XAssetSetNameHandler[43])(XAssetHeader *, const char *) =
   NULL
 };
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(RawFile) == 12);
 #endif
 int __cdecl DB_SizeofXAsset_RawFile_()
@@ -167,7 +167,7 @@ int __cdecl DB_SizeofXAsset_RawFile_()
     return 12;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(PhysPreset) == 84);
 #endif
 int __cdecl DB_SizeofXAsset_PhysPreset_()
@@ -175,7 +175,7 @@ int __cdecl DB_SizeofXAsset_PhysPreset_()
     return 84;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(PhysConstraints) == 2696);
 #endif
 int __cdecl DB_SizeofXAsset_PhysConstraints_()
@@ -183,7 +183,7 @@ int __cdecl DB_SizeofXAsset_PhysConstraints_()
     return 2696;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(DestructibleDef) == 24);
 #endif
 //int __cdecl SV_GetMaxAttachCount()
@@ -192,7 +192,7 @@ int __cdecl DB_SizeofXAsset_DestructibleDef_()
     return 24;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(Font_s) == 24);
 #endif
 int __cdecl DB_SizeofXAsset_Font_s_()
@@ -200,7 +200,7 @@ int __cdecl DB_SizeofXAsset_Font_s_()
     return 24;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(XAnimParts) == 104);
 #endif
 //int __cdecl PM_MediumLandingForSurface()
@@ -209,7 +209,7 @@ int __cdecl DB_SizeofXAsset_XAnimParts_()
     return 104;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(XModel) == 252);
 #endif
 int __cdecl DB_SizeofXAsset_XModel_()
@@ -223,7 +223,7 @@ int __cdecl DB_SizeofXAsset_Material_()
     return 192;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(MaterialTechniqueSet) == 528);
 #endif
 int __cdecl DB_SizeofXAsset_MaterialTechniqueSet_()
@@ -231,7 +231,7 @@ int __cdecl DB_SizeofXAsset_MaterialTechniqueSet_()
     return 528;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(SndDriverGlobals) == 52);
 #endif
 int __cdecl DB_SizeofXAsset_SndDriverGlobals_()
@@ -239,7 +239,7 @@ int __cdecl DB_SizeofXAsset_SndDriverGlobals_()
     return 52;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(XGlobals) == 40);
 #endif
 int __cdecl DB_SizeofXAsset_XGlobals_()
@@ -247,7 +247,7 @@ int __cdecl DB_SizeofXAsset_XGlobals_()
     return 40;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(StringTable) == 20);
 #endif
 int __cdecl DB_SizeofXAsset_StringTable_()
@@ -255,7 +255,7 @@ int __cdecl DB_SizeofXAsset_StringTable_()
     return 20;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(clipMap_t) == 332);
 #endif
 int __cdecl DB_SizeofXAsset_clipMap_t_()
@@ -263,7 +263,7 @@ int __cdecl DB_SizeofXAsset_clipMap_t_()
     return 332;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(ComWorld) == 64);
 #endif
 int __cdecl DB_SizeofXAsset_ComWorld_()
@@ -271,7 +271,7 @@ int __cdecl DB_SizeofXAsset_ComWorld_()
     return 64;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(EmblemSet) == 44);
 #endif
 int __cdecl DB_SizeofXAsset_EmblemSet_()
@@ -279,7 +279,7 @@ int __cdecl DB_SizeofXAsset_EmblemSet_()
     return 44;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(GfxWorld) == 1084);
 #endif
 int __cdecl DB_SizeofXAsset_GfxWorld_()
@@ -287,7 +287,7 @@ int __cdecl DB_SizeofXAsset_GfxWorld_()
     return 1084;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(GfxLightDef) == 16);
 #endif
 int __cdecl DB_SizeofXAsset_GfxLightDef_()
@@ -295,7 +295,7 @@ int __cdecl DB_SizeofXAsset_GfxLightDef_()
     return 16;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(menuDef_t) == 400);
 #endif
 int __cdecl DB_SizeofXAsset_menuDef_t_()
@@ -303,7 +303,7 @@ int __cdecl DB_SizeofXAsset_menuDef_t_()
     return 400;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(XAnimTree_s) == 8);
 #endif
 //int __cdecl XAnimTreeSize()
@@ -311,7 +311,7 @@ static_assert(sizeof(XAnimTree_s) == 8);
 //    return 8;
 //}
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(WeaponVariantDef) == 228);
 #endif
 int __cdecl DB_SizeofXAsset_WeaponVariantDef_()
@@ -319,7 +319,7 @@ int __cdecl DB_SizeofXAsset_WeaponVariantDef_()
     return 228;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(FxEffectDef) == 60);
 #endif
 int __cdecl DB_SizeofXAsset_FxEffectDef_()
@@ -327,7 +327,7 @@ int __cdecl DB_SizeofXAsset_FxEffectDef_()
     return 60;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(PackIndex) == 28);
 #endif
 int __cdecl DB_SizeofXAsset_PackIndex_()
@@ -335,7 +335,7 @@ int __cdecl DB_SizeofXAsset_PackIndex_()
     return 28;
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(Glasses) == 56);
 #endif
 int __cdecl DB_SizeofXAsset_Glasses_()
@@ -477,7 +477,7 @@ const char *__cdecl DB_GetXAssetHeaderName(int type, const XAssetHeader *header)
     return name;
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 // nx-port probe helper: same lookup as DB_GetXAssetName but returns NULL
 // instead of asserting, so a caller can report the offending pool entry before
 // the assert fires. No behavioural use -- diagnostics only.
@@ -518,7 +518,7 @@ void __cdecl DB_SetXAssetName(XAsset *asset, const char *name)
 
 int __cdecl DB_GetXAssetTypeSize(int type)
 {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // nx-port: DB_GetXAssetSizeHandler below returns hardcoded *x86* struct
     // sizes, and several of its entries are shared between unrelated types
     // purely because those types were the same size on x86 and the decompiler

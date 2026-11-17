@@ -1254,7 +1254,7 @@ pulse_sum_normal *__thiscall pulse_sum_constraint_solver::create_pulse_sum_norma
   pulse_sum_normal **m_last_next_ptr; // ecx
 
   //v2 = (pulse_sum_normal **)phys_transient_allocator::allocate(&this->m_solver_memory_allocator, 160, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
   v2 = (pulse_sum_normal **)this->m_solver_memory_allocator.allocate(sizeof(pulse_sum_normal), 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
 #else
   v2 = (pulse_sum_normal **)this->m_solver_memory_allocator.allocate(160, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
@@ -1292,7 +1292,7 @@ void __thiscall pulse_sum_constraint_solver::create_point(
   int savedregs; // [esp+18h] [ebp+0h] BYREF
 
   //v11 = (pulse_sum_point *)phys_transient_allocator::allocate(&this->m_solver_memory_allocator, 272, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
   v11 = (pulse_sum_point *)this->m_solver_memory_allocator.allocate(sizeof(pulse_sum_point), 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
 #else
   v11 = (pulse_sum_point *)this->m_solver_memory_allocator.allocate(272, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
@@ -1328,7 +1328,7 @@ pulse_sum_angular *__thiscall pulse_sum_constraint_solver::create_pulse_sum_angu
   int savedregs; // [esp+8h] [ebp+0h] BYREF
 
   //v8 = (pulse_sum_angular *)phys_transient_allocator::allocate(&this->m_solver_memory_allocator, 144, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
   v8 = (pulse_sum_angular *)this->m_solver_memory_allocator.allocate(sizeof(pulse_sum_angular), 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
 #else
   v8 = (pulse_sum_angular *)this->m_solver_memory_allocator.allocate(144, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);

@@ -23,7 +23,7 @@ struct WinConData // sizeof=0x620
                                         // ConWndProc+ED/w
     int windowHeight;                   // XREF: Sys_CreateConsole(HINSTANCE__ *)+1B5/w
                                         // ConWndProc+F6/w
-    int (__stdcall *SysInputLineWndProc)(HWND__ *, unsigned int, unsigned int, int);
+    WNDPROC SysInputLineWndProc;
                                         // XREF: InputLineWndProc(HWND__ *,uint,uint,long)+178/r
                                         // Sys_CreateConsole(HINSTANCE__ *)+3B6/w
 };

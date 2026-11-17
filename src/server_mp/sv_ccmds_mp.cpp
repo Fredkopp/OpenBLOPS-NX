@@ -169,28 +169,46 @@ static void SV_UpdateGameSkill_SP()
     Dvar_SetInt(Dvar_FindMalleableVar("player_deathInvulnerableTime"), invulnerableTime);
 }
 
+// The front end's difficulty popup runs one of these as its level starts.
+// From NEW GAME (newgame_difficulty 1; mission select and RESUME GAME set 0)
+// the campaign starts over, so the saved progress (mis_01, archived in
+// config.cfg and the profile) goes back to 0. Only on the front end map, so a
+// stale newgame_difficulty never clears it from a difficulty change in a level.
+static void SV_ResetCampaignOnNewGame_SP()
+{
+    if (I_stricmp(Dvar_GetString("mapname"), "frontend") || !Dvar_FindVar("newgame_difficulty")
+        || atoi(Dvar_GetVariantString("newgame_difficulty")) != 1 || !Dvar_FindVar("mis_01"))
+        return;
+    Com_Printf(16, "NEW GAME: campaign progress mis_01 %i reset to 0\n", Dvar_GetInt("mis_01"));
+    Dvar_SetIntByName("mis_01", 0);
+}
+
 static void SV_DifficultyEasy_f_SP()
 {
     Dvar_SetInt(Dvar_FindMalleableVar("g_gameskill"), 0);
     SV_UpdateGameSkill_SP();
+    SV_ResetCampaignOnNewGame_SP();
 }
 
 static void SV_DifficultyMedium_f_SP()
 {
     Dvar_SetInt(Dvar_FindMalleableVar("g_gameskill"), 1);
     SV_UpdateGameSkill_SP();
+    SV_ResetCampaignOnNewGame_SP();
 }
 
 static void SV_DifficultyHard_f_SP()
 {
     Dvar_SetInt(Dvar_FindMalleableVar("g_gameskill"), 2);
     SV_UpdateGameSkill_SP();
+    SV_ResetCampaignOnNewGame_SP();
 }
 
 static void SV_DifficultyFu_f_SP()
 {
     Dvar_SetInt(Dvar_FindMalleableVar("g_gameskill"), 3);
     SV_UpdateGameSkill_SP();
+    SV_ResetCampaignOnNewGame_SP();
 }
 
 static cmd_function_s SV_DifficultyEasy_f_VAR_SP;

@@ -109,7 +109,7 @@ typedef struct
 	                                    file if we are decompressing it */
 	unsigned char*	tmpFile;
 	int	tmpPos,tmpSize;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     struct NxZipCache *cache;
 #endif
 } unz_s;
@@ -140,7 +140,7 @@ typedef struct
 
 extern unzFile unzOpen (const char *path);
 extern unzFile unzReOpen (const char* path, unzFile file);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 unzFile unzOpenEntry(const char *path, unzFile archive, unsigned long position);
 void unzCloseEntry(unzFile archive, unzFile entry);
 int unzSeekCurrentFile(unzFile file, unsigned long position);

@@ -74,7 +74,7 @@ minspec_mutex g_render_mutex;
 void *G_PHYSICS_TOTAL_MEMORY_BUFFER;
 
 const dvar_t *phys_gravity;
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
 const dvar_t *nx_physics;   // nx-port: see Phys_ObjCreateAxis
 #define nx_physicsEnabled (nx_physics && nx_physics->current.enabled)
 #endif
@@ -280,7 +280,7 @@ void __cdecl Phys_Init()
                                                                              0,
                                                                              "Print info about the nitrous vehicle wheel effects");
         phys_entityCollision = _Dvar_RegisterBool("phys_entityCollision", 1, 0, "Enable to turn on entity collision.");
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
         nx_physics = _Dvar_RegisterBool("nx_physics", 1, 0, "Create rigid-body physics objects (the solver is not LP64-ported yet)");
 #endif
         phys_vehicleWheelEntityCollision = _Dvar_RegisterBool(
@@ -575,9 +575,9 @@ broad_phase_info *__cdecl create_broad_phase_info()
     phys_free_list<broad_phase_info>::T_internal *v2; // esi
 
     p_g_list_broad_phase_info = &G_BPM->g_list_broad_phase_info;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     v1 = (phys_free_list<broad_phase_info>::T_internal *)PMM_ALLOC(
-        sizeof(phys_free_list<broad_phase_info>::T_internal), phys_free_list<broad_phase_info>::kNodeAlignment);
+        sizeof(phys_free_list<broad_phase_info>::T_internal), phys_free_list<broad_phase_info>::nodeAlignment());
 #else
     v1 = (phys_free_list<broad_phase_info>::T_internal *)PMM_ALLOC(0x90u, 0x10u);
 #endif
@@ -911,7 +911,7 @@ PhysObjUserData * Phys_CreateUserBody(float *position, int id, PhysicsGeomType g
     //
     //*(float *)v40 = a1;
     //v40[1] = (_UNKNOWN *)geomTypea;
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
     // nx-port: players get a collision body for pushing physics objects; with
     // physics off there are none to push. Callers treat NULL as no body.
     if (!nx_physicsEnabled)
@@ -1203,7 +1203,7 @@ PhysObjUserData * Phys_CreateBodyFromState(
             v100 = &physGlob;
             if (&physGlob == (PhysGlob *)i.m_ptr)
                 break;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             userData = *i;
             if (userData->id == state->id)
 #else
@@ -1479,7 +1479,7 @@ PhysObjUserData *__cdecl Phys_ObjCreateAxis(
 {
     BodyState state; // [esp+24h] [ebp-90h] BYREF
 
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
     // nx-port: the rigid-body solver (physics_system_internal.cpp and
     // friends) still walks its free lists at x86 word offsets. Until it is
     // ported, no physics objects are created; every caller treats NULL as
@@ -1818,7 +1818,7 @@ void __cdecl Phys_ObjRemoveCollFlags(intptr_t physObjId, int collFlags)
     }
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 void __cdecl fixup_wheel_constraints(rigid_body *rb)
 {
     phys_free_list<rigid_body_constraint_wheel>::T_internal_base *wci;
@@ -1915,7 +1915,7 @@ void    Phys_AddCacheImpulses()
     phys_vec3 force; // [esp+34h] [ebp-3Ch] BYREF
     phys_vec3 pos; // [esp+44h] [ebp-2Ch] BYREF
     rigid_body *body; // [esp+54h] [ebp-1Ch]
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t id;
 #else
     int id; // [esp+58h] [ebp-18h]
@@ -4055,7 +4055,7 @@ user_rigid_body *__cdecl GetTraceResultsRigidBody(const trace_t *traceResults)
     DynEntityClient *dynEntClient; // [esp+14h] [ebp-18h]
     user_rigid_body *rb; // [esp+18h] [ebp-14h]
     centity_s *cent; // [esp+1Ch] [ebp-10h]
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t physObjId;
 #else
     int physObjId; // [esp+20h] [ebp-Ch]
@@ -4671,7 +4671,7 @@ void __cdecl Phys_SetHingeParams(rigid_body_constraint_ragdoll *id, float motorS
 }
 
 rigid_body_constraint_ragdoll * Phys_CreateHinge(
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 intptr_t obj1,
                 intptr_t obj2,
 #else
@@ -4722,7 +4722,7 @@ rigid_body_constraint_ragdoll * Phys_CreateHinge(
     //
     //v42[0] = a1;
     //v42[1] = anchora;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     body1 = Phys_GetUserData(obj1)->body;
 #else
     body1 = Phys_GetUserData((int)obj1)->body;
@@ -4809,7 +4809,7 @@ void __cdecl Phys_SetAngularMotorParams(rigid_body_constraint_ragdoll *id, const
 }
 
 rigid_body_constraint_ragdoll * Phys_CreateSwivel(
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 intptr_t obj1,
                 intptr_t obj2,
 #else

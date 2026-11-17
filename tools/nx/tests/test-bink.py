@@ -26,9 +26,10 @@ include.mkdir(parents=True, exist_ok=True)
 source = args.ffmpeg_source.resolve()
 exe = output/'bink.exe'
 subprocess.run([args.compiler, '-std=c++17', '-O2', '-Wall', '-Wextra', '-Wno-attributes',
-                '-I'+str(include.parent), '-I'+str(root/'src/nx'), '-I'+str(root/'src'), '-I'+str(source),
-                str(root/'tools/nx/tests/bink.cpp'), str(root/'src/nx/nx_bink.cpp'),
-                str(root/'src/nx/nx_bink_audio.cpp'), str(source/'libavcodec/libavcodec.a'),
+                '-DKISAK_FFMPEG_STATIC_DECODERS', '-I'+str(include.parent), '-I'+str(root/'src/binklib'),
+                '-I'+str(root/'src'), '-I'+str(source),
+                str(root/'tools/nx/tests/bink.cpp'), str(root/'src/binklib/bink_ffmpeg.cpp'),
+                str(root/'src/binklib/bink_audio.cpp'), str(source/'libavcodec/libavcodec.a'),
                 str(source/'libswresample/libswresample.a'), str(source/'libavutil/libavutil.a'),
                 '-lwinpthread', '-lbcrypt', '-lm', '-o', str(exe)], check=True)
 for movie in args.movies:

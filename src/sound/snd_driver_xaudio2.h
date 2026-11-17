@@ -114,7 +114,11 @@ struct __declspec(align(128)) SoundState // sizeof=0x3EF600
     int deviceGUIDValid;                // XREF: SD_XAudio2Done(void)+2B/w
     _GUID deviceGUID;                   // XREF: SD_XAudio2Done(void)+41/w
     IXAudio2 *xa2;                      // XREF: SD_XAudio2Done(void)+3/r
+#ifdef XAUDIO2_DLL
+    XAUDIO2_VOICE_DETAILS details;      // XAudio2 2.8+: default device format
+#else
     XAUDIO2_DEVICE_DETAILS details;     // XREF: SD_Init(void)+5D/o
+#endif
     IXAudio2MasteringVoice *masterVoice; // XREF: SD_Init(void)+6A/w
     XAUDIO2_VOICE_DETAILS masterVoiceDetails; // XREF: SD_Init(void)+76/w
     IXAudio2SubmixVoice *masterBus;     // XREF: iSND_CreateVoice+51F/r
@@ -135,6 +139,8 @@ struct __declspec(align(128)) SoundState // sizeof=0x3EF600
     SoundState() = default;
     ~SoundState() = default;
 };
+
+extern SoundState g_sd;
 
 bool __cdecl SD_Xaudio2CanInit();
 SDXA2SourceEffect *__cdecl SDXA2_VoiceDspAllocate();
@@ -158,20 +164,29 @@ void __cdecl iSND_ChannelError(int voiceIndex);
 char __cdecl SD_Init();
 void SDXA2_VoiceDspAssertUnused();
 bool __cdecl SD_XAudio2Init();
+#ifndef XAUDIO2_DLL
 HRESULT __cdecl XAudio2Create(
                 IXAudio2 **ppXAudio2,
                 unsigned int Flags,
                 XAUDIO2_WINDOWS_PROCESSOR_SPECIFIER XAudio2Processor);
+#endif
 char __cdecl SD_XAudio2EnumerateDevices();
 char __cdecl SD_XAudio2GetDeviceGUID(wchar_t *inGUID, _GUID *guid, char *outGUID, int size);
+#ifdef XAUDIO2_DLL
+char __cdecl SD_XAudio2CheckDevice(IXAudio2 *pXAudio2, XAUDIO2_VOICE_DETAILS *deviceDetails);
+#else
 char __cdecl SD_XAudio2CheckDevice(
                 IXAudio2 *pXAudio2,
                 const XAUDIO2_DEVICE_DETAILS *deviceDetails,
                 unsigned int deviceIndex);
+#endif
 void SD_SwitchDevice();
 void SND_InitMasterVoice();
 void SD_Shutdown();
 void SND_ShutdownMasterVoice();
+#ifdef KISAK_BINK_FFMPEG
+void SND_ShutdownCinematicVoice();
+#endif
 void __cdecl SD_PreUpdate();
 void __cdecl SD_PauseVoice(int voiceIndex);
 void __cdecl SD_UnpauseVoice(int voiceIndex);

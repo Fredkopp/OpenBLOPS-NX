@@ -5,8 +5,9 @@
 #include "nx_install.h"
 #include "nx_update.h"
 #include "nx_load_boost.h"
-#include "nx_kbz.h"
-#include "nx_bink_audio.h"
+#include "nx_display.h"
+#include <database/db_kbz.h>
+#include <binklib/bink_audio.h>
 #include "nx_saltynx.h"
 #include <universal/local_player_name.h>
 #include <universal/profile.h>
@@ -25,12 +26,15 @@
 extern "C" void nx_wincompat_init_main_thread(void);
 extern "C" void nx_set_command_line(const char *cmdline);
 
+#ifndef KISAK_NX2
 extern "C"
 {
 // libnx requests this APM profile at startup for normal (handheld) mode.
 // CPU 1020 MHz, GPU 460.8 MHz, EMC 1331.2 MHz. HOS selects the docked profile.
+// A Switch 1 configuration: on Switch 2 the system keeps its own.
 u32 __nx_applet_PerformanceConfiguration[2] = {0x92220008, 0};
 }
+#endif
 
 static char s_installDir[512] = NX_GAME_DIR;
 
@@ -387,10 +391,16 @@ static void nxReportMemory(void)
     printf("memory: %llu MB total, %llu MB free heap\n",
            (unsigned long long)(total >> 20), (unsigned long long)(freeHeap >> 20));
     if (freeHeap < (700ull << 20)) {
+#ifdef KISAK_NX2
+        printf("WARNING: only %llu MB of heap. With kaiHEN running, open hbmenu by holding R\n"
+               "         while opening a Switch 2 game, then run OpenBLOPS-NX2 from there.\n",
+               (unsigned long long)(freeHeap >> 20));
+#else
         printf("WARNING: only %llu MB of heap -- this looks like APPLET mode.\n"
                "         OpenBLOPS-NX needs application mode: launch hbmenu by holding R\n"
                "         while opening an installed game, then run OpenBLOPS-NX from there.\n",
                (unsigned long long)(freeHeap >> 20));
+#endif
     }
 }
 
@@ -529,8 +539,10 @@ static char s_nroPath[512];
 // Asks the homebrew loader to start <nroName> from this NRO's folder once this
 // one exits; the caller then quits normally (Sys_Quit -> exit). A loader that
 // cannot chain-load (envHasNextLoad false) just returns to its menu.
+#ifndef KISAK_NX2
 // The installed title (a forwarder) whose NACP name is <name>, or 0. Logs every
 // installed title with "kisak" in its name, so a renamed forwarder shows up.
+// Switch 2 has no forwarders: kaiHEN starts homebrew only from its loader.
 static u64 nxFindInstalledTitle(const char *name)
 {
     if (R_FAILED(nsInitialize()))
@@ -563,6 +575,7 @@ static u64 nxFindInstalledTitle(const char *name)
     nsExit();
     return found;
 }
+#endif
 
 extern "C" bool NX_ChainLoadSibling(const char *nroName)
 {
@@ -587,6 +600,7 @@ extern "C" bool NX_ChainLoadSibling(const char *nroName)
             return true;
     }
 
+#ifndef KISAK_NX2
     // A loader that cannot chain-load: when running as an application, launch
     // the sibling's installed forwarder title instead (a fresh process after
     // this one exits).
@@ -604,6 +618,7 @@ extern "C" bool NX_ChainLoadSibling(const char *nroName)
                 return true;
         }
     }
+#endif
     printf("[nx] cannot start %s from this loader; quitting\n", path);
     return true;
 }
@@ -802,6 +817,19 @@ static void nxStallCaptureMain()
         }
 }
 
+// A stuck main loop never reads HOME's close request, and the system then
+// kills the title as a crash.
+static bool nxStallExitRequested()
+{
+    u32 message = 0;
+    while (R_SUCCEEDED(appletGetMessage(&message))) {
+        if (message == AppletMessage_ExitRequest)
+            return true;
+        appletProcessMessage(message);
+    }
+    return false;
+}
+
 static void nxStallThread(void *)
 {
     u64 lastBeat = s_mainHeartbeat;
@@ -826,6 +854,11 @@ static void nxStallThread(void *)
             continue;
         }
         ++stalledFor;
+        if (stalledFor >= limit && nxStallExitRequested()) {
+            appletUnlockExit();
+            svcSleepThread(3000000000ull);
+            svcExitProcess();
+        }
         if (!nextReport)
             nextReport = limit;
         if (stalledFor < nextReport)
@@ -882,7 +915,7 @@ extern "C" void NX_PrepareExit(void)
     nxExitStep("SD_Shutdown");
     SD_Shutdown();
     nxExitStep("stopping texture readers");
-    NX_KBZ_StopReaders();
+    DB_KbzStopReaders();
 #ifdef NX_DXVK
     NX_DxvkRequestStop();
 #else
@@ -908,13 +941,16 @@ static void nxReleaseGpuAtExit(void)
 {
     if (!s_exitPrepared)
         return;
+#ifndef KISAK_NX2
     // With EGL still up the nv session cannot give its transfer memory back and
     // nvExit would wait forever; skip it then (the next NRO may still crash).
+    // On Switch 2 libounce closes the GPU device itself (__nx_gpu_exit).
     if (s_glReleased) {
         nxExitStep("atexit: nvExit");
         for (int i = 0; i < 16; ++i)   // any references mesa left; extra calls do nothing
             nvExit();
     }
+#endif
     nxExitStep("after atexit: C++ destructors, libc cleanup");
 }
 
@@ -938,6 +974,7 @@ extern "C" bool NX_PumpAppletMessages(void)
             appletProcessMessage(msg);
         }
     }
+    NX_DisplayUpdate();
     return s_exitRequested;
 }
 
@@ -967,11 +1004,12 @@ int main(int argc, char **argv)
     // Files an update could not replace while they were in use (nx_update.h).
     NX_UpdateApplyPending();
     nxStallStart();
+    NX_DisplayInit();
 #ifdef NX_DXVK
     NX_DxvkConfigure(s_nroPath[0] ? s_nroPath : NX_GAME_DIR "/" NX_GAME_NRO);
 #endif
     NX_LoadBoostInit();
-    NX_BinkInitClock();
+    Sys_BinkInitClock();
     atexit(NX_LoadBoostExit);
 
     nx_wincompat_init_main_thread();
@@ -991,7 +1029,8 @@ int main(int argc, char **argv)
 
     // "allowdupe" (must be a prefix) skips the duplicate-instance semaphore
     // file; "nodump" skips the minidump handler.
-    static char cmdline[2048] = "allowdupe nodump +set r_mode 1280x720";
+    static char cmdline[2048];
+    snprintf(cmdline, sizeof(cmdline), "allowdupe nodump +set r_mode %dx%d", NX_SCREEN_WIDTH, NX_SCREEN_HEIGHT);
     nxAppendPlayerName(cmdline, sizeof(cmdline));
     nxAppendCmdlineFile(cmdline, sizeof(cmdline));
     printf("command line: %s\n", cmdline);

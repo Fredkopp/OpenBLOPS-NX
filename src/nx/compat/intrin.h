@@ -3,5 +3,5 @@
 #ifndef NX_COMPAT_INTRIN_H
 #define NX_COMPAT_INTRIN_H
 #include "nx_prefix.h"
-#include "xmmintrin.h"
+#include <xmmintrin.h>
 #endif

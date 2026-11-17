@@ -604,7 +604,7 @@ void __cdecl R_RegisterDvars()
     r_ignoreHwGamma = _Dvar_RegisterBool("r_ignorehwgamma", 0, 0x21u, "Ignore hardware gamma");
     r_texFilterAnisoMax = _Dvar_RegisterInt(
                                                     "r_texFilterAnisoMax",
-#ifdef KISAK_NX
+#if defined(KISAK_NX) && !defined(KISAK_NX2)
                                                     2,   // Switch: texture bandwidth (PC: 16)
 #else
                                                     16,
@@ -620,7 +620,11 @@ void __cdecl R_RegisterDvars()
                                                  "Disables all texture filtering (uses nearest only.)");
     r_texFilterAnisoMin = _Dvar_RegisterInt(
                                                     "r_texFilterAnisoMin",
+#ifdef KISAK_NX2
+                                                    4,   // Switch 2: the options' anisotropic filtering
+#else
                                                     1,
+#endif
                                                     1,
                                                     16,
                                                     1u,
@@ -1353,7 +1357,12 @@ void __cdecl R_RegisterDvars()
                              "Allocate a float z buffer (required for effects such as floatz, dof, and laser light)");
     // Retail SP registers it off. On the Switch the frame is bound by draw calls,
     // and the prepass draws most of the scene a second time.
+#ifdef KISAK_NX2
+    // Switch 2: on, the frame is bound by shading there.
+    r_depthPrepass = _Dvar_RegisterBool("r_depthPrepass", 1, 1u, "Enable depth prepass (usually improves performance)");
+#else
     r_depthPrepass = _Dvar_RegisterBool("r_depthPrepass", 0, 1u, "Enable depth prepass (usually improves performance)");
+#endif
     r_highLodDist = _Dvar_RegisterFloat(
                                         "r_highLodDist",
                                         -1.0,
@@ -1388,7 +1397,7 @@ void __cdecl R_RegisterDvars()
                                              1,
                                              0xA0u,
                                              "Set to 0 to replace all model vertex colors with white when loaded");
-#ifdef KISAK_NX
+#if defined(KISAK_NX) && !defined(KISAK_NX2)
     sm_enable = _Dvar_RegisterBool("sm_enable", 0, 0, "Enable shadow mapping");
 #else
     sm_enable = _Dvar_RegisterBool("sm_enable", 1, 0, "Enable shadow mapping");
@@ -1471,7 +1480,7 @@ void __cdecl R_RegisterDvars()
                                                                  0x1080u,
                                                                  "Provides high-res spot shadows for the only one spotlight in the scene.");
     sm_debugFastSunShadow = _Dvar_RegisterBool("sm_debugFastSunShadow", 0, 0x80u, "Debug fast sun shadow");
-#ifdef KISAK_NX
+#if defined(KISAK_NX) && !defined(KISAK_NX2)
     // Switch: no texture streaming; every image keeps the mips it loaded with
     // (for performance; see also the r_picmip defaults).
     r_stream = _Dvar_RegisterInt("r_stream", 0, 0, 7, 0x80u, "Stream high mip levels (1=world|2=xmodels|4=bmodels)");
@@ -1548,7 +1557,7 @@ void __cdecl R_RegisterDvars()
     _Dvar_RegisterFloat("r_stereoTurretShift", 0.0, 0.0, 10000.0, 0x1000u, "3D turret shift");
     r_blur_allowed = _Dvar_RegisterBool("r_blur_allowed", 1, 1u, "Allow blur.");
     r_blur = _Dvar_RegisterFloat("r_blur", 0.0, 0.0, 32.0, 0x80u, "Dev tweak to blur the screen");
-#ifdef KISAK_NX
+#if defined(KISAK_NX) && !defined(KISAK_NX2)
     // Switch: off by default, an extra resolve and full-screen pass when active.
     r_distortion = _Dvar_RegisterBool("r_distortion", 0, 1u, "Enable distortion");
 #else

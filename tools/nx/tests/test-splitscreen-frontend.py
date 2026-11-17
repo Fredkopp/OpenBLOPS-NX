@@ -137,7 +137,6 @@ struct Header{menuDef_t*menu;};
 Header DB_FindXAssetHeader(int,const char*n,int,int){assert(zoneMenus.count(n));return {zoneMenus[n]};}
 void Com_Error(int,const char*){assert(false);}
 void UI_NX_AddAimAssistOption(menuDef_t*){}
-void UI_AddPerformanceOverlayOption(menuDef_t*){}
 bool UI_IsCustomBotMenu(const menuDef_t*){return false;}
 void UI_AddCustomBotSettings(int,UiContext*,menuDef_t*){}
 """

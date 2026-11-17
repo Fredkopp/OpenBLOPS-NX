@@ -1924,7 +1924,7 @@ static const int hangBone = 3;
 static const int renderflag = 255;
 void    Ragdoll_DebugRender(RagdollBody *body)
 {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t joint2;
 #else
     int joint2; // edx
@@ -1937,7 +1937,7 @@ void    Ragdoll_DebugRender(RagdollBody *body)
     phys_vec3 world_pos; // [esp+0h] [ebp-40h]
     environment_rigid_body *v9; // [esp+10h] [ebp-30h]
     environment_rigid_body **v10; // [esp+14h] [ebp-2Ch]
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t rigidBody;
     rigid_body *body1;
     PhysObjUserData *userData;
@@ -2145,7 +2145,7 @@ void __cdecl Ragdoll_RemoveConstraintsForRope(int rope_id)
     }
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 intptr_t __cdecl Ragdoll_GetRBForBone(int entnum, unsigned int boneName)
 #else
 int __cdecl Ragdoll_GetRBForBone(int entnum, unsigned int boneName)

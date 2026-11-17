@@ -592,7 +592,7 @@ void rigid_body_constraint_wheel::setup_constraint(pulse_sum_constraint_solver *
         //v28 = (pulse_sum_normal *)phys_transient_allocator::allocate(
         v28 = (pulse_sum_normal *)
             psys->m_solver_memory_allocator.allocate(
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             sizeof(pulse_sum_normal),
 #else
             160,
@@ -766,7 +766,7 @@ pulse_sum_normal *__thiscall pulse_sum_constraint_solver::create_pulse_sum_wheel
   result = (pulse_sum_normal *)//phys_transient_allocator::allocate(
                                  //&this->m_solver_memory_allocator,
                                  this->m_solver_memory_allocator.allocate(
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                                  sizeof(pulse_sum_normal),
 #else
                                  160,
@@ -785,7 +785,7 @@ pulse_sum_wheel *__thiscall pulse_sum_constraint_solver::create_pulse_sum_wheel(
 
   v2 = (pulse_sum_wheel **)//phys_transient_allocator::allocate(
                              this->m_solver_memory_allocator.allocate(
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                              sizeof(pulse_sum_wheel),
 #else
                              192,

@@ -25,7 +25,7 @@ int __cdecl Sys_SystemMemoryMB()
     hm = GetModuleHandleA("kernel32.dll");
     if ( hm && (MemStatEx = (int (__stdcall *)(_MEMORYSTATUSEX *))GetProcAddress(hm, "GlobalMemoryStatusEx")) != 0 )
     {
-        statusEx.dwLength = 64;
+        statusEx.dwLength = sizeof(statusEx);
         MemStatEx(&statusEx);
         if (statusEx.ullAvailVirtual < 0x8000000)
         {
@@ -46,7 +46,7 @@ int __cdecl Sys_SystemMemoryMB()
     }
     else
     {
-        status.dwLength = 32;
+        status.dwLength = sizeof(status);
         GlobalMemoryStatus(&status);
         if (status.dwAvailVirtual < 0x8000000)
         {
@@ -87,6 +87,12 @@ void __cdecl Sys_DetectVideoCard(int descLimit, char *description)
         __debugbreak();
     }
     strcpy(description, "Unknown video card");
+#ifdef KISAK_NX2
+    // A Direct3D object released here closes the GPU before the renderer opens
+    // it again, which the Switch 2 driver does not survive.
+    strcpy(description, "Switch 2 GPU");
+    return;
+#endif
     d3d9 = Direct3DCreate9(0x20u);
     if ( d3d9 )
     {

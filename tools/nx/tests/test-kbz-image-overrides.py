@@ -16,7 +16,7 @@ parser.add_argument('--loader', type=Path)
 parser.add_argument('--compiler', default='/ucrt64/bin/g++.exe')
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[3]
-loader = (args.loader or root/'src/nx/nx_kbz.cpp').resolve()
+loader = (args.loader or root/'src/database/db_kbz.cpp').resolve()
 output = args.output.resolve()
 output.mkdir(parents=True, exist_ok=True)
 
@@ -99,10 +99,10 @@ for header in re.findall(r'^#include <([^>]+/[^>]+)>', source, re.M):
 exe = output/'kbz-image-overrides.exe'
 flags = ['-std=c++20', '-O2', '-Wall', '-Wextra', '-DKISAK_NX', '-I'+str(include),
          '-DNX_KBZ_SOURCE="'+str(loader)+'"']
-if 'void NX_KBZ_ValidateImages()' in source:
+if 'void DB_KbzValidateImages()' in source:
     flags.append('-DNX_KBZ_HAS_IMAGE_AUDIT')
-if 'NxKbzStorage' in source:
-    flags.extend(['-DNX_KBZ_HAS_STORAGE', str(loader.with_name('nx_kbz_storage.cpp'))])
+if 'KbzStorage' in source:
+    flags.extend(['-DNX_KBZ_HAS_STORAGE', str(loader.with_name('db_kbz_storage.cpp'))])
 subprocess.run([args.compiler, *flags, str(Path(__file__).with_name('kbz-image-overrides.cpp')),
                 '-o', str(exe)], check=True)
 subprocess.run([str(exe), str(output)], check=True)

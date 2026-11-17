@@ -10,6 +10,34 @@
 
 ExtraCamSettings g_extraCamSettings;
 
+#ifdef NX_DXVK
+// Single-sampled, the scene's depth buffer is the floatz (INTZ) texture:
+// DXVK samples the bound depth buffer, so no RESZ copy is needed.
+bool g_nxIntZDepthBuffer;
+static IDirect3DTexture9 *s_nxIntZDepthTexture;
+
+static bool R_NX_CreateIntZDepthBuffer(int width, int height, IDirect3DSurface9 **surface)
+{
+    const _D3DFORMAT FOURCC_INTZ = (_D3DFORMAT)1515474505;
+    if ( dx.multiSampleType != D3DMULTISAMPLE_NONE || g_allocateMinimalResources
+        || !r_floatz->current.enabled || !r_allow_intz->current.enabled
+        || width != (int)vidConfig.sceneWidth || height != (int)vidConfig.sceneHeight
+        || dx.d3d9->CheckDeviceFormat(dx.adapterIndex, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8, D3DUSAGE_DEPTHSTENCIL,
+                                      D3DRTYPE_TEXTURE, FOURCC_INTZ) )
+        return false;
+    IDirect3DTexture9 *texture = nullptr;
+    if ( dx.device->CreateTexture(width, height, 1, D3DUSAGE_DEPTHSTENCIL, FOURCC_INTZ, D3DPOOL_DEFAULT, &texture, nullptr) )
+        return false;
+    if ( texture->GetSurfaceLevel(0, surface) )
+    {
+        texture->Release();
+        return false;
+    }
+    s_nxIntZDepthTexture = texture;
+    return true;
+}
+#endif
+
 const char *s_renderTargetNames[R_RENDERTARGET_COUNT] =
 {
   "R_RENDERTARGET_NULL",
@@ -851,6 +879,11 @@ void __cdecl R_InitFrameBufferRenderTarget_Win32(GfxRenderTarget *renderTarget)
     else
     {
         R_GetFrameBufferDepthStencilRes(&depthStencilWidth, &depthStencilHeight);
+#ifdef NX_DXVK
+        if ( renderTarget == &gfxRenderTargets[R_RENDERTARGET_FRAME_BUFFER]
+            && R_NX_CreateIntZDepthBuffer(depthStencilWidth, depthStencilHeight, &renderTarget->surface.depthStencil) )
+            return;
+#endif
         if ( r_logFile && r_logFile->current.integer )
             RB_LogPrint(
                 "dx.device->CreateDepthStencilSurface( depthStencilWidth, depthStencilHeight, dx.depthStencilFormat, dx.multiSamp"
@@ -1044,6 +1077,17 @@ void R_InitIntZRenderTarget_PC()
     if ( !r_allow_intz->current.enabled || dx.d3d9->GetAdapterIdentifier(dx.adapterIndex, 0, &adapterId) )
         return;
 
+#ifdef NX_DXVK
+    if ( s_nxIntZDepthTexture )
+    {
+        depthTexture = s_nxIntZDepthTexture;
+        s_nxIntZDepthTexture = nullptr;
+        dx.supportsIntZ = 1;
+        g_nxIntZDepthBuffer = true;
+        goto LABEL_22;
+    }
+#endif
+
     // KISAKTODO: fix this INTZ thing, see if we can enable it on modern gpu's without nvapi (I believe the below code fails)
     // Update: this library works now along with the other fixes, seems to add about 10%~ performance
 #ifdef KISAK_NVAPI_INTZ
@@ -1123,6 +1167,14 @@ void __cdecl R_ShutdownRenderTargets()
     for ( renderTargetId = 0; renderTargetId < R_RENDERTARGET_COUNT; ++renderTargetId )
         R_ShutDownSingleRenderTarget(&gfxRenderTargets[renderTargetId]);
     dx.singleSampleDepthStencilSurface = 0;
+#ifdef NX_DXVK
+    if ( s_nxIntZDepthTexture )
+    {
+        s_nxIntZDepthTexture->Release();
+        s_nxIntZDepthTexture = nullptr;
+    }
+    g_nxIntZDepthBuffer = false;
+#endif
 }
 
 void __cdecl R_ShutDownSingleRenderTarget(GfxRenderTarget *rt)

@@ -232,7 +232,7 @@ struct MaterialTechniqueSet // sizeof=0x210
         unsigned __int16 techsetFlags;
         MaterialTechnique *techniques[130];
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(MaterialTechniqueSet) == 528);
 #endif
 
@@ -396,7 +396,7 @@ struct Material // sizeof=0xC0
         };
         GfxStateBits *stateBitsTable;
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(Material) == 192);
 #endif
 

@@ -34,9 +34,10 @@ namespace {
 // the newest release. The fallback repository only when the main one cannot
 // be reached, is gone, or has no release.
 constexpr const char *Repos[] = {"HDErick/OpenBLOPS-NX", "HDErick/rqm-updater-nx"};
-constexpr char ZipName[] = "OpenBLOPS-NX.zip";
-constexpr char ZipPart[] = NX_GAME_DIR "/OpenBLOPS-NX.zip.part";
+constexpr char ZipName[] = NX_UPDATE_ZIP;
+constexpr char ZipPart[] = NX_GAME_DIR "/" NX_UPDATE_ZIP ".part";
 constexpr char SdRoot[] = "sdmc:/";
+constexpr char InstallDir[] = NX_GAME_DIR "/";
 constexpr char PendingList[] = NX_GAME_DIR "/update_pending.txt";
 constexpr size_t MaxJson = 512 * 1024;
 constexpr int TimeoutMs = 15000;
@@ -367,6 +368,8 @@ void make_parents(const std::string &path)
         mkdir(path.substr(0, slash).c_str(), 0777);
 }
 
+// A zip entry's path on the SD card, or empty when it is outside this build's
+// install folder, so one Switch build never writes into the other's.
 std::string safe_entry_path(const std::string &raw)
 {
     size_t skip = 0;
@@ -381,7 +384,9 @@ std::string safe_entry_path(const std::string &raw)
         if (end == std::string::npos) break;
         start = end + 1;
     }
-    return std::string(SdRoot) + path;
+    path = std::string(SdRoot) + path;
+    if (strncasecmp(path.c_str(), InstallDir, std::strlen(InstallDir)) != 0) return "";
+    return path;
 }
 
 // ----- the zip ---------------------------------------------------------------
@@ -634,13 +639,25 @@ struct Updater {
             return finish(NxUpdatePhase::Failed);
         }
         uint64_t bytes = 0;
-        for (const auto &e : entries) bytes += e.size;
+        size_t files = 0;
+        for (const auto &e : entries) {
+            const std::string path = safe_entry_path(e.name);
+            if (path.empty() || path.back() == '/') continue;
+            bytes += e.size;
+            ++files;
+        }
+        if (!files) {
+            std::fclose(zip);
+            std::remove(ZipPart);
+            std::snprintf(error, sizeof(error), "%s has no files for %s.", ZipName, InstallDir);
+            return finish(NxUpdatePhase::Failed);
+        }
         done.store(0);
         total.store(bytes);
         bool ok = true;
         for (const auto &e : entries) {
             const std::string path = safe_entry_path(e.name);
-            if (path.empty()) continue;   // outside the SD root: skipped
+            if (path.empty()) continue;   // outside this build's folder: skipped
             make_parents(path);
             if (path.back() == '/') continue;   // a folder
             const std::string staged = path + ".new";

@@ -140,7 +140,7 @@ void __cdecl Phys_DebugPoint(const phys_vec3 *pos, float radius, const float *co
 void __cdecl Phys_DebugBox(const phys_mat44 *mat, const float *color, float scale);
 void __cdecl Phys_DebugBox(const phys_mat44 *mat, const phys_vec3 *dims, const float *color);
 void    Phys_RenderBase(const phys_mat44 *mat, float scale);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 void    Phys_JointDebugRender(intptr_t id);
 #else
 void    Phys_JointDebugRender(int id);

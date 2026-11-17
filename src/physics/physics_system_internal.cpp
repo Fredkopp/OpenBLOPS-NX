@@ -873,8 +873,8 @@ void __thiscall physics_system::time_step(float outside_delta_t, bool last_step)
     this->m_flags &= ~1u;
     using ContactList = phys_free_list<rigid_body_constraint_contact>;
     using ContactNode = ContactList::T_internal;
-#ifdef KISAK_NX
-    constexpr unsigned int contactAlignment = ContactList::kNodeAlignment;
+#ifdef KISAK_64BIT
+    constexpr unsigned int contactAlignment = ContactList::nodeAlignment();
 #else
     constexpr unsigned int contactAlignment = sizeof(ContactNode) % 16 == 0 ? 16 : 4;
 #endif
@@ -1485,11 +1485,11 @@ void physics_system::validate_member(rigid_body *rb)
             if ((m_flags & 0x20) != 0)
             {
                 using TI = phys_free_list<user_rigid_body>::T_internal;
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
                 static_assert(sizeof(TI) == 0x1D0, "size mismatch");
 #endif
                 TI *ti = (TI *)((char *)rb - offsetof(TI, m_data));
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 PMM_VALIDATE((char *)ti, sizeof(TI), PHYS_NODE_ALIGNMENT(TI));
 #else
                 PMM_VALIDATE((char *)ti, sizeof(TI), 16);
@@ -1500,11 +1500,11 @@ void physics_system::validate_member(rigid_body *rb)
             else
             {
                 using TI = phys_free_list<rigid_body>::T_internal;
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
                 static_assert(sizeof(TI) == 0x180, "size mismatch");
 #endif
                 TI *ti = (TI *)((char *)rb - offsetof(TI, m_data));
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 PMM_VALIDATE((char *)ti, sizeof(TI), PHYS_NODE_ALIGNMENT(TI));
 #else
                 PMM_VALIDATE((char *)ti, sizeof(TI), 16);
@@ -1533,7 +1533,7 @@ void physics_system::solver_priority_sort(phys_transient_allocator *transient_bu
         //                                                                                 4,
         //                                                                                 0,
         //                                                                                 "phys_transient_allocator out of memory.");
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         v3 = (rigid_body_constraint_contact **)transient_buffer->allocate(
             sizeof(rigid_body_constraint_contact *) * this->m_list_rbc_contact.m_list_count,
             sizeof(rigid_body_constraint_contact *), 0, "phs_Transient_allocator out of memory.");

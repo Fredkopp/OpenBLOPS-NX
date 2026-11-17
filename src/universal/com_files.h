@@ -161,7 +161,7 @@ bool __cdecl FS_PureIgnoreFiles(const char *filename);
 int __cdecl FS_FOpenFileRead(const char *filename, int *file);
 unsigned int __cdecl FS_FOpenFileReadCurrentThread(const char *filename, int *file);
 unsigned int __cdecl FS_FOpenFileReadForThread(const char *filename, int *file, FsThread thread);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 struct FsNxWorkerFile { unsigned char *archive; unsigned char *entry; unsigned size; };
 bool FS_NX_OpenWorkerFile(const char *filename, FsNxWorkerFile *out);
 int FS_NX_ReadWorkerFile(FsNxWorkerFile *file, void *buffer, int len);

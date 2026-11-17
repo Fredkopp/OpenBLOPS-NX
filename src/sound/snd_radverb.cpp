@@ -278,18 +278,18 @@ void __cdecl SND_RvFrame(
     float v34; // xmm0_4
     float v35; // xmm0_4
     float v36; // xmm2_4
-    int v37; // [esp+10h] [ebp-10h]
-    int v38; // [esp+14h] [ebp-Ch]
-    int v39; // [esp+18h] [ebp-8h]
-    int v40; // [esp+1Ch] [ebp-4h]
+    ptrdiff_t v37; // [esp+10h] [ebp-10h]
+    ptrdiff_t v38; // [esp+14h] [ebp-Ch]
+    ptrdiff_t v39; // [esp+18h] [ebp-8h]
+    ptrdiff_t v40; // [esp+1Ch] [ebp-4h]
     unsigned int counta; // [esp+30h] [ebp+10h]
     unsigned int countb; // [esp+30h] [ebp+10h]
     const float *inRFa; // [esp+38h] [ebp+18h]
     int inLSa; // [esp+3Ch] [ebp+1Ch]
-    const float *inRSa; // [esp+40h] [ebp+20h]
-    float *outRFa; // [esp+48h] [ebp+28h]
+    ptrdiff_t outRSOffset; // [esp+40h] [ebp+20h]
+    ptrdiff_t outLFOffset; // [esp+48h] [ebp+28h]
     float *outLSa; // [esp+4Ch] [ebp+2Ch]
-    float *outRSa; // [esp+50h] [ebp+30h]
+    ptrdiff_t inLFOffset; // [esp+50h] [ebp+30h]
 
     SND_RvFrameParam(params, state, (unsigned int)count);
     earlyLpfState = state->earlyLpfState;
@@ -347,9 +347,9 @@ void __cdecl SND_RvFrame(
         v38 = (char *)inRF - (char *)outLS;
         v40 = (char *)outRF - (char *)outLS;
         v37 = (char *)inRS - (char *)outLS;
-        inRSa = (const float *)((char *)outRS - (char *)outLS);
-        outRSa = (float *)((char *)inLF - (char *)outLS);
-        outRFa = (float *)((char *)outLF - (char *)outLS);
+        outRSOffset = (char *)outRS - (char *)outLS;
+        inLFOffset = (char *)inLF - (char *)outLS;
+        outLFOffset = (char *)outLF - (char *)outLS;
         inRFa = count;
         do
         {
@@ -404,8 +404,8 @@ void __cdecl SND_RvFrame(
                 ++outLSa;
             }
             while ( !v22 );
-            *(float *)((char *)v13 + (unsigned int)outRFa) = (float)(state->dampLpfState[1] + state->dampLpfState[0]) * 0.70710677;
-            *(float *)((char *)v13 + (unsigned int)inRSa) = (float)(state->dampLpfState[0] - state->dampLpfState[1]) * 0.70710677;
+            *(float *)((char *)v13 + outLFOffset) = (float)(state->dampLpfState[1] + state->dampLpfState[0]) * 0.70710677;
+            *(float *)((char *)v13 + outRSOffset) = (float)(state->dampLpfState[0] - state->dampLpfState[1]) * 0.70710677;
             *(float *)((char *)v13 + v40) = (float)(state->dampLpfState[3] - state->dampLpfState[2]) * 0.70710677;
             *v13 = (float)(state->dampLpfState[3] + state->dampLpfState[2]) * 0.70710677;
             v24 = (float)((float)(1.0 - state->params.inputLpf) * *(float *)((char *)v13 + v39))
@@ -433,25 +433,25 @@ void __cdecl SND_RvFrame(
             v30 = (float)((float)(1.0 - state->params.inputLpf) * *(float *)((char *)v13 + v37))
                     + (float)(state->params.inputLpf * state->inputLpfState[2]);
             state->inputLpfState[2] = v30;
-            state->delayLine[state->delayIndex + 0x10000] = v30 + *(float *)((char *)v13 + (unsigned int)inRSa);
+            state->delayLine[state->delayIndex + 0x10000] = v30 + *(float *)((char *)v13 + outRSOffset);
             v31 = state->earlyLpfState[2];
-            v32 = (float)((float)(1.0 - state->params.lateLpf) * *(float *)((char *)v13 + (unsigned int)inRSa))
+            v32 = (float)((float)(1.0 - state->params.lateLpf) * *(float *)((char *)v13 + outRSOffset))
                     + (float)(state->params.lateLpf * state->lateLpfState[2]);
             v33 = state->inputLpfState[2];
             state->lateLpfState[2] = v32;
-            *(float *)((char *)v13 + (unsigned int)inRSa) = (float)((float)((float)(v33 * state->params.dryGain)
+            *(float *)((char *)v13 + outRSOffset) = (float)((float)((float)(v33 * state->params.dryGain)
                                                                                                                             + (float)(v31 * state->params.earlyGain))
                                                                                                             + (float)(v32 * state->params.lateGainProx[2]))
                                                                                             * state->params.returnGain;
-            v34 = (float)((float)(1.0 - state->params.inputLpf) * *(float *)((char *)v13 + (unsigned int)outRSa))
+            v34 = (float)((float)(1.0 - state->params.inputLpf) * *(float *)((char *)v13 + inLFOffset))
                     + (float)(state->params.inputLpf * state->inputLpfState[3]);
             state->inputLpfState[3] = v34;
-            state->delayLine[state->delayIndex + 98304] = v34 + *(float *)((char *)v13 + (unsigned int)outRFa);
-            v35 = (float)((float)(1.0 - state->params.lateLpf) * *(float *)((char *)v13 + (unsigned int)outRFa))
+            state->delayLine[state->delayIndex + 98304] = v34 + *(float *)((char *)v13 + outLFOffset);
+            v35 = (float)((float)(1.0 - state->params.lateLpf) * *(float *)((char *)v13 + outLFOffset))
                     + (float)(state->params.lateLpf * state->lateLpfState[3]);
             v36 = state->params.lateGainProx[3];
             state->lateLpfState[3] = v35;
-            *(float *)((char *)v13 + (unsigned int)outRFa) = (float)((float)((float)(v36 * v35)
+            *(float *)((char *)v13 + outLFOffset) = (float)((float)((float)(v36 * v35)
                                                                                                                              + (float)(state->params.earlyGain
                                                                                                                                              * state->earlyLpfState[3]))
                                                                                                              + (float)(state->inputLpfState[3] * state->params.dryGain))

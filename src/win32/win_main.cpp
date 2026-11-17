@@ -550,7 +550,7 @@ void __cdecl Sys_Init()
     Cmd_AddCommandInternal("movie_stop", Sys_MjpegClose, &Sys_MjpegClose_VAR);
     Cmd_AddCommandInternal("net_listen", Sys_Listen_f, &Sys_Listen_f_VAR);
     Cmd_AddCommandInternal("net_connect", Sys_Connect_f, &Sys_Connect_f_VAR);
-    osversion.dwOSVersionInfoSize = 148;
+    osversion.dwOSVersionInfoSize = sizeof(osversion);
 #pragma warning(push)
 #pragma warning(disable : 4996) // cannot call GetVersionExA nowadays without this warning suppression
     if ( !GetVersionExA(&osversion) )
@@ -696,7 +696,7 @@ int __cdecl Sys_IsGameProcess(unsigned int id)
     if ( snapshot == (void *)-1 )
         return 0;
     isGame = 0;
-    me.dwSize = 548;
+    me.dwSize = sizeof(me);
     if ( Module32First(snapshot, &me) )
     {
         GetModuleFileNameA(0, modulePath, 0x104u);
@@ -731,6 +731,69 @@ int __cdecl PrivateUnhandledExceptionFilter(_EXCEPTION_POINTERS *ExceptionInfo)
     // x86 CONTEXT register dump; never installed on Switch.
     (void)ExceptionInfo;
     return 1; // EXCEPTION_EXECUTE_HANDLER
+#elif defined(_WIN64)
+    // 64-bit Windows: the exception, the registers and the faulting thread's
+    // stack, walked through the unwind tables (no frame pointers needed).
+    const EXCEPTION_RECORD *record = ExceptionInfo->ExceptionRecord;
+    CONTEXT context = *ExceptionInfo->ContextRecord;
+    Com_Printf(16, "\nException: 0x%08lX at %p, module base %p\n",
+               record->ExceptionCode, record->ExceptionAddress, (void *)GetModuleHandleA(0));
+    if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters >= 2)
+        Com_Printf(16, "%s of address %p\n", record->ExceptionInformation[0] ? "Write" : "Read",
+                   (void *)record->ExceptionInformation[1]);
+#if defined(_M_ARM64)
+    Com_Printf(16, "PC: %016llx SP: %016llx FP: %016llx LR: %016llx\n",
+               context.Pc, context.Sp, context.Fp, context.Lr);
+    for (int r = 0; r < 29; r += 4)
+        Com_Printf(16, "X%-2d %016llx  X%-2d %016llx  X%-2d %016llx  X%-2d %016llx\n",
+                   r, context.X[r], r + 1, context.X[r + 1], r + 2, context.X[r + 2],
+                   r + 3, r + 3 < 29 ? context.X[r + 3] : 0ull);
+#else
+    Com_Printf(16, "RIP: %016llx RSP: %016llx RBP: %016llx\n", context.Rip, context.Rsp, context.Rbp);
+    Com_Printf(16, "RAX: %016llx RBX: %016llx RCX: %016llx RDX: %016llx\n",
+               context.Rax, context.Rbx, context.Rcx, context.Rdx);
+    Com_Printf(16, "RSI: %016llx RDI: %016llx R8:  %016llx R9:  %016llx\n",
+               context.Rsi, context.Rdi, context.R8, context.R9);
+#endif
+    Com_Printf(16, "BACKTRACEBEGIN (faulting instruction first, then return addresses)\n");
+    for (int depth = 0; depth < 32; ++depth)
+    {
+#if defined(_M_ARM64)
+        DWORD64 &pc = context.Pc, &sp = context.Sp;
+#else
+        DWORD64 &pc = context.Rip, &sp = context.Rsp;
+#endif
+        if (!pc)
+            break;
+        Com_Printf(16, "  frame %2d: %016llx\n", depth, pc);
+        const DWORD64 previousSp = sp;
+        DWORD64 imageBase = 0;
+        PRUNTIME_FUNCTION function = RtlLookupFunctionEntry(pc, &imageBase, nullptr);
+        if (function)
+        {
+            void *handlerData = nullptr;
+            DWORD64 establisherFrame = 0;
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, pc, function, &context,
+                             &handlerData, &establisherFrame, nullptr);
+        }
+        else
+        {
+            // Leaf function without unwind data: the return address is in LR / at [RSP].
+#if defined(_M_ARM64)
+            pc = context.Lr;
+#else
+            if (IsBadReadPtr((const void *)sp, sizeof(DWORD64)))
+                break;
+            pc = *(const DWORD64 *)sp;
+            sp += sizeof(DWORD64);
+#endif
+        }
+        if (sp < previousSp || (sp == previousSp && !function))
+            break;
+    }
+    Com_Printf(16, "BACKTRACEEND\n");
+    Com_Error(ERR_FATAL, Win_LocalizeRef("WIN_ERROR"));
+    return 1;
 #else
     char *v2; // eax
     unsigned int ExceptionCode; // [esp+148h] [ebp-10h]
@@ -925,7 +988,7 @@ int __cdecl PrivateUnhandledExceptionFilter(_EXCEPTION_POINTERS *ExceptionInfo)
     v2 = Win_LocalizeRef("WIN_ERROR");
     Com_Error(ERR_FATAL, v2);
     return 1;
-#endif // !KISAK_NX
+#endif
 }
 
 #ifndef KISAK_NX
@@ -991,6 +1054,7 @@ int __stdcall WinMain(HINSTANCE__ *hInstance, HINSTANCE__ *hPrevInstance, char *
     PMem_Init();
     track_init();
     Win_InitLocalization();
+    Win_PickInstalledLanguage();
     if ( !I_strnicmp(lpCmdLine, "allowdupe", 9) && lpCmdLine[9] <= 32
         || (v5 = strstr(lpCmdLine, "g_connectpaths 3"), v5)
         || (Sys_GetSemaphoreFileName(), Sys_CheckCrashOrRerun()) )
@@ -1155,8 +1219,8 @@ void Win_RegisterClass()
     tagWNDCLASSEXA wce; // [esp+0h] [ebp-30h] BYREF
 
     memset(&wce, 0, sizeof(wce));
-    wce.cbSize = 48;
-    wce.lpfnWndProc = (WNDPROC)MainWndProc;
+    wce.cbSize = sizeof(wce);
+    wce.lpfnWndProc = MainWndProc;
     wce.hInstance = g_wv.hInstance;
     wce.hIcon = LoadIconA(g_wv.hInstance, (LPCSTR)1);
     wce.hCursor = LoadCursorA(0, (LPCSTR)0x7F00);

@@ -9,7 +9,7 @@ struct XDollBone // sizeof=0x10
     // padding byte
     // padding byte
     unsigned int name_hash;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t rigidBody;
 #else
     int rigidBody;

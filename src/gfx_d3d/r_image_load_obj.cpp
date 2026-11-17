@@ -836,7 +836,7 @@ char __cdecl _Image_LoadFromFileWithReader(
     }
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 namespace {
 struct NxImageReader {
     virtual int open(const char *path) = 0;
@@ -857,7 +857,7 @@ struct NxImageWorkerReader final : NxImageReader {
 };
 }
 
-void Image_NX_FreeFileData(NxImageFileData *file)
+void Image_Kbz_FreeFileData(KbzImageFileData *file)
 {
     if (file->buffer)
         Z_VirtualFreeInternal(file->buffer);
@@ -865,7 +865,7 @@ void Image_NX_FreeFileData(NxImageFileData *file)
     file->data = nullptr;
 }
 
-static bool Image_NX_ReadFileWith(GfxImage *image, NxImageFileData *out, NxImageReader &reader, bool quiet)
+static bool Image_Kbz_ReadFileWith(GfxImage *image, KbzImageFileData *out, NxImageReader &reader, bool quiet)
 {
     char filepath[64];
 
@@ -932,7 +932,7 @@ static bool Image_NX_ReadFileWith(GfxImage *image, NxImageFileData *out, NxImage
     {
         if ( imageBuffer && !quiet )
             Image_PrintTruncatedFileError(filepath);
-        Image_NX_FreeFileData(out);
+        Image_Kbz_FreeFileData(out);
         reader.close();
         return false;
     }
@@ -955,22 +955,22 @@ static bool Image_NX_ReadFileWith(GfxImage *image, NxImageFileData *out, NxImage
     return true;
 }
 
-bool Image_NX_ReadFile(GfxImage *image, NxImageFileData *out)
+bool Image_Kbz_ReadFile(GfxImage *image, KbzImageFileData *out)
 {
     NxImageHandleReader reader;
-    return Image_NX_ReadFileWith(image, out, reader, false);
+    return Image_Kbz_ReadFileWith(image, out, reader, false);
 }
 
-bool Image_NX_ReadFileAnyThread(GfxImage *image, NxImageFileData *out)
+bool Image_Kbz_ReadFileAnyThread(GfxImage *image, KbzImageFileData *out)
 {
     NxImageWorkerReader reader;
-    return Image_NX_ReadFileWith(image, out, reader, true);
+    return Image_Kbz_ReadFileWith(image, out, reader, true);
 }
 
 static thread_local bool s_nxImageLoadHeld = false;
 static thread_local unsigned int s_nxImageLoadBase = 0;
 
-void Image_NX_LockImageLoad(bool lock)
+void Image_Kbz_LockImageLoad(bool lock)
 {
     if (lock) {
         iassert(!s_nxImageLoadHeld);
@@ -984,7 +984,7 @@ void Image_NX_LockImageLoad(bool lock)
     }
 }
 
-void Image_NX_AbortImageLoad()
+void Image_Kbz_AbortImageLoad()
 {
     if (!s_nxImageLoadHeld)
         return;
@@ -993,10 +993,10 @@ void Image_NX_AbortImageLoad()
     Sys_UnlockWrite(&s_imageLoadLock);
 }
 
-void Image_NX_CreateFromFileData(NxImageFileData *file)
+void Image_Kbz_CreateFromFileData(KbzImageFileData *file)
 {
     Image_LoadFromData(file->image, &file->header, file->data);
-    Image_NX_FreeFileData(file);
+    Image_Kbz_FreeFileData(file);
 }
 #endif
 
@@ -1004,14 +1004,14 @@ bool __cdecl Image_LoadFromFile(GfxImage *image, bool loadHighmip)
 {
     bool ret; // [esp+3h] [ebp-1h]
 
-#ifdef KISAK_NX
-    Image_NX_LockImageLoad(true);
+#ifdef KISAK_64BIT
+    Image_Kbz_LockImageLoad(true);
 #else
     Sys_LockWrite(&s_imageLoadLock);
 #endif
     ret = Image_LoadFromFileWithReader(image, loadHighmip, FS_FOpenFileRead);
-#ifdef KISAK_NX
-    Image_NX_LockImageLoad(false);
+#ifdef KISAK_64BIT
+    Image_Kbz_LockImageLoad(false);
 #else
     Sys_UnlockWrite(&s_imageLoadLock);
 #endif

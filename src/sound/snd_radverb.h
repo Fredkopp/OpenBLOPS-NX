@@ -20,7 +20,7 @@ struct snd_radverb // sizeof=0x60
     float lateSize;
     float diffusion;
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(snd_radverb) == 96);
 #endif
 

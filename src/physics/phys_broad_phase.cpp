@@ -6,6 +6,7 @@
 #include "phys_task_manager.h"
 
 #include <algorithm>
+#include <atomic>
 #include <tl/tl_system.h>
 #include "phys_collision_multithreaded.h"
 
@@ -19,7 +20,7 @@ phys_assert_info pai_create_sap_active_pair = { 0, 1, true };
 
 
 broad_phase_base **g_bpb_ptr_list;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 #define PHYS_POOL_ALIGN(T, x86_align) (alignof(T) > (x86_align) ? (unsigned int)alignof(T) : (unsigned int)(x86_align))
 #endif
 broad_phase_base *g_bpb_list_cur;
@@ -57,7 +58,7 @@ void __thiscall broad_phase_base_list::add(broad_phase_base *bpb)
     {
         //cur = (broad_phase_base_list::node *)phys_transient_allocator::mt_allocate(
         cur = (broad_phase_base_list::node *)G_BPM->g_collision_memory_buffer.mt_allocate(
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             sizeof(broad_phase_base_list::node),
             alignof(broad_phase_base_list::node),
 #else
@@ -424,7 +425,7 @@ void __thiscall axis_aligned_sweep_and_prune::sap_node::init(
 {
     this->m_bpb = bpb;
     this->m_updated = 0;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     this->m_ae1[0][0].m_node = this;
     this->m_ae1[0][0].m_min_max = 0;
     this->m_ae1[0][1].m_node = this;
@@ -1889,11 +1890,11 @@ void __cdecl destroy_broad_phase_info(broad_phase_info *bpi)
     if (bpi)
     {
         using TI = phys_free_list<broad_phase_info>::T_internal;
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
         static_assert(sizeof(TI) == 0x90, "size mismatch");
 #endif
         TI *ti = (TI *)((char *)bpi - offsetof(TI, m_data));
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         PMM_VALIDATE((char *)ti, sizeof(TI), PHYS_NODE_ALIGNMENT(TI));
         G_BPM->g_list_broad_phase_info.remove(ti);
     }
@@ -1938,7 +1939,7 @@ void __cdecl destroy_broad_phase_info_list(broad_phase_info *list_bpi)
             if ( v1->m_sap_node && _tlAssert("source/phys_broad_phase.cpp", 131, "bpi->m_sap_node == NULL", "") )
                 __debugbreak();
             m_list_bpb_next = (broad_phase_info *)v1->m_list_bpb_next;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             G_BPM->g_list_broad_phase_info.remove(v1);
             v1 = m_list_bpb_next;
             continue;
@@ -1962,7 +1963,7 @@ void __cdecl destroy_broad_phase_info_list(broad_phase_info *list_bpi)
             v6 = *(unsigned int *)p_m_gjk_geom;
             *(unsigned int *)(v6 + 4) = (unsigned int)v5;
             *v5 = v6;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             PMM_FREE((unsigned __int8 *)p_m_gjk_geom, sizeof(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal), PHYS_POOL_ALIGN(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal, 16));
 #else
             PMM_FREE((unsigned __int8 *)p_m_gjk_geom, 0x90u, 0x10u);
@@ -1980,8 +1981,8 @@ broad_phase_collision_pair *__cdecl create_broad_phase_collision_pair()
     phys_free_list<broad_phase_collision_pair>::T_internal *v2; // esi
 
     p_g_list_broad_phase_collision_pair = &G_BPM->g_list_broad_phase_collision_pair;
-#ifdef KISAK_NX
-    v1 = (phys_free_list<broad_phase_collision_pair>::T_internal *)PMM_ALLOC(sizeof(phys_free_list<broad_phase_collision_pair>::T_internal), phys_free_list<broad_phase_collision_pair>::kNodeAlignment);
+#ifdef KISAK_64BIT
+    v1 = (phys_free_list<broad_phase_collision_pair>::T_internal *)PMM_ALLOC(sizeof(phys_free_list<broad_phase_collision_pair>::T_internal), phys_free_list<broad_phase_collision_pair>::nodeAlignment());
 #else
     v1 = (phys_free_list<broad_phase_collision_pair>::T_internal *)PMM_ALLOC(0x18u, 4u);
 #endif
@@ -2018,7 +2019,7 @@ void __cdecl destroy_broad_phase_collision_pair(broad_phase_collision_pair *bpcp
     p_g_list_broad_phase_collision_pair = &G_BPM->g_list_broad_phase_collision_pair;
     if ( bpcp )
     {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         p_g_list_broad_phase_collision_pair->remove(bpcp);
 #else
         PMM_VALIDATE((char *)&bpcp[-1].m_bpi2, 0x18u, 4u);
@@ -2043,10 +2044,10 @@ void __cdecl destroy_broad_phase_collision_pair_list(broad_phase_collision_pair 
         do
         {
             m_next_bpcp = v1->m_next_bpcp;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             p_m_bpi2 = phys_free_list<broad_phase_collision_pair>::node_of(v1);
             p_g_list_broad_phase_collision_pair = &G_BPM->g_list_broad_phase_collision_pair;
-            PMM_VALIDATE((char *)p_m_bpi2, sizeof(phys_free_list<broad_phase_collision_pair>::T_internal), phys_free_list<broad_phase_collision_pair>::kNodeAlignment);
+            PMM_VALIDATE((char *)p_m_bpi2, sizeof(phys_free_list<broad_phase_collision_pair>::T_internal), phys_free_list<broad_phase_collision_pair>::nodeAlignment());
 #else
             p_m_bpi2 = (phys_free_list<broad_phase_collision_pair>::T_internal *)&v1[-1].m_bpi2;
             p_g_list_broad_phase_collision_pair = &G_BPM->g_list_broad_phase_collision_pair;
@@ -2064,8 +2065,8 @@ void __cdecl destroy_broad_phase_collision_pair_list(broad_phase_collision_pair 
             m_prev_T_internal = p_m_bpi2->m_prev_T_internal;
             m_prev_T_internal->m_next_T_internal = m_next_T_internal;
             m_next_T_internal->m_prev_T_internal = m_prev_T_internal;
-#ifdef KISAK_NX
-            PMM_FREE((unsigned __int8 *)p_m_bpi2, sizeof(phys_free_list<broad_phase_collision_pair>::T_internal), phys_free_list<broad_phase_collision_pair>::kNodeAlignment);
+#ifdef KISAK_64BIT
+            PMM_FREE((unsigned __int8 *)p_m_bpi2, sizeof(phys_free_list<broad_phase_collision_pair>::T_internal), phys_free_list<broad_phase_collision_pair>::nodeAlignment());
 #else
             PMM_FREE((unsigned __int8 *)p_m_bpi2, 0x18u, 4u);
 #endif
@@ -2082,8 +2083,8 @@ broad_phase_group *__cdecl create_broad_phase_group()
     phys_free_list<broad_phase_group>::T_internal *v2; // esi
 
     p_g_list_broad_phase_group = &G_BPM->g_list_broad_phase_group;
-#ifdef KISAK_NX
-    v1 = (phys_free_list<broad_phase_group>::T_internal *)PMM_ALLOC(sizeof(phys_free_list<broad_phase_group>::T_internal), phys_free_list<broad_phase_group>::kNodeAlignment);
+#ifdef KISAK_64BIT
+    v1 = (phys_free_list<broad_phase_group>::T_internal *)PMM_ALLOC(sizeof(phys_free_list<broad_phase_group>::T_internal), phys_free_list<broad_phase_group>::nodeAlignment());
 #else
     v1 = (phys_free_list<broad_phase_group>::T_internal *)PMM_ALLOC(0x80u, 0x10u);
 #endif
@@ -2123,7 +2124,7 @@ void __cdecl destroy_broad_phase_group(broad_phase_group *bpg)
     p_g_list_broad_phase_group = &G_BPM->g_list_broad_phase_group;
     if ( bpg )
     {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         p_g_list_broad_phase_group->remove(bpg);
 #else
         PMM_VALIDATE((char *)&bpg[-1].m_list_bpi_head, 0x80u, 0x10u);
@@ -2521,8 +2522,9 @@ int    bp_env_jq_batch_function2(jqBatch *pBatch)
     bpeqr.m_list_bpi_env.m_list_cur = (broad_phase_base_list::node **)&bpeqr;
     for (bpeqr.m_thread_id = v1; g_bpb_list_cur; bpb = g_bpb_list_cur)
     {
-#ifdef KISAK_NX
-        if (__sync_val_compare_and_swap(&g_bpb_list_cur, bpb, bpb->m_list_bpb_next) == bpb)
+#ifdef KISAK_64BIT
+        broad_phase_base *expected = bpb;
+        if (std::atomic_ref<broad_phase_base *>(g_bpb_list_cur).compare_exchange_strong(expected, bpb->m_list_bpb_next))
 #else
         if ((broad_phase_base *)_InterlockedCompareExchange(
             (volatile unsigned __int32 *)&g_bpb_list_cur,
@@ -3214,7 +3216,7 @@ void __thiscall axis_aligned_sweep_and_prune::add_active_pair(
     }
     if ( this->m_active_pair_allocator.m_count < this->m_max_num_active_pairs )
     {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         v4 = (axis_aligned_sweep_and_prune::active_pair *)PMM_ALLOC(sizeof(axis_aligned_sweep_and_prune::active_pair), PHYS_POOL_ALIGN(axis_aligned_sweep_and_prune::active_pair, 4));
 #else
         v4 = (axis_aligned_sweep_and_prune::active_pair *)PMM_ALLOC(0x10u, 4u);
@@ -3281,7 +3283,7 @@ void __thiscall axis_aligned_sweep_and_prune::create_sap_node(
 
     if ( bpb->m_sap_node && _tlAssert("source/phys_broad_phase.cpp", 496, "bpb->m_sap_node == NULL", "") )
         __debugbreak();
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     v3 = PMM_ALLOC(sizeof(axis_aligned_sweep_and_prune::sap_node), PHYS_POOL_ALIGN(axis_aligned_sweep_and_prune::sap_node, 4));
 #else
     v3 = PMM_ALLOC(0x80u, 4u);
@@ -3300,7 +3302,7 @@ void __thiscall axis_aligned_sweep_and_prune::create_sap_node(
     bpb->m_sap_node = v4;
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 void __thiscall axis_aligned_sweep_and_prune::remove(
                 axis_aligned_sweep_and_prune::active_pair **list_ap,
                 axis_aligned_sweep_and_prune::sap_node *node)
@@ -3376,7 +3378,7 @@ void __thiscall axis_aligned_sweep_and_prune::destroy_sap_node(broad_phase_base 
         axis_aligned_sweep_and_prune::remove(&this->m_x_list, m_sap_node);
         axis_aligned_sweep_and_prune::remove(&this->m_y_list, m_sap_node);
         axis_aligned_sweep_and_prune::remove(&this->m_z_list, m_sap_node);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         PMM_VALIDATE((char *)m_sap_node, sizeof(axis_aligned_sweep_and_prune::sap_node), PHYS_POOL_ALIGN(axis_aligned_sweep_and_prune::sap_node, 4));
         --this->m_sap_node_allocator.m_count;
         PMM_FREE((unsigned __int8 *)m_sap_node, sizeof(axis_aligned_sweep_and_prune::sap_node), PHYS_POOL_ALIGN(axis_aligned_sweep_and_prune::sap_node, 4));
@@ -3532,7 +3534,7 @@ phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal *__thiscall ph
     //    __debugbreak();
     //}
     iassert(m_search_tree.find(key) == NULL);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     v13 = (phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal *)PMM_ALLOC(sizeof(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal), PHYS_POOL_ALIGN(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal, 16));
 #else
     v13 = (phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal *)PMM_ALLOC(0x90u, 0x10u);
@@ -3655,7 +3657,7 @@ void    axis_aligned_sweep_and_prune::process_active_pair_list()
                 p_g_phys_gjk_cache_system = &G_BPM->g_phys_gjk_cache_system;
                 if (m_gjk_ci)
                 {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                     PMM_VALIDATE(m_gjk_ci, sizeof(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal), PHYS_POOL_ALIGN(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal, 16));
                     --p_g_phys_gjk_cache_system->m_list_phys_gjk_cache_info_internal.m_count;
                     PMM_FREE((unsigned __int8 *)m_gjk_ci, sizeof(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal), PHYS_POOL_ALIGN(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal, 16));
@@ -3761,7 +3763,7 @@ void    axis_aligned_sweep_and_prune::process_active_pair_list()
                 p_g_phys_gjk_cache_system = &G_BPM->g_phys_gjk_cache_system;
                 if (v21)
                 {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                     PMM_VALIDATE(v21, sizeof(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal), PHYS_POOL_ALIGN(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal, 16));
                     --p_g_phys_gjk_cache_system->m_list_phys_gjk_cache_info_internal.m_count;
                     PMM_FREE((unsigned __int8 *)v21, sizeof(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal), PHYS_POOL_ALIGN(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal, 16));
@@ -3815,7 +3817,7 @@ void    axis_aligned_sweep_and_prune::process_active_pair_list()
                     &v19->m_trace_aabb_max_whace,
                     &hit_time))
                 {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                     for (i = (broad_phase_info *)((broad_phase_group *)v19)->m_list_bpi_head;
 #else
                     for (i = (broad_phase_info *)LODWORD(v19[1].m_trace_aabb_min_whace.x);
@@ -3867,7 +3869,7 @@ void    axis_aligned_sweep_and_prune::process_active_pair_list()
                 p_g_phys_gjk_cache_system = &G_BPM->g_phys_gjk_cache_system;
                 if (v31)
                 {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                     PMM_VALIDATE(v31, sizeof(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal), PHYS_POOL_ALIGN(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal, 16));
                     --p_g_phys_gjk_cache_system->m_list_phys_gjk_cache_info_internal.m_count;
                     PMM_FREE((unsigned __int8 *)v31, sizeof(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal), PHYS_POOL_ALIGN(phys_heap_gjk_cache_system_avl_tree::phys_gjk_cache_info_internal, 16));
@@ -3912,7 +3914,7 @@ void    axis_aligned_sweep_and_prune::process_active_pair_list()
                 {
                     __debugbreak();
                 }
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 for (j = (broad_phase_info *)((broad_phase_group *)v26)->m_list_bpi_head;
 #else
                 for (j = (broad_phase_info *)LODWORD(v26[1].m_trace_aabb_min_whace.x);
@@ -4007,7 +4009,7 @@ void __thiscall axis_aligned_sweep_and_prune::process()
     {
         phys_transient_allocator transient_buffer;
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         v2 = sizeof(axis_aligned_sweep_and_prune::axis_element *) * axis_element_count;
         v37 = 0;
         v3 = (axis_aligned_sweep_and_prune::axis_element **)   transient_buffer.allocate(v2, sizeof(void *), 0, "phys_transient_allocator out of memory.");

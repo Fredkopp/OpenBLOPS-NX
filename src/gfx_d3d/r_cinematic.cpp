@@ -1,6 +1,6 @@
 #include "r_cinematic.h"
-#ifdef KISAK_NX
-#include <nx/nx_bink.h>
+#ifdef KISAK_BINK_FFMPEG
+#include <binklib/bink_ffmpeg.h>
 #include <sound/snd_dvar.h>
 #endif
 #if defined(KISAK_NX) || defined(KISAK_SP)
@@ -122,7 +122,7 @@ jqWorkerCmd _UpdateFrameWorkerCmd = { &_UpdateFrameModule, sizeof(CINE_JQ_CMD), 
 
 void __cdecl R_CinematicInitSound(const _GUID *guid)
 {
-#ifndef KISAK_NX
+#ifndef KISAK_BINK_FFMPEG
     if ( g_cinematicDS )
         g_cinematicDS->Release();
     if ( DirectSoundCreate8(guid, &g_cinematicDS, 0) )
@@ -210,7 +210,7 @@ void R_Cinematic_RelinquishIO()
     iassert(cinematicGlob.fileIoState != CIN_IOSTATE_RELINQUISHED);
     iassert(cinematicGlob.bink);
 
-#ifndef KISAK_NX
+#ifndef KISAK_BINK_FFMPEG
     BinkControlBackgroundIO(cinematicGlob.bink, 1);
     R_Cinematic_CheckBinkError();
     Sys_ResumeDiscReads(THREAD_OWNER_CINEMATICS);
@@ -220,7 +220,7 @@ void R_Cinematic_RelinquishIO()
 
 const char *R_Cinematic_CheckBinkError()
 {
-#ifdef KISAK_NX
+#ifdef KISAK_BINK_FFMPEG
     return BinkGetError();
 #else
     const char *result; // eax
@@ -401,7 +401,7 @@ void __cdecl R_Cinematic_Init()
 
     memset(&cinematicGlob, 0, sizeof(cinematicGlob));
     cinematicGlob.activeImageFrame = -1;
-#ifndef KISAK_NX
+#ifndef KISAK_BINK_FFMPEG
     R_Cinematic_ReserveMemory();
 #endif
 
@@ -522,7 +522,7 @@ void __cdecl R_Cinematic_StartNextPlayback()
             cinematicGlob.nextCinematicPlaybackFlags);
 #endif
         float volume = cinematicGlob.playbackVolume;
-#ifdef KISAK_NX
+#ifdef KISAK_BINK_FFMPEG
         const float master = snd_menu_master->current.value;
         const float cinematic = snd_menu_cinematic->current.value;
         volume = master * master * cinematic * cinematic;
@@ -914,7 +914,7 @@ char __cdecl R_Cinematic_Advance(bool force_wait)
             }
             {
                 PROF_SCOPED("R_Cinematic_Thread2");
-#ifdef KISAK_NX
+#ifdef KISAK_BINK_FFMPEG
                 if (BinkDoFrame(cinematicGlob.bink) < 0)
                     return R_Cinematic_FailPlayback();
                 unsigned skipped = 0;
@@ -930,7 +930,7 @@ char __cdecl R_Cinematic_Advance(bool force_wait)
                         cinematicGlob.frameNum = cinematicGlob.bink->FrameNum;
                     }
                     BinkNextFrame(cinematicGlob.bink);
-#ifdef KISAK_NX
+#ifdef KISAK_BINK_FFMPEG
                     if (BinkDoFrame(cinematicGlob.bink) < 0)
                         return R_Cinematic_FailPlayback();
                     if (++skipped == 3)
@@ -972,8 +972,8 @@ char __cdecl R_Cinematic_Advance(bool force_wait)
         }
     }
     R_Cinematic_CheckBinkError();
-#ifdef KISAK_NX
-    if ((cinematicGlob.playbackFlags & 2) != 0 || !NX_BinkFinished(cinematicGlob.bink))
+#ifdef KISAK_BINK_FFMPEG
+    if ((cinematicGlob.playbackFlags & 2) != 0 || !Bink_Finished(cinematicGlob.bink))
 #else
     if ((cinematicGlob.playbackFlags & 2) != 0 || cinematicGlob.bink->FrameNum != cinematicGlob.bink->Frames)
 #endif
@@ -1031,7 +1031,7 @@ char __cdecl R_Cinematic_Advance(bool force_wait)
 
 unsigned int __cdecl R_Cinematic_GetPercentageFull()
 {
-#ifdef KISAK_NX
+#ifdef KISAK_BINK_FFMPEG
     return 100;
 #else
     BINKREALTIME binkRealtime; // [esp+24h] [ebp-38h] BYREF
@@ -1062,7 +1062,7 @@ const char *R_Cinematic_SeizeIO()
     iassert(cinematicGlob.fileIoState != CIN_IOSTATE_SEIZED);
     iassert(cinematicGlob.bink);
 
-#ifndef KISAK_NX
+#ifndef KISAK_BINK_FFMPEG
     if ( !cinematicGlob.fileIoState )
         Sys_SuspendDiscReads(THREAD_OWNER_CINEMATICS);
 
@@ -1137,7 +1137,7 @@ void __cdecl R_Cinematic_UpdateTimeInMsec(const BINKREALTIME *binkRealtime)
 // _UpdateFrame job.
 int __cdecl R_Cinematic_BinkShouldSkip(bool useCustomLogic)
 {
-#ifdef KISAK_NX
+#ifdef KISAK_BINK_FFMPEG
     return BinkShouldSkip(cinematicGlob.bink);
 #else
     float startFrameNum; // holds cinematicGlob.frameNum (the BinkFrameNum captured at the last
@@ -1153,7 +1153,7 @@ int __cdecl R_Cinematic_BinkShouldSkip(bool useCustomLogic)
 
 int __cdecl R_Cinematic_BinkShouldWait(bool useCustomLogic)
 {
-#ifdef KISAK_NX
+#ifdef KISAK_BINK_FFMPEG
     return BinkWait(cinematicGlob.bink);
 #else
     float startFrameNum; // see R_Cinematic_BinkShouldSkip's comment on this local's real meaning.
@@ -1222,7 +1222,7 @@ char __cdecl R_Cinematic_StartPlayback_Now(const char *filename, unsigned int pl
     cinematicGlob.activeTextureSet ^= 1u;
     cinematicGlob.firstFrameNotify = 0;
     cinematicGlob.lastFrameNotify = 0;
-#ifndef KISAK_NX
+#ifndef KISAK_BINK_FFMPEG
     if (R_Cinematic_AreHunksOpen())
     {
         R_Cinematic_HunksReset(cinematicGlob.activeTextureSet, playbackFlags);
@@ -1235,7 +1235,7 @@ char __cdecl R_Cinematic_StartPlayback_Now(const char *filename, unsigned int pl
     }
 #endif
     SND_NotifyCinematicStart(cinematicGlob.playbackVolume);
-#ifndef KISAK_NX
+#ifndef KISAK_BINK_FFMPEG
     if (!CinematicHunk_IsEmpty(&cinematicGlob.binkHunk)
         && !Assert_MyHandler(
             "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\r_cinematic.cpp",
@@ -1259,7 +1259,7 @@ char __cdecl R_Cinematic_StartPlayback_Now(const char *filename, unsigned int pl
     cinematicGlob.timeInMsec = 0;
     errText[0] = 0;
     if (R_Cinematic_BinkOpen(filename, playbackFlags, errText, 128)
-#ifndef KISAK_NX
+#ifndef KISAK_BINK_FFMPEG
         || (Com_PrintWarning(8, "R_Cinematic_BinkOpen '%s' failed: %s; trying default.\n", filename, errText),
             (cinematicGlob.binkHunk.base ? CinematicHunk_Reset(&cinematicGlob.binkHunk) : void()),
             errText[0] = 0,
@@ -1477,7 +1477,7 @@ void R_Cinematic_InitBinkTextures()
     }
     for (frameIter = 0; frameIter != 2; ++frameIter)
     {
-#ifndef KISAK_NX
+#ifndef KISAK_BINK_FFMPEG
         textures = &cinematicGlob.binkTextureSet.textures[frameIter];
         textures->Ytexture = R_Cinematic_MakeBinkTexture_PC(
             &textureSet->imageY[frameIter],
@@ -1542,7 +1542,7 @@ void R_Cinematic_InitBinkTextures()
             cinematicGlob.aTextures[frameIter] = 0;
         }
     }
-#ifndef KISAK_NX
+#ifndef KISAK_BINK_FFMPEG
     if (!Sys_IsRenderThread())
     {
         RB_Resource_Flush();
@@ -1670,8 +1670,8 @@ char __cdecl R_Cinematic_BinkOpenPath(
                 _snprintf(errText, errTextSize, "Couldn't find rawfile '%s' in db", filepath);
             return 0;
         }
-#ifdef KISAK_NX
-        cinematicGlob.bink = rawfile->len > 0 ? NX_BinkOpenMemory(rawfile->buffer, rawfile->len, 68174848) : nullptr;
+#ifdef KISAK_BINK_FFMPEG
+        cinematicGlob.bink = rawfile->len > 0 ? Bink_OpenMemory(rawfile->buffer, rawfile->len, 68174848) : nullptr;
 #else
         cinematicGlob.bink = (BINK *)BinkOpen(rawfile->buffer, 68174848);
         if (!cinematicGlob.bink)
@@ -1680,7 +1680,7 @@ char __cdecl R_Cinematic_BinkOpenPath(
     }
     else
     {
-#ifdef KISAK_NX
+#ifdef KISAK_BINK_FFMPEG
         cinematicGlob.bink = BinkOpen(filepath, 0x1104400);
 #else
         if (CinematicHunk_GetFreeSpace(&cinematicGlob.binkHunk) <= 1572864

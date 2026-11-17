@@ -32,6 +32,7 @@
 #include <EffectsCore/fx_unique_handle.h>
 #include <EffectsCore/fx_system.h>
 #include "cg_players_mp.h"
+#include <cgame/cg_main.h>
 #include "cg_scr_main_mp.h"
 #include "cg_predict_mp.h"
 #include "cg_scoreboard_mp.h"
@@ -489,6 +490,26 @@ static void CG_TransitionActorCache_SP(int localClientNum, cg_s *cgameGlob, cons
     }
 }
 #endif
+#ifdef KISAK_SP
+// A respawn puts cg_fov back to the player's default (CG_Respawn ->
+// CG_SetThirdPerson). CG_SetNextSnap runs the server commands that come with a
+// snapshot and then, on a restart or respawn, respawns the player, so a FOV a
+// level script set in those commands was undone in the same frame. After a
+// checkpoint restore that is the norm: the first snapshot carries both the
+// restart and the level's restore callback, e.g. WMD's cockpit camera view
+// (wmd_rts.gsc rts_on_save_restored -> cg_fov 45) came back at the default.
+// A FOV set by this snapshot's commands is put back after its respawn; any
+// other respawn still resets to the player's own FOV.
+static bool s_snapCommandFovSet_SP;
+static float s_snapCommandFov_SP;
+
+static void CG_KeepSnapshotCommandFov_SP()
+{
+    if (s_snapCommandFovSet_SP)
+        CG_UpdateFov(s_snapCommandFov_SP);
+}
+#endif
+
 void __cdecl CG_TransitionSnapshot(int localClientNum)
 {
     fake_centity_s *fcent; // [esp+1Ch] [ebp-20h]
@@ -705,7 +726,15 @@ void __cdecl CG_SetNextSnap(int localClientNum, snapshot_s *snap)
         CG_UpdateViewOffset(localClientNum);
         CG_SetFrameInterpolation(localClientNum);
         CG_UnpackMatchState(localClientNum, &snap->matchState);
+#ifdef KISAK_SP
+        const float fovBeforeCommands = cg_fov->current.value;
+        Dvar_ClearModified((dvar_s *)cg_fov);
+#endif
         CG_ExecuteNewServerCommands(localClientNum, snap->serverCommandSequence);
+#ifdef KISAK_SP
+        s_snapCommandFovSet_SP = cg_fov->modified || cg_fov->current.value != fovBeforeCommands;
+        s_snapCommandFov_SP = cg_fov->current.value;
+#endif
         CG_CheckOpenWaitingScriptMenu(localClientNum);
         memset(clientIndex, 0, sizeof(clientIndex));
         for ( num = 0; num < 32; ++num )
@@ -885,6 +914,9 @@ void __cdecl CG_SetNextSnap(int localClientNum, snapshot_s *snap)
                     CG_Respawn(localClientNum, 1);
                 else
                     CG_Respawn(localClientNum, 0);
+#ifdef KISAK_SP
+                CG_KeepSnapshotCommandFov_SP();
+#endif
                 if ( entnum != oldEntNum )
                     CG_ExtractTransPlayerState(&snap->ps, &cgameGlob->oldTransPlayerState);
             }
@@ -925,6 +957,9 @@ void __cdecl CG_SetNextSnap(int localClientNum, snapshot_s *snap)
         {
             memcpy((unsigned __int8 *)&cgameGlob->snap->ps, (unsigned __int8 *)&snap->ps, sizeof(cgameGlob->snap->ps));
             CG_Respawn(localClientNum, cgameGlob->mapRestart == 0);
+#ifdef KISAK_SP
+            CG_KeepSnapshotCommandFov_SP();
+#endif
         }
         for ( num = 0; num < snap->numEntities; ++num )
         {

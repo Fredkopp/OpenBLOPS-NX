@@ -468,7 +468,7 @@ void __cdecl Hunk_UserDefaultFree(HunkUser *user, void *ptr)
 void __cdecl Hunk_UserStartup()
 {
     iassert(!g_DebugHunkUser);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // 23 MB on x86. The script opcode and source tables hold pointers, so they
     // are a third larger on LP64, and SP keeps script developer mode on.
     g_DebugHunkUser = Hunk_UserCreate(0x2000000, HU_SCHEME_DEBUG, 0, 0, "Hunk_InitDebugMemory", 0);

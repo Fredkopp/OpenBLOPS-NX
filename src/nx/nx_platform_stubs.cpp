@@ -1,8 +1,8 @@
 // nx_platform_stubs.cpp -- Switch replacements for excluded Windows-only
 // modules: system console window (win_syscon.cpp), splash window
 // (win_splash.cpp), minidumper (win_mini_dumper.cpp), voice/mixer transport
-// (win_voice.cpp + groupvoice DSound backends), plus small library stubs
-// (dxerr, d3dx, ddraw, dsound, nvapi, vpx wrapper).
+// (win_voice.cpp + groupvoice DSound backends), plus the ddraw and dsound
+// interfaces those modules touch.
 #include <windows.h>
 
 #include <stdio.h>
@@ -113,21 +113,6 @@ int __cdecl mixerSetRecordSource(char *) { return 0; }
 int __cdecl mixerSetMicrophoneMute(unsigned char) { return 0; }
 
 // ===========================================================================
-// dxerr
-// ===========================================================================
-const char *DXGetErrorDescriptionA(HRESULT hr)
-{
-    static char buf[48];
-    snprintf(buf, sizeof(buf), "HRESULT 0x%08X", (unsigned)hr);
-    return buf;
-}
-
-const char *DXGetErrorStringA(HRESULT hr)
-{
-    return DXGetErrorDescriptionA(hr);
-}
-
-// ===========================================================================
 // ddraw (video-memory probe; only reachable through LoadLibrary, which fails)
 // ===========================================================================
 extern const GUID IID_IDirectDraw7; const GUID IID_IDirectDraw7 = { 0x15e65ec0, 0x3b9c, 0x11d2, { 0xb9, 0x2f, 0x00, 0x60, 0x97, 0x97, 0xea, 0x5b } };
@@ -230,54 +215,6 @@ HRESULT IDirectSoundCaptureBuffer::GetCurrentPosition(LPDWORD cap, LPDWORD rd)
 }
 ULONG IDirectSoundCaptureBuffer::AddRef() { return 1; }
 ULONG IDirectSoundCaptureBuffer::Release() { return 0; }
-
-// ===========================================================================
-// nvapi
-// ===========================================================================
-#include "compat/nvapi/nvapi.h"
-
-NvAPI_Status NvAPI_Initialize(void) { return NVAPI_ERROR; }
-NvAPI_Status NvAPI_Unload(void) { return NVAPI_OK; }
-NvAPI_Status NvAPI_GetDisplayDriverVersion(void *, NV_DISPLAY_DRIVER_VERSION *) { return NVAPI_ERROR; }
-NvAPI_Status NvAPI_Stereo_CreateHandleFromIUnknown(void *, StereoHandle *handle)
-{
-    if (handle) *handle = NULL;
-    return NVAPI_ERROR;
-}
-NvAPI_Status NvAPI_Stereo_DestroyHandle(StereoHandle) { return NVAPI_OK; }
-NvAPI_Status NvAPI_Stereo_IsActivated(StereoHandle, NvU8 *activated)
-{
-    if (activated) *activated = 0;
-    return NVAPI_ERROR;
-}
-NvAPI_Status NvAPI_Stereo_IsEnabled(NvU8 *enabled)
-{
-    if (enabled) *enabled = 0;
-    return NVAPI_ERROR;
-}
-NvAPI_Status NvAPI_Stereo_SetConvergence(StereoHandle, float) { return NVAPI_ERROR; }
-NvAPI_Status NvAPI_D3D9_GetTextureHandle(void *, NVDX_ObjectHandle *handle)
-{
-    if (handle) *handle = NVDX_OBJECT_NONE;
-    return NVAPI_ERROR;
-}
-NvAPI_Status NvAPI_D3D9_GetCurrentZBufferHandle(void *, NVDX_ObjectHandle *handle)
-{
-    if (handle) *handle = NVDX_OBJECT_NONE;
-    return NVAPI_ERROR;
-}
-NvAPI_Status NvAPI_D3D9_StretchRect(void *, NVDX_ObjectHandle, const RECT *, NVDX_ObjectHandle, const RECT *, int)
-{
-    return NVAPI_ERROR;
-}
-NvAPI_Status NvAPI_D3D_GetCurrentSLIState(void *, NV_GET_CURRENT_SLI_STATE *) { return NVAPI_ERROR; }
-
-// ===========================================================================
-// vpx wrapper (src/vpx/vpx.cpp excluded; VP8 clip recording disabled)
-// ===========================================================================
-void __cdecl vpx_init(const char *, int, int) {}
-void __cdecl vpx_encode_frame(unsigned char *, unsigned char *, unsigned char *, bool) {}
-void __cdecl vpx_shutdown() {}
 
 // win_voice.h declares this; the rest of win_voice.cpp is excluded
 struct SessionData_s;

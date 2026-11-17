@@ -512,3 +512,6 @@ OpenBLOPS-PC-NX-Handoff.txt
 /tools/nx/direct-connect/
 /tools/pc/*.cmd
 /tools/pc/capture-mp-crash.py
+
+# Private build settings (the directory server address)
+/openblops.local.cmake

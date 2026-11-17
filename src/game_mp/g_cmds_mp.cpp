@@ -22,6 +22,7 @@
 #include <game/actor_fields.h>
 #ifdef KISAK_SP
 #include "g_scr_main_mp.h"               // g_scr_data.menumessage, for Cmd_MenuLevelMessage_f
+#include <openblops_directory/directory_engine.h>
 #endif
 
 int __cdecl CheatsOk(gentity_s *ent)
@@ -1409,10 +1410,35 @@ void __cdecl Cmd_MenuLevelMessage_f()
     SV_Cmd_ArgvBuffer(1, szState, 1024);
     SV_Cmd_ArgvBuffer(2, szItem, 1024);
     Com_Printf(15, "SP menu level message: state '%s' item '%s'\n", szState, szItem);
+#if defined(KISAK_NX) && defined(OPENBLOPS_NO_STEAM_AUTH)
+    Directory_FrontendMenuMessage(szState, szItem);
+#endif
     Scr_AddString(szItem, SCRIPTINSTANCE_SERVER);
     Scr_AddString(szState, SCRIPTINSTANCE_SERVER);
     t = Scr_ExecThread(SCRIPTINSTANCE_SERVER, g_scr_data.menumessage, 2);
     Scr_FreeThread(t, SCRIPTINSTANCE_SERVER);
+}
+
+// Retail SP 0x005D3FE0: every DEC-20 terminal shell line, passed to the level script
+// (CodeCallback_Dec20Message) as an array of the command arguments.
+void __cdecl Cmd_Dec20_f()
+{
+    const int argc = SV_Cmd_Argc();
+    if ( argc < 2 )
+    {
+        Com_Printf(15, "Wrong number of args. Found %i expecting: >=2\n", argc);
+        return;
+    }
+    Scr_MakeArray(SCRIPTINSTANCE_SERVER);
+    for ( int i = 1; i < argc; ++i )
+    {
+        char argument[1024];
+        SV_Cmd_ArgvBuffer(i, argument, sizeof(argument));
+        Scr_AddString(argument, SCRIPTINSTANCE_SERVER);
+        Scr_AddArray(SCRIPTINSTANCE_SERVER);
+    }
+    const unsigned __int16 thread = Scr_ExecThread(SCRIPTINSTANCE_SERVER, g_scr_data.dec20message, 1);
+    Scr_FreeThread(thread, SCRIPTINSTANCE_SERVER);
 }
 
 // Retail SP ClientCommand arm: `sl <entityNum> <lengthMs>`.
@@ -1464,6 +1490,11 @@ void __cdecl ClientCommand(int clientNum)
                     if ( !I_stricmp(cmd, "mlvl") )
                     {
                         Cmd_MenuLevelMessage_f();
+                        return;
+                    }
+                    if ( !I_stricmp(cmd, "dec20") )
+                    {
+                        Cmd_Dec20_f();
                         return;
                     }
                     if ( !I_stricmp(cmd, "sl") )

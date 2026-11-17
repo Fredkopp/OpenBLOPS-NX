@@ -4150,7 +4150,7 @@ void __cdecl XAnimClearTree(XAnimTree_s *tree)
 {
     if ( !tree && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\xanim\\xanim.cpp", 4492, 0, "%s", "tree") )
         __debugbreak();
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // The decomp frees the one root and asserts the tree is then empty; in MP
     // (BG_UpdatePlayerDObj, a client's info going invalid) the root still had a
     // sibling, or the index led to a node that is not a root of this tree, and

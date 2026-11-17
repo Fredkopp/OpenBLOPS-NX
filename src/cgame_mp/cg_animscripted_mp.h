@@ -23,6 +23,7 @@ bool CG_HasRemoteAnimSnapshot_SP(int localClientNum);
 XAnim_s *CG_GetRemoteAnimations_SP(int localClientNum, int entNum);
 bool CG_ApplyRemoteAnimSnapshot_SP(int localClientNum, int entNum, DObj *obj, bool force);
 void __cdecl CG_RegisterAnimCommandDvars_SP();
+void __cdecl CG_ClearModelPendingAnimCommands_SP();
 void CG_UpdateRootInfo_SP(int localClientNum, centity_s *cent);
 void CG_ApplyRootInfo_SP(int localClientNum, centity_s *cent);
 bool CG_ActorLinked_SP(int localClientNum, int entityNum);

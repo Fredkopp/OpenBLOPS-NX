@@ -1876,7 +1876,7 @@ void __thiscall pulse_sum_constraint_solver::add_urb(
             if ( !v7 )
             {
                 //v7 = (pulse_sum_constraint_solver::temp_user_rigid_body *)phys_transient_allocator::allocate(&this->m_solver_memory_allocator, 464, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 v7 = (pulse_sum_constraint_solver::temp_user_rigid_body *)this->m_solver_memory_allocator.allocate(sizeof(pulse_sum_constraint_solver::temp_user_rigid_body), 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
 #else
                 v7 = (pulse_sum_constraint_solver::temp_user_rigid_body *)this->m_solver_memory_allocator.allocate(464, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
@@ -1889,7 +1889,7 @@ void __thiscall pulse_sum_constraint_solver::add_urb(
                 list_turb->m_first = v7;
             }
             //v8 = (pulse_sum_constraint_solver::user_rigid_body_restore_info *)phys_transient_allocator::allocate(&this->m_solver_memory_allocator, 12, 4, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             v8 = (pulse_sum_constraint_solver::user_rigid_body_restore_info *)this->m_solver_memory_allocator.allocate(sizeof(pulse_sum_constraint_solver::user_rigid_body_restore_info), alignof(pulse_sum_constraint_solver::user_rigid_body_restore_info), 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
 #else
             v8 = (pulse_sum_constraint_solver::user_rigid_body_restore_info *)this->m_solver_memory_allocator.allocate(12, 4, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
@@ -4646,7 +4646,7 @@ void __thiscall pulse_sum_constraint_solver::execute_constraint_solver(rigid_bod
             do
             {
                 //v26 = (pulse_sum_node *)phys_transient_allocator::allocate(p_m_solver_memory_allocator, 128, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 v26 = (pulse_sum_node *)p_m_solver_memory_allocator->allocate(sizeof(pulse_sum_node), 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
 #else
                 v26 = (pulse_sum_node *)p_m_solver_memory_allocator->allocate(128, 16, 0, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);

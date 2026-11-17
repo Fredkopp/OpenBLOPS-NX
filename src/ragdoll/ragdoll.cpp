@@ -140,7 +140,7 @@ bool __cdecl Ragdoll_BodyHasPhysics(RagdollBody *body)
     return body->state >= BS_DOBJ_WAIT && body->state <= BS_RUNNING;
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 #ifndef KISAK_SP
 extern const dvar_t *nx_physics;   // phys_main.cpp
 #endif
@@ -195,7 +195,7 @@ const RagdollBody *__cdecl Ragdoll_CreateRagdollForDObj(
 
     iassert(dobj != DOBJ_HANDLE_NONE);
 
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
     // A ragdoll is rigid bodies and joints in the physics solver, which is not
     // LP64-ported yet. With it off the corpse keeps its death-animation pose.
     if ( !nx_physics || !nx_physics->current.enabled )
@@ -374,7 +374,7 @@ void __cdecl Ragdoll_FreeBody(int ragdollBody)
 
     Ragdoll_BodyNewState(body, BS_DEAD);
     body->references = 0;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     Ragdoll_ReleaseBodyHandle(body);
 #endif
 
@@ -388,8 +388,8 @@ void __cdecl Ragdoll_InitDvars()
     ragdoll_debug                = _Dvar_RegisterInt  ("ragdoll_debug",                0,            0,    0x7FFFFFFF, 0x80u, "Draw ragdoll debug info (bitflags)");
     ragdoll_fps                  = _Dvar_RegisterInt  ("ragdoll_fps",                  20,           0,    100,        0x80u, "Ragdoll update frames per second");
     ragdoll_max_life             = _Dvar_RegisterInt  ("ragdoll_max_life",             9000,         0,    0x7FFFFFFF, 0x80u, "Max lifetime of a ragdoll system in msec");
-#ifdef KISAK_NX
-    // Switch: fewer bodies simulating at once (CPU).
+#if defined(KISAK_NX) && !defined(KISAK_NX2)
+    // Switch 1: fewer bodies simulating at once (CPU).
     ragdoll_max_simulating       = _Dvar_RegisterInt  ("ragdoll_max_simulating",       4,            0,    32,         1u,    "Max number of simultaneous active ragdolls");
 #else
     ragdoll_max_simulating       = _Dvar_RegisterInt  ("ragdoll_max_simulating",       16,           0,    32,         1u,    "Max number of simultaneous active ragdolls");

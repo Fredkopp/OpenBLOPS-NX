@@ -177,7 +177,7 @@ public:
         return r;
     }
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(alignof(phys_vec3) == 16, "Alignment broken"); // The physics system expects in a dozen+ places that the alignment is 16 (sizeof phys_vec3)
 #endif
 
@@ -249,7 +249,7 @@ struct chull_t // sizeof=0x20
     int touched;
     chull_t *next_list;
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(chull_t) == 0x20);
 #endif
 
@@ -718,7 +718,7 @@ struct minspec_hash_table//<phys_slot_pool,64> // sizeof=0x10C
 };
 
 char *__cdecl PMM_ALLOC(unsigned int size, unsigned int alignment);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 
 #define PHYS_NODE_ALIGNMENT(TI) (sizeof(TI) % 16 == 0 ? 16u : (alignof(TI) > 4 ? (unsigned int)alignof(TI) : 4u))
 
@@ -740,7 +740,7 @@ struct phys_simple_allocator//<phys_heap_gjk_cache_system_avl_tree::phys_gjk_cac
         {
             char *slot; // [esp+18h] [ebp-4h]
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             slot = PMM_ALLOC(sizeof(T), PHYS_NODE_ALIGNMENT(T));
 #else
             slot = PMM_ALLOC(sizeof(T), sizeof(T) % 16 == 0 ? 16 : 4);
@@ -761,7 +761,7 @@ struct phys_simple_allocator//<phys_heap_gjk_cache_system_avl_tree::phys_gjk_cac
         {
             if (slot)
             {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 PMM_VALIDATE((char *)slot, sizeof(T), PHYS_NODE_ALIGNMENT(T));
                 --this->m_count;
                 slot->~T();
@@ -945,8 +945,9 @@ public:
         bool operator!=(const iterator &rhs) const { return m_ptr != rhs.m_ptr; }
     };
 
-#ifdef KISAK_NX
-    static constexpr unsigned int kNodeAlignment = PHYS_NODE_ALIGNMENT(T_internal);
+#ifdef KISAK_64BIT
+    // A function so T_internal is only instantiated once T is complete.
+    static constexpr unsigned int nodeAlignment() { return PHYS_NODE_ALIGNMENT(T_internal); }
 
 #endif
     // lwss: add iterator (idk how accurate this is)
@@ -1001,8 +1002,8 @@ public:
 
     T *add(int no_error, const char *error_msg)
     {
-#ifdef KISAK_NX
-        T_internal *ptr = (T_internal *)PMM_ALLOC(sizeof(T_internal), kNodeAlignment);
+#ifdef KISAK_64BIT
+        T_internal *ptr = (T_internal *)PMM_ALLOC(sizeof(T_internal), nodeAlignment());
 #else
         T_internal *ptr = (T_internal *)PMM_ALLOC(sizeof(T_internal), sizeof(T_internal) % 16 == 0 ? 16 : 4);
 #endif
@@ -1055,8 +1056,8 @@ public:
         prev->m_next_T_internal = next;
         next->m_prev_T_internal = prev;
         //data->m_data.~T();
-#ifdef KISAK_NX
-        PMM_FREE((unsigned __int8 *)data, sizeof(T_internal), kNodeAlignment);
+#ifdef KISAK_64BIT
+        PMM_FREE((unsigned __int8 *)data, sizeof(T_internal), nodeAlignment());
     }
 
     static T_internal *node_of(T *data)
@@ -1072,8 +1073,8 @@ public:
         if (data_)
         {
             T_internal *ti = (T_internal *)((char *)data_ - offsetof(T_internal, m_data));
-#ifdef KISAK_NX
-            PMM_VALIDATE((char *)ti, sizeof(T_internal), kNodeAlignment);
+#ifdef KISAK_64BIT
+            PMM_VALIDATE((char *)ti, sizeof(T_internal), nodeAlignment());
 #else
             PMM_VALIDATE((char *)ti, sizeof(T_internal), sizeof(T_internal) % 16 == 0 ? 16 : 4);
 #endif
@@ -1094,8 +1095,8 @@ public:
             prev->m_next_T_internal = next;
             next->m_prev_T_internal = prev;
             //data->m_data.~T();
-#ifdef KISAK_NX
-            PMM_FREE((unsigned __int8 *)data, sizeof(T_internal), kNodeAlignment);
+#ifdef KISAK_64BIT
+            PMM_FREE((unsigned __int8 *)data, sizeof(T_internal), nodeAlignment());
 #else
             PMM_FREE((unsigned __int8 *)data, sizeof(T_internal), sizeof(T_internal) % 16 == 0 ? 16 : 4);
 #endif

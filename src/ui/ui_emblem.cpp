@@ -690,7 +690,7 @@ bool __cdecl UI_EmblemIsModified(int controllerIndex)
     CompositeEmblemLayer layers[12]; // [esp+14h] [ebp-188h] BYREF
     __int16 backgroundID; // [esp+198h] [ebp-4h] BYREF
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // Offline the local player has no xuid (Live_UserSignedIn never runs) and no
     // fetched public profile, which is where the emblem is kept; PCache asserts on
     // both. The editor works on its own layers and nothing is saved.
@@ -1085,7 +1085,7 @@ void __cdecl UI_EmblemEndEdit_f()
 
 void __cdecl UI_EmblemSetProfile_f()
 {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // Offline: no xuid, no profile (see UI_EmblemIsModified).
     if ( !Live_GetXuid(0) )
         return;
@@ -1099,7 +1099,7 @@ void __cdecl UI_EmblemGetProfile_f()
     unsigned __int64 v0; // rax
     PCachePublicProfile *profile; // [esp+4h] [ebp-4h]
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // Offline: no xuid, no profile (see UI_EmblemIsModified).
     if ( !Live_GetXuid(0) )
         return;

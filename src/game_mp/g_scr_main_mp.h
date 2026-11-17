@@ -105,6 +105,7 @@ struct scr_data_t
     // at 0x00612aea and 0x00612b48 respectively -- verified by disassembly this pass.
     int menumessage;                    // CodeCallback_MenuMessage  -- retail global 0x01c87514
     int dec20message;                   // CodeCallback_Dec20Message -- retail global 0x01c87518
+    int saverestored;                   // CodeCallback_SaveRestored -- retail global 0x01c79b30
     int actorShouldReact;
     XAnim_s *actorAnims_SP;
 #endif

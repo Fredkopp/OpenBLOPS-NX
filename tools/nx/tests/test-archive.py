@@ -48,7 +48,7 @@ for name in ('FS_CheckFileSystemStarted', 'FS_FileForHandle', 'FS_Write', 'FS_Se
         end += 1
     functions.append(source[match.start():end])
 (output/'file-functions.inc').write_text('\n'.join(functions))
-subprocess.run([args.compiler, '-std=c++17', '-O2', '-Wall', '-Wextra', '-DKISAK_NX', '-DQDECL=',
+subprocess.run([args.compiler, '-std=c++17', '-O2', '-Wall', '-Wextra', '-DKISAK_NX', '-DKISAK_64BIT', '-DQDECL=',
                 '-I'+str(include), '-I'+str(output), str(Path(__file__).with_name('archive.cpp')),
                 str(root/'src/qcommon/unzip.cpp'), '-lz', '-o', str(exe)], check=True)
 subprocess.run([str(exe), str(output)], check=True)

@@ -307,7 +307,7 @@ contact_point_info *__cdecl contact_point_info::create_cpi(
     {
         __debugbreak();
     }
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     v3 = (sizeof(contact_point_info) + 2 * sizeof(phys_vec3) * point_pair_count + 15) & ~15u;
 #else
     v3 = (32 * point_pair_count + 95) & 0xFFFFFFF0;

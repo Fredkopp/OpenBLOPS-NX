@@ -106,7 +106,25 @@ void __cdecl SEH_InitLanguage()
     loc_translate = _Dvar_RegisterBool("loc_translate", 1, 0x20u, "Enable translations");
     loc_warnings = _Dvar_RegisterBool("loc_warnings", 0, 0, "Enable localization warnings");
     loc_warningsAsErrors = _Dvar_RegisterBool("loc_warningsAsErrors", 0, 0, "Throw an error for any unlocalized string");
+    // The installed language (Win_PickInstalledLanguage), as SP does above.
+    int language;
+    if (SEH_GetLanguageIndexForName(Win_GetLanguage(), &language))
+        Dvar_SetInt((dvar_s *)loc_language, language);
 #endif
+    SEH_UpdateCurrentLanguage();
+}
+
+// The config's archived loc_language runs after SEH_InitLanguage; it must not
+// point the localized zones away from the installed language.
+void SEH_ApplyInstalledLanguage()
+{
+    int language;
+    if (!loc_language || !SEH_GetLanguageIndexForName(Win_GetLanguage(), &language)
+        || loc_language->current.integer == language)
+        return;
+    Com_Printf(10, "loc_language %i is not the installed language; using %i (%s)\n",
+               loc_language->current.integer, language, Win_GetLanguage());
+    Dvar_SetInt((dvar_s *)loc_language, language);
     SEH_UpdateCurrentLanguage();
 }
 

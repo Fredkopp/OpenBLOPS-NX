@@ -610,6 +610,13 @@ void __cdecl RB_StandardDrawCommands(GfxViewInfo *viewInfo)
 
   PROF_SCOPED("RB_StandardDrawCommands");
 
+#ifdef NX_DXVK
+  // When floatz is the depth buffer, keep it out of the samplers while depth
+  // is written, so DXVK keeps the attachment layout.
+  if ( g_nxIntZDepthBuffer )
+    R_UnbindImage(&gfxCmdBufState, gfxRenderTargets[R_RENDERTARGET_FLOAT_Z].image);
+#endif
+
   data = backEndData;
   isMissileCam = viewInfo->isMissileCamera;
   floatzRenderTarget = isMissileCam ? R_RENDERTARGET_FLOAT_Z_MISSILE_CAM : R_RENDERTARGET_FLOAT_Z;

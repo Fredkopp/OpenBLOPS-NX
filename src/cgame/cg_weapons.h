@@ -34,7 +34,7 @@ struct weaponInfo_s // sizeof=0x24
     const char *translatedModename;
     const char *translatedAIOverlayDescription;
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(weaponInfo_s) == 0x24);
 #endif
 

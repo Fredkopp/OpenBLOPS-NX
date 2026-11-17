@@ -37,6 +37,7 @@ void __cdecl Cmd_EntityCount_f();
 void __cdecl Cmd_MenuResponse_f(gentity_s *pEnt);
 #ifdef KISAK_SP
 void __cdecl Cmd_MenuLevelMessage_f();   // retail FUN_0054bbb0, dispatched from ClientCommand "mlvl"
+void __cdecl Cmd_Dec20_f();              // retail 0x005D3FE0, dispatched from ClientCommand "dec20"
 #endif
 void __cdecl ClientCommand(int clientNum);
 void __cdecl Cmd_Say_f(gentity_s *ent, int mode, int arg0);

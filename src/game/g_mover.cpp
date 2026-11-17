@@ -8,7 +8,7 @@
 #include <physics/physpreset_load_obj.h>
 #include <universal/com_math_anglevectors.h>
 #include <qcommon/cm_load.h>
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
 extern const dvar_t *nx_physics;   // phys_main.cpp
 #endif
 #include <qcommon/dobj_management.h>
@@ -606,7 +606,7 @@ void __cdecl G_CreatePhysicsObject(gentity_s *ent)
     int surfaceType; // [esp+54h] [ebp-D4h]
     PhysPreset defaultPreset; // [esp+58h] [ebp-D0h] BYREF
     float velocity[3]; // [esp+B4h] [ebp-74h] BYREF
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t physObjId;
 #else
     int physObjId; // [esp+C0h] [ebp-68h]
@@ -734,7 +734,7 @@ void __cdecl G_CreatePhysicsObject(gentity_s *ent)
             ent->physObjId = -1;
             Sys_LeaveCriticalSection(CRITSECT_PHYSICS);
             Sys_LeaveCriticalSection(CRITSECT_PHYSICS_UPDATE);
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
             // KNOWN LIMITATION while physics is off: a launched entity cannot
             // fly, and it would hang where it was -- a ghost door in Five's
             // doorways for the 60 s until physics_launch_door deletes it. Hide

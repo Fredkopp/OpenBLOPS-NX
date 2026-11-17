@@ -27,6 +27,9 @@
 #include <qcommon/com_clients.h>
 #include <client_mp/cl_ui_mp.h>
 #include <client_mp/cl_cgame_mp.h>
+#ifdef KISAK_SP
+#include <dec20/dec20_terminal.h>
+#endif
 
 struct keyname_t // sizeof=0x8
 {
@@ -2084,6 +2087,12 @@ LABEL_110:
                             }
                         }
                     }
+#ifdef KISAK_SP
+                    else
+                    {
+                        Dec20_KeyEvent(localClientNum, 27, down, time);
+                    }
+#endif
                 }
             }
             else if ( !CL_LocalClient_IsCUIFlagSet(localClientNum, 32)
@@ -2099,6 +2108,12 @@ LABEL_110:
                     {
                         Console_Key(localClientNum, key);
                     }
+#ifdef KISAK_SP
+                    else if ( (LocalClientUIGlobals->keyCatchers & 0x100) != 0 )
+                    {
+                        Dec20_KeyEvent(localClientNum, key, down, time);
+                    }
+#endif
                     else if ( (LocalClientUIGlobals->keyCatchers & 0x100) == 0 )
                     {
                         if ( (LocalClientUIGlobals->keyCatchers & 0x50) == 0 || CL_MouseInputShouldBypassMenus(localClientNum, key) )
@@ -2338,6 +2353,12 @@ LABEL_15:
         if ( !CL_GetLocalClientConnectionState(localClientNum) )
             goto LABEL_15;
     }
+#ifdef KISAK_SP
+    else
+    {
+        Dec20_CharEvent(localClientNum, key);
+    }
+#endif
 #endif
 }
 

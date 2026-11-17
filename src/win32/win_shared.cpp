@@ -1,6 +1,7 @@
 #include "win_shared.h"
 
 #include <Windows.h>
+#include <math.h>
 
 int sys_timeBase;
 
@@ -31,7 +32,7 @@ unsigned int __cdecl Sys_MillisecondsRaw()
 //}
 
 // https://github.com/id-Software/Quake-III-Arena/blob/master/code/win32/win_shared.c
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 // x87 fistp rounds to nearest-even; lrintf does the same under the default
 // AArch64 FP rounding mode.
 void Sys_SnapVector(float *v)

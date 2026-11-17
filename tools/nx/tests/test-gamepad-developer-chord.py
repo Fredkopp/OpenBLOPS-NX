@@ -46,7 +46,7 @@ int main(){
  puts("PASS: gamepad developer shortcut skips signed-out and gameplay tier queries");
 }
 """)
-for platform,flags in [('pc',[]),('nx',['-DKISAK_NX'])]:
+for platform,flags in [('pc',[]),('nx',['-DKISAK_NX','-DKISAK_64BIT'])]:
  exe=out/('chord-'+platform+'.exe')
  subprocess.run([args.compiler,'-std=c++17','-O2',*flags,str(source),'-o',str(exe)],check=True)
  subprocess.run([str(exe)],check=True)

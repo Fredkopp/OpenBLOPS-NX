@@ -15,6 +15,7 @@
 #ifdef KISAK_SP
 #include <client/client.h>
 #include <client/cl_console.h>
+#include <dec20/dec20_terminal.h>
 #endif
 #include <universal/q_shared.h>
 #include <client_mp/cl_main_mp.h>
@@ -1817,6 +1818,15 @@ void __cdecl CG_DeployServerCommand(int localClientNum)
             s_hideViewModel_SP[localClientNum] = true;
             PM_ResetWeaponState(&cgameGlob->predictedPlayerState);
             Com_Printf(14, "SP hideviewmodel client apply: localClientNum=%i\n", localClientNum);
+            break;
+        case 'I': // initdec20terminal
+            Dec20_Init();
+            break;
+        case 'D': // attachtodec20terminal
+            Dec20_Attach(localClientNum);
+            break;
+        case 'E': // detachdec20terminal
+            Dec20_Exit(localClientNum);
             break;
 #endif
         default:

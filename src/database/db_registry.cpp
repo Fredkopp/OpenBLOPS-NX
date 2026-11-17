@@ -1,4 +1,5 @@
 #include "db_registry.h"
+#include <setjmp.h>
 #ifdef KISAK_SP
 #include <universal/com_stringtable_obj.h>
 #endif
@@ -15,8 +16,8 @@
 #include <win32/win_shared.h>
 #include "db_file_load.h"
 #include <win32/win_net.h>
-#ifdef KISAK_NX
-#include <nx/nx_kbz.h>
+#ifdef KISAK_64BIT
+#include <database/db_kbz.h>
 extern bool g_minimumFastFileLoaded;                                        // db_file_load.cpp
 #endif
 #include <algorithm>
@@ -46,10 +47,6 @@ extern bool g_minimumFastFileLoaded;                                        // d
 #include <client/cl_keys.h>
 #include <win32/win_input.h>
 #include <client_mp/cl_scrn_mp.h>
-
-#ifdef KISAK_NX
-extern "C" void NX_KBZ_ValidateImages();
-#endif
 
 
 #define POOLSIZE_XMODELPIECES      64
@@ -224,7 +221,7 @@ XAssetHeader(__cdecl *DB_AllocXAssetHeaderHandler[43])(void *) =
   DB_AllocXAsset<EmblemSet>
 };
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 // nx-port: the true LP64 size of each asset's struct, in the same slot order as
 // DB_AllocXAssetHeaderHandler above -- that table is the authority on which
 // type each slot holds, so the two are meant to be read side by side.
@@ -302,7 +299,7 @@ int __cdecl DB_GetXAssetTypeSizeNative(int type)
     if (type < 0 || type >= 43) return 0;
     return s_nxAssetTypeSize[type];
 }
-#endif // KISAK_NX
+#endif // KISAK_64BIT
 
 
 XAssetPool<XModelPieces, POOLSIZE_XMODELPIECES>         g_XModelPiecesPool;
@@ -1893,7 +1890,7 @@ XAssetEntryPoolEntry *__cdecl DB_FindXAssetEntry(XAssetType type, const char *na
     unsigned int assetEntryIndex; // [esp+4h] [ebp-8h]
     XAssetEntryPoolEntry *assetEntry; // [esp+8h] [ebp-4h]
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // One-time diagnostic: how many assets actually registered in the pool, and
     // does the first-bucket name pointer read back sanely? A count near zero
     // means DB linking is broken; thousands means the fastfile assets are in
@@ -1933,7 +1930,7 @@ XAssetEntryPoolEntry *__cdecl DB_FindXAssetEntry(XAssetType type, const char *na
         assetEntry = &g_assetEntryPool[assetEntryIndex];
         if ( assetEntry->entry.asset.type == type )
         {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             // Probe: name the offending entry before DB_GetXAssetName asserts
             // on it (db_assetnames.cpp:466), which otherwise reports only the
             // asset type. Reads the name a second time and changes nothing.
@@ -3197,8 +3194,8 @@ void DB_PostLoadXZone()
                 Sys_LeaveCriticalSection(CRITSECT_DBHASH);
                 DB_StreamCompletePreload();
                 DB_UnarchiveAssets();
-#ifdef KISAK_NX
-                NX_KBZ_ValidateImages();
+#ifdef KISAK_64BIT
+                DB_KbzValidateImages();
 #endif
                 if ( Sys_IsMainThread() )
                     R_PushRemoteScreenUpdate(remoteScreenUpdateNesting);
@@ -3213,8 +3210,8 @@ void DB_PostLoadXZone()
         {
             DB_StreamCompletePreload();
             DB_ExternalInitAssets();
-#ifdef KISAK_NX
-            NX_KBZ_ValidateImages();
+#ifdef KISAK_64BIT
+            DB_KbzValidateImages();
 #endif
             Sys_DatabaseCompleted2();
         }
@@ -3993,7 +3990,7 @@ void __cdecl    DB_Thread(unsigned int threadContext)
     }
     Value = (int*)Sys_GetValue(2);
     //if ( _setjmp3(Value, 0) )
-    if ( _setjmp(Value) )
+    if ( _setjmp(*(jmp_buf *)Value) )
         Com_ErrorAbort();
     while ( 1 )
     {
@@ -4215,7 +4212,7 @@ int __cdecl DB_TryLoadXFileInternal(const char *zoneName, int zoneFlags)
         zone->index = g_zoneIndex;
         zone->flags = zoneFlags;
         memset(zone->blocks, 0, sizeof(zone->blocks));
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         zone->kbz = nullptr;
 #endif
         if ( g_loadingZone
@@ -4292,7 +4289,7 @@ int __cdecl DB_TryLoadXFileInternal(const char *zoneName, int zoneFlags)
                 skipLoadingMaterialsHack = 542;
             }
         }
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         // nx-port: the .ff stream format hard-wires 32-bit pointers and x86
         // struct sizes and cannot be consumed by this 64-bit build. If a
         // prelinked "<zone>.kbz" (produced offline by tools/ffconv) sits next
@@ -4300,7 +4297,7 @@ int __cdecl DB_TryLoadXFileInternal(const char *zoneName, int zoneFlags)
         // loader on the raw .ff would corrupt pointers and crash, so we treat
         // the zone as an (empty) success and let assets be reported missing at
         // lookup -- which pinpoints the next asset type to add to the converter.
-        int nxKbz = NX_TryLoadKbz(g_zoneNames[g_zoneIndex].name, filename, zone);
+        int nxKbz = DB_TryLoadKbz(g_zoneNames[g_zoneIndex].name, filename, zone);
         CloseHandle(zoneFile); // DB_LoadXFile would have consumed+closed it
         if ( nxKbz == 0 )
             Com_PrintWarning(10, "nx: no .kbz for zone '%s'; skipping raw .ff load\n",
@@ -4909,8 +4906,8 @@ void __cdecl DB_ShutdownXAssets()
 
 void __cdecl DB_UnloadXZoneMemory(XZone *zone)
 {
-#ifdef KISAK_NX
-    NX_FreeKbz(zone);
+#ifdef KISAK_64BIT
+    DB_FreeKbz(zone);
 #endif
     DB_FreeXBlocks(zone->blocks, zone->flags);
     Com_Printf(16, "Unloaded fastfile '%s'\n", g_zoneNames[zone->index].name);

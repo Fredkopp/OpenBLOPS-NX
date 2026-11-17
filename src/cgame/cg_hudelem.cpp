@@ -44,6 +44,12 @@ const dvar_t *waypointPlayerOffsetProne;
 const dvar_t *waypointPlayerOffsetCrouch;
 const dvar_t *waypointPlayerOffsetStand;
 const dvar_t *waypointPlayerOffsetRevive;
+#ifdef KISAK_SP
+const dvar_t *ui3d_hudelem_maxscale;
+const dvar_t *ui3d_hudelem_minscale;
+const dvar_t *ui3d_hudelem_maxheight;
+const dvar_t *ui3d_hudelem_minheight;
+#endif
 
 game_hudelem_s g_hudelems[1024];
 
@@ -231,6 +237,12 @@ void __cdecl CG_HudElemRegisterDvars()
                                                                  3.4028235e38,
                                                                  0x80u,
                                                                  "For waypoints pointing to players, how high to offset off of their origin when they are in last stand.");
+#ifdef KISAK_SP
+    ui3d_hudelem_maxscale = _Dvar_RegisterFloat("ui3d_hudelem_maxscale", 10.0f, 0.0f, 3.4028235e38f, 0x80u, "");
+    ui3d_hudelem_minscale = _Dvar_RegisterFloat("ui3d_hudelem_minscale", 2.0f, 0.0f, 3.4028235e38f, 0x80u, "");
+    ui3d_hudelem_maxheight = _Dvar_RegisterFloat("ui3d_hudelem_maxheight", 2000.0f, 0.0f, 3.4028235e38f, 0x80u, "");
+    ui3d_hudelem_minheight = _Dvar_RegisterFloat("ui3d_hudelem_minheight", 220.0f, 0.0f, 3.4028235e38f, 0x80u, "");
+#endif
 }
 
 void __cdecl CG_TranslateHudElemMessage(
@@ -1918,6 +1930,53 @@ void __cdecl DrawHudElemMaterial(int localClientNum, const hudelem_s *elem, cg_h
         material = Material_RegisterHandle(materialName, 7);
         width = HudElemMaterialWidth(&scrPlaceView[localClientNum], elem, cghe);
         height = HudElemMaterialHeight(&scrPlaceView[localClientNum], elem, cghe);
+#ifdef KISAK_SP
+        // Retail SP 0x0077AEF0: in a ui3d window, an element with a target entity
+        // sits on that entity as the extra camera sees it, larger as the camera
+        // gets closer.
+        if ( elem->ui3dWindow >= 0 && elem->targetEntNum != 1023 )
+        {
+            const cg_s *cgameGlob = CG_GetLocalClientGlobals(localClientNum);
+            if ( elem->targetEntNum == cgameGlob->predictedPlayerEntity.nextState.number )
+                return;
+            const centity_s *cent = CG_GetEntity(localClientNum, elem->targetEntNum);
+            if ( ((cent->clientFlags >> 1) & 1) == 0 )
+            {
+                Com_PrintWarning(
+                    1,
+                    "DrawHudElemMaterial(): targetEnt %i not in snapshot, may not be a network-broadcasting entity.\n",
+                    elem->targetEntNum);
+                return;
+            }
+            const float worldPos[3] = { cent->pose.origin[0], cent->pose.origin[1], cent->pose.origin[2] };
+            if ( CG_ExtraCamIsActive(localClientNum) && cgameGlob->refdef.extraCamPosValid )
+            {
+                const float maxHeight = ui3d_hudelem_maxheight->current.value;
+                float camHeight = fabsf(cgameGlob->refdef.extraCamPos[2] - worldPos[2]);
+                if ( camHeight < ui3d_hudelem_minheight->current.value )
+                    camHeight = ui3d_hudelem_minheight->current.value;
+                if ( camHeight > maxHeight )
+                    camHeight = maxHeight;
+                const float scale = (1.0f - camHeight / maxHeight) * ui3d_hudelem_maxscale->current.value
+                    + ui3d_hudelem_minscale->current.value;
+                width *= scale;
+                height *= scale;
+            }
+            WorldPosToExtraCamScreenPos(localClientNum, worldPos, screenPos);
+            CL_DrawStretchPicPhysical(
+                screenPos[0] - width * 0.5f,
+                screenPos[1] - height * 0.5f,
+                width,
+                height,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                cghe->color,
+                material);
+            return;
+        }
+#endif
         screenPos[0] = cghe->x;
         screenPos[1] = OffsetHudElemY(
                                          elem,

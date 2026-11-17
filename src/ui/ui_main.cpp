@@ -57,6 +57,9 @@
 #ifdef KISAK_NX
 #include "keycodes.h"
 #endif
+#ifdef KISAK_SP
+#include <dec20/dec20_terminal.h>
+#endif
 
 const dvar_t *ui_netGameType;
 const dvar_t *uiscript_debug;
@@ -2805,6 +2808,11 @@ void __cdecl UI_OwnerDrawText(
         case 310:
             UI_DrawJoinMod(contextIndex, &rect, font, scale, color, textStyle);
             break;
+#ifdef KISAK_SP
+        case 356:
+            Dec20_Paint(localClientNum, &rect, font, scale, textStyle);
+            break;
+#endif
         default:
             break;
     }
@@ -3464,8 +3472,8 @@ void UI_RegisterDvars()
     ui_customClassName = _Dvar_RegisterString("ui_customClassName", (char *)"", 0, "Custom Class name");
     g_allowvote = _Dvar_RegisterBool("g_allowvote", 1, 1u, 0);
     cg_brass = _Dvar_RegisterBool("cg_brass", 1, 1u, 0);
-#ifdef KISAK_NX
-    fx_marks = _Dvar_RegisterBool("fx_marks", 0, 1u, 0);   // Switch default: off, as fx_dvars.cpp
+#if defined(KISAK_NX) && !defined(KISAK_NX2)
+    fx_marks = _Dvar_RegisterBool("fx_marks", 0, 1u, 0);   // Switch 1 default: off, as fx_dvars.cpp
 #else
     fx_marks = _Dvar_RegisterBool("fx_marks", 1, 1u, 0);
 #endif
@@ -3887,7 +3895,9 @@ LABEL_24:
                 }
                 else if ( connstate >= CA_CONNECTING )
                 {
-                    Com_DPrintf(13, "PC ONLY: No menu has focus and %s, what should I do?", (const char *)connstate);
+                    // connstate is the connection state number, not a string: printing it as
+                    // %s read address 5 and crashed whenever developer messages were on.
+                    Com_DPrintf(13, "PC ONLY: No menu has focus and connection state %i, what should I do?", (int)connstate);
                 }
                 else
                 {

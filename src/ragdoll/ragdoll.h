@@ -106,7 +106,7 @@ struct Bone // sizeof=0x1C
     unsigned __int8 animBones[2];
     // padding byte
     // padding byte
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t rigidBody;
 #else
     int rigidBody;
@@ -134,7 +134,7 @@ struct __declspec(align(4)) LerpBone // sizeof=0x8
 struct Joint // sizeof=0x8
 {                                       // XREF: RagdollBody/r
                                         // Ragdoll_DebugRender/r
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t joint;
     intptr_t joint2;
 #else
@@ -172,7 +172,7 @@ struct RagdollBody // sizeof=0xA28
     float storedLaunchForce[2][3];
     hitLocation_t storedAttachHitLoc;
     int storedAttachEnt;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t storedPhysObjId;
 #else
     int storedPhysObjId;
@@ -218,7 +218,7 @@ void __cdecl Ragdoll_Register();
 void __cdecl Ragdoll_Init();
 void __cdecl Ragdoll_Shutdown();
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 // A ragdoll handle was the body pointer in an int (cpose_t::ragdollHandle and
 // friends). On LP64 that truncates, and the code tests handles with "> 0". A
 // handle is now a slot in a small table instead: 0 is none, 1..N a body.

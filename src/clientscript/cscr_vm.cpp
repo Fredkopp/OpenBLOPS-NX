@@ -20,10 +20,16 @@
 #include <win32/win_shared.h>
 #include <monkey/monkey.h>
 #include <gfx_d3d/r_draw_cmdbuf.h>
+#ifdef KISAK_NX
+#include <nx/nx_script_timeout.h>
+#endif
 
 #undef GetObject
 
 scrVmGlob_t gScrVmGlob[2];
+#ifdef KISAK_NX
+static unsigned int s_scrTimeoutCheck[2];   // NX_ScriptRunTime's last check, per instance
+#endif
 scrVmPub_t gScrVmPub[2];
 scrVmDebugPub_t gScrVmDebugPub[2];
 
@@ -4297,6 +4303,9 @@ int __cdecl Scr_AddLocalVars(scriptInstance_t inst, unsigned int localId)
 void __cdecl Scr_ResetTimeout(scriptInstance_t inst)
 {
     gScrVmGlob[inst].starttime = Sys_Milliseconds();
+#ifdef KISAK_NX
+    s_scrTimeoutCheck[inst] = gScrVmGlob[inst].starttime;
+#endif
 
     iassert(logScriptTimes);
     
@@ -5923,7 +5932,11 @@ function_call:
                 }
                 Sys_Error((char*)"exceeded maximum number of script variables");
             }
+#ifdef KISAK_NX
+            if (NX_ScriptRunTime(&gScrVmGlob[inst].starttime, &s_scrTimeoutCheck[inst], Sys_Milliseconds()) >= 2500)
+#else
             if ((int)(Sys_Milliseconds() - gScrVmGlob[inst].starttime) >= 2500)
+#endif
             {
                 iassert(logScriptTimes);
 

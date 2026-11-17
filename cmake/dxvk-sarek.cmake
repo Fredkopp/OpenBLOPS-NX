@@ -39,7 +39,8 @@ foreach(part dxvk d3d9)
 endforeach()
 add_library(nx_dxvk_native STATIC ${NX_SAREK_SOURCES} ${NX_SAREK_SHADERS})
 target_compile_features(nx_dxvk_native PUBLIC cxx_std_20)
-target_compile_definitions(nx_dxvk_native PUBLIC NX_DXVK_SAREK VK_USE_PLATFORM_VI_NN)
+target_compile_definitions(nx_dxvk_native PUBLIC NX_DXVK_SAREK VK_USE_PLATFORM_VI_NN
+    $<$<BOOL:${NINTENDO_SWITCH2}>:KISAK_NX2>)
 target_compile_options(nx_dxvk_native PRIVATE -O2 -fno-strict-aliasing -ffunction-sections -fdata-sections
     -Wno-unused-parameter -Wno-missing-field-initializers)
 target_compile_options(nx_dxvk_native PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${NX_PROJECT_ROOT}/src/nx/dxvk/sarek_horizon.h>")

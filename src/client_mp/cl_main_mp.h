@@ -598,7 +598,7 @@ struct gameState_t // sizeof=0x132F8
         int matchUIVisibilityFlags;                 // XREF: CG_SetupGameInformation+16/r
                                                                                 // CL_WriteUncompressedDemoInfo(int)+83B/r ...
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(gameState_t) == 78584 + (MAX_CONFIGSTRINGS - 0xCBC) * sizeof(int));
 #endif
 

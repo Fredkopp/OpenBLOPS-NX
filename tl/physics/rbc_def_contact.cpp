@@ -22,11 +22,11 @@ void __thiscall rigid_body_constraint_contact::verify_constraint(
     g_physics_system->validate_member(b2_);
 
     using TI = phys_free_list<rigid_body_constraint_contact>::T_internal;
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
     static_assert(sizeof(TI) == 0x38, "size mismatch");
 #endif
     TI *ti = (TI *)((char *)this - offsetof(TI, m_data));
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     PMM_VALIDATE((char *)ti, sizeof(TI), PHYS_NODE_ALIGNMENT(TI));
 #else
     PMM_VALIDATE((char *)ti, sizeof(TI), 4u);
@@ -84,7 +84,7 @@ pulse_sum_contact *__thiscall pulse_sum_constraint_solver::create_pulse_sum_cont
   int savedregs; // [esp+10h] [ebp+0h] BYREF
 
   //result = (pulse_sum_contact *)phys_transient_allocator::allocate(&this->m_solver_memory_allocator, 208 * cpi->m_point_pair_count + 96, 16, 1, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
   result = (pulse_sum_contact *)this->m_solver_memory_allocator.allocate(sizeof(pulse_sum_contact_point) * cpi->m_point_pair_count + sizeof(pulse_sum_contact), 16, 1, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);
 #else
   result = (pulse_sum_contact *)this->m_solver_memory_allocator.allocate(208 * cpi->m_point_pair_count + 96, 16, 1, SOLVER_MEMORY_ALLOCATOR_ERROR_MSG);

@@ -1086,7 +1086,7 @@ const WeaponVariantDef *__thiscall UIViewer::GetWeaponVariantDef(const UIViewer:
     attachRefs[1] = ItemAttachmentRef;
     attachRefs[2] = BG_UnlockablesGetItemAttachmentRef(weapParams->weaponIndex, weapParams->attachTriggerIndex);
     attachRefs[3] = BG_UnlockablesGetItemAttachmentRef(weapParams->weaponIndex, weapParams->attachMuzzleIndex);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // nx-port: the x86 code found the end of weaponDefName by walking on from
     // the last byte of attachRefs[] ((char *)&attachRefs[3] + 3), which only
     // works where the 4-byte pointer array sits right before the buffer on the

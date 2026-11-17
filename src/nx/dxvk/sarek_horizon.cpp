@@ -1,7 +1,9 @@
 #include "sarek_horizon.h"
+#include "../nx_install.h"
 #include "util/util_shared_res.h"
 #include "wsi/wsi_platform.h"
 #include <vulkan/vulkan.h>
+#include <iterator>
 
 extern "C" PFN_vkVoidFunction nvk_loaderless_GetInstanceProcAddr(VkInstance,const char*);
 extern "C" VkResult NX_SarekCreateSurface(VkInstance instance,VkSurfaceKHR *surface) {
@@ -39,24 +41,38 @@ bool getDesktopCoordinates(HMONITOR monitor, RECT *rect)
 
 void getWindowSize(HWND, uint32_t *width, uint32_t *height)
 {
-    u32 w = 1280, h = 720;
+    u32 w = NX_SCREEN_WIDTH, h = NX_SCREEN_HEIGHT;
     nwindowGetDimensions(nwindowGetDefault(), &w, &h);
     if (width) *width = w;
     if (height) *height = h;
 }
 
+// The screen's own mode comes last.
+static const WsiMode s_displayModes[] = {
+#ifdef KISAK_NX2
+    {960, 540, {60, 1}, 32, false},
+    {960, 540, {120, 1}, 32, false},
+    {1280, 720, {60, 1}, 32, false},
+    {1280, 720, {120, 1}, 32, false},
+    {1920, 1080, {60, 1}, 32, false},
+    {1920, 1080, {120, 1}, 32, false},
+#else
+    {960, 540, {60, 1}, 32, false},
+    {1280, 720, {60, 1}, 32, false},
+#endif
+};
+
 bool getDisplayMode(HMONITOR monitor, uint32_t index, WsiMode *mode)
 {
-    if (!monitor || index > 1)
+    if (!monitor || index >= std::size(s_displayModes))
         return false;
-    *mode = index == 0 ? WsiMode{960, 540, {60, 1}, 32, false}
-                       : WsiMode{1280, 720, {60, 1}, 32, false};
+    *mode = s_displayModes[index];
     return true;
 }
 
 bool getCurrentDisplayMode(HMONITOR monitor, WsiMode *mode)
 {
-    if (!getDisplayMode(monitor, 1, mode))
+    if (!getDisplayMode(monitor, std::size(s_displayModes) - 1, mode))
         return false;
     getWindowSize(nullptr, &mode->width, &mode->height);
     return true;

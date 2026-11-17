@@ -37,7 +37,7 @@ for file, names in {
             end += 1
         functions.append(source[match.start():end])
 (output / 'lifecycle-functions.inc').write_text('\n'.join(functions))
-for platform, defines in [('pc', []), ('nx', ['-DKISAK_NX'])]:
+for platform, defines in [('pc', []), ('nx', ['-DKISAK_NX', '-DKISAK_64BIT', '-DKISAK_BINK_FFMPEG'])]:
     exe = output / ('lifecycle-' + platform + '.exe')
     subprocess.run([args.compiler, '-std=c++17', '-O2', '-DKISAK_SP', *defines,
                     '-I' + str(output), str(Path(__file__).with_name('cinematic-lifecycle.cpp')),

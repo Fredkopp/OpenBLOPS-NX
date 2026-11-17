@@ -431,7 +431,7 @@ struct centity_s // sizeof=0x328
         float rootAnglesOffset_SP[3];
 #endif
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 #ifdef KISAK_SP
 static_assert(sizeof(centity_s) == 0x354);
 static_assert(offsetof(centity_s, animCommandTime) == 0x32C);
@@ -848,7 +848,7 @@ struct playerState_s // sizeof=0x26A4
         float groundTiltAngles[3];
 #endif
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 #ifdef KISAK_SP
 static_assert(sizeof(playerState_s) == 10648);
 #else

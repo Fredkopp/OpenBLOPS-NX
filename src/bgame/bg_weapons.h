@@ -304,7 +304,7 @@ struct BulletFireParams // sizeof=0x40
         float dir[3];                                             // XREF: FireBulletPenetrate+BF1/w
                                                                                 // FireBulletPenetrate+C08/w ...
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(BulletFireParams) == 64);
 #endif
 

@@ -112,8 +112,8 @@ struct XZone // sizeof=0x40
     // padding byte
     int flags;                          // XREF: DB_UnloadXAssetsMemoryForZone+31/r
     XBlock blocks[7];
-#ifdef KISAK_NX
-    struct NxKbzStorage *kbz;
+#ifdef KISAK_64BIT
+    struct KbzStorage *kbz;
 #endif
 };
 
@@ -276,7 +276,7 @@ void __cdecl DB_Sleep(unsigned int msec);
 XAssetEntryPoolEntry *__cdecl DB_FindXAssetEntry(XAssetType type, const char *name);
 XAssetEntry *__cdecl DB_CreateDefaultEntry(XAssetType type, const char *name);
 XAssetEntryPoolEntry *__cdecl DB_AllocXAssetEntry(XAssetType type, unsigned __int8 zoneIndex);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 // nx-port: true LP64 sizeof for each asset slot; 0 where no struct exists.
 // Defined next to DB_AllocXAssetHeaderHandler, which is the authority on the
 // type each slot holds. See the comment there.

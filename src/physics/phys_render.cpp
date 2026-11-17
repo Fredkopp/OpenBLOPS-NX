@@ -1565,7 +1565,7 @@ void    Phys_RenderBase(const phys_mat44 *mat, float scale)
     render_line((const phys_vec3 *)&x, &v3, colorMdBlue, 0, 0);
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 void    Phys_JointDebugRender(intptr_t id)
 #else
 void    Phys_JointDebugRender(int id)

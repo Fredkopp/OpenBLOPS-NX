@@ -28,11 +28,11 @@ types = '\n'.join(re.search(r'struct '+name+r'\b.*?\n};', header, re.S).group()
                   for name in ('XBlock', 'XZone'))
 (output/'zone-types.inc').write_text(types)
 registry = (root/'src/database/db_registry.cpp').read_text()
-loader = (root/'src/nx/nx_kbz.cpp').read_text()
-(output/'zone-unload.inc').write_text(function(loader, 'NX_FreeKbz')
+loader = (root/'src/database/db_kbz.cpp').read_text()
+(output/'zone-unload.inc').write_text(function(loader, 'DB_FreeKbz')
     +function(registry, 'DB_UnloadXZoneMemory')+function(registry, 'DB_UnloadXAssetsMemory'))
 subprocess.run([args.compiler, '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
-                '-DKISAK_NX', '-I'+str(output),
+                '-DKISAK_64BIT', '-I'+str(output),
                 str(Path(__file__).with_name('kbz-storage.cpp')), '-lzstd', '-o', str(exe)], check=True)
 zones = sorted(args.zones.glob('*.kbz')) if args.zones else []
 subprocess.run([str(exe), str(output), *map(str, zones)], check=True)

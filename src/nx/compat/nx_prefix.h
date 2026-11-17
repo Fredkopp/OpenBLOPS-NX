@@ -31,7 +31,7 @@
 #define _iobuf __sFILE
 
 // MSVC jmp_buf was int[16]; game code passes (int*) buffers around. The
-// buffers themselves are enlarged to real jmp_bufs under KISAK_NX; this cast
+// buffers themselves are enlarged to real jmp_bufs under KISAK_64BIT; this cast
 // makes the (int*) call sites compile unchanged.
 #ifdef __cplusplus
 #define _setjmp(env) setjmp(*(jmp_buf *)(env))

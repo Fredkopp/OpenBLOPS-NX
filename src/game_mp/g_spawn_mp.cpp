@@ -58,6 +58,10 @@ const ent_field_t fields_1[] =
   { "anglelerprate", (int)offsetof(gentity_s, angleLerpRate), { 4 }, F_FLOAT, NULL },
   { "script_linkname", (int)offsetof(gentity_s, script_linkname), { 2 }, F_STRING, NULL },
   { "activator", (int)offsetof(gentity_s, activator), { 4 }, F_ENTITY, Scr_ReadOnlyField },
+  // The last three entries of retail SP's table (0x00A55668).
+  { "takedamage", (int)offsetof(gentity_s, takedamage), { 1 }, F_BYTE, NULL },
+  { "mins", (int)offsetof(gentity_s, r.mins), { 12 }, F_VECTOR, Scr_ReadOnlyField },
+  { "maxs", (int)offsetof(gentity_s, r.maxs), { 12 }, F_VECTOR, Scr_ReadOnlyField },
 #endif
   { NULL, 0, { 0 }, F_INT, NULL }
 };

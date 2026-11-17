@@ -27,6 +27,58 @@ namespace
 const dvar_t *cg_defensive_anim_delay;
 const dvar_t *ai_useServerAnims;
 const dvar_t *ai_useServerAnimsEntity;
+
+// Anim commands for an entity whose client model does not exist yet. The
+// snapshots that carry them can be gone by the time the model is created (a
+// script model spawned and given an anim in the same frame, such as Hudson in
+// Redemption's final swim), and the later commands of other entities would
+// otherwise make them count as already applied. They are applied, in order,
+// when the model is created.
+constexpr int kModelPendingCommands = 8;
+constexpr int kModelPendingMaxAgeMs = 30000;
+struct ModelPendingCommands
+{
+    AnimCommand_SP commands[kModelPendingCommands];
+    int count;
+};
+ModelPendingCommands s_modelPending[1024];
+
+void CG_KeepCommandForModel_SP(const AnimCommand_SP &command)
+{
+    if (command.entNum < 0 || command.entNum >= 1024)
+        return;
+    ModelPendingCommands &pending = s_modelPending[command.entNum];
+    for (int i = 0; i < pending.count; ++i)   // the same command in the next snapshot
+        if (pending.commands[i].serverTime == command.serverTime && pending.commands[i].sequence == command.sequence
+            && pending.commands[i].type == command.type && pending.commands[i].animIndex == command.animIndex)
+            return;
+    if (pending.count == kModelPendingCommands)
+    {
+        std::memmove(pending.commands, pending.commands + 1, sizeof(pending.commands[0]) * (kModelPendingCommands - 1));
+        --pending.count;
+    }
+    pending.commands[pending.count++] = command;
+}
+
+void CG_ForgetKeptCommand_SP(const AnimCommand_SP &command)
+{
+    if (command.entNum < 0 || command.entNum >= 1024)
+        return;
+    ModelPendingCommands &pending = s_modelPending[command.entNum];
+    for (int i = 0; i < pending.count; ++i)
+        if (pending.commands[i].serverTime == command.serverTime && pending.commands[i].sequence == command.sequence
+            && pending.commands[i].type == command.type && pending.commands[i].animIndex == command.animIndex)
+        {
+            std::memmove(pending.commands + i, pending.commands + i + 1, sizeof(pending.commands[0]) * (pending.count - i - 1));
+            --pending.count;
+            return;
+        }
+}
+}
+
+void __cdecl CG_ClearModelPendingAnimCommands_SP()
+{
+    std::memset(s_modelPending, 0, sizeof(s_modelPending));
 }
 
 void __cdecl CG_RegisterAnimCommandDvars_SP()
@@ -34,6 +86,7 @@ void __cdecl CG_RegisterAnimCommandDvars_SP()
     cg_defensive_anim_delay = _Dvar_RegisterBool("cg_defensive_anim_delay", true, 0, "");
     ai_useServerAnims = _Dvar_RegisterBool("ai_useServerAnims", false, 0, "");
     ai_useServerAnimsEntity = _Dvar_RegisterInt("ai_useServerAnimsEntity", -1, -1, 1023, 0x80, "");
+    CG_ClearModelPendingAnimCommands_SP();   // registered at every client game start
 }
 
 static bool CG_IsAnimCommandRagdollRunning_SP(int handle)
@@ -148,13 +201,20 @@ int CG_ProcessAnimCommands_SP(int localClientNum, snapshot_s *snapshot)
         {
             DObj *obj = Com_GetClientDObj(command->entNum, localClientNum);
             if (!obj)
+            {
+                CG_KeepCommandForModel_SP(*command);
                 continue;
+            }
             XAnimTree_s *tree = DObjGetTree(obj);
             if (!tree || static_cast<unsigned int>(command->animIndex) >= XAnimGetAnimTreeSize(tree->anims))
                 continue;
             CG_ApplySelectedAnimCommand_SP(localClientNum, obj, tree, command, snapshot->serverTime);
             ++applied;
             cg->lastAppliedAnimCommandTime = command->serverTime;
+        }
+        else if (!Com_GetClientDObj(command->entNum, localClientNum))
+        {
+            CG_KeepCommandForModel_SP(*command);   // never applied: its entity has no model yet
         }
         snapshot->animCommandProcessed[commandNum] = 1;
     }
@@ -204,12 +264,16 @@ int CG_ReplayAnimCommandsForEntity_SP(int localClientNum, snapshot_s *snapshot, 
         }
         if (static_cast<unsigned int>(command->animIndex) >= XAnimGetAnimTreeSize(tree->anims))
             continue;
+        CG_ForgetKeptCommand_SP(*command);   // applied here, so not again from the kept copy
         CG_ApplySelectedAnimCommand_SP(localClientNum, obj, tree, command, snapshot->serverTime);
         snapshot->animCommandProcessed[commandNum] = 1;
     }
     return startTime;
 }
 
+static void CG_ApplyModelPendingCommands_SP(int localClientNum, int entNum, DObj *obj);
+
+// Called when an entity gets its client model (every creation path).
 void __cdecl CG_InitializeEntityAnimCommandTime_SP(int localClientNum, int entityNum)
 {
     centity_s *cent = CG_GetEntity(localClientNum, entityNum);
@@ -222,6 +286,29 @@ void __cdecl CG_InitializeEntityAnimCommandTime_SP(int localClientNum, int entit
     cent->animCommandTime = current;
     if (next < current || current == 0)
         cent->animCommandTime = next;
+    // Then what the replay could not: commands whose snapshots are gone.
+    if (DObj *obj = Com_GetClientDObj(entityNum, localClientNum))
+        CG_ApplyModelPendingCommands_SP(localClientNum, entityNum, obj);
+}
+
+// The commands kept for an entity before it had a model, oldest first: what
+// the replay of the current snapshots did not apply.
+static void CG_ApplyModelPendingCommands_SP(int localClientNum, int entNum, DObj *obj)
+{
+    if (entNum < 0 || entNum >= 1024 || !s_modelPending[entNum].count)
+        return;
+    cg_s *cg = CG_GetLocalClientGlobals(localClientNum);
+    XAnimTree_s *tree = DObjGetTree(obj);
+    ModelPendingCommands &pending = s_modelPending[entNum];
+    for (int i = 0; tree && i < pending.count; ++i)
+    {
+        const AnimCommand_SP &command = pending.commands[i];
+        const int age = static_cast<int>(static_cast<unsigned int>(cg->time) - static_cast<unsigned int>(command.serverTime));
+        if (age > kModelPendingMaxAgeMs || static_cast<unsigned int>(command.animIndex) >= XAnimGetAnimTreeSize(tree->anims))
+            continue;
+        CG_ApplySelectedAnimCommand_SP(localClientNum, obj, tree, &command, command.serverTime);
+    }
+    pending.count = 0;
 }
 
 void __cdecl CG_ApplyPendingAnimCommandsForDObj_SP(int localClientNum, int entNum, DObj *obj)

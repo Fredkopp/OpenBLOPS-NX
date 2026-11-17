@@ -88,7 +88,7 @@ struct alignas(16) hybrid_vector // sizeof=0x10
 {                                                                             // XREF: colgeom_visitor_t/r
         float4 vec;                                                 // XREF: AimTarget_IsTargetVisible+1B/w
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(hybrid_vector) == 16);
 #endif
 

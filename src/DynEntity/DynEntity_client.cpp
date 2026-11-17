@@ -2507,7 +2507,7 @@ void __cdecl DynEntCl_EntityImpactEvent(
     float presetBulletForceScale; // [esp+4Ch] [ebp-34h]
     float force[3]; // [esp+50h] [ebp-30h] BYREF
     unsigned int boneName; // [esp+5Ch] [ebp-24h] BYREF
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     intptr_t id;
 #else
     int id; // [esp+60h] [ebp-20h]

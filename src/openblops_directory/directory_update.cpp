@@ -302,7 +302,51 @@ bool AtMainMenu()
     if (com_sv_running->current.enabled && !Com_IsMenuLevel(nullptr)) return false;   // in a match
     return CL_GetLocalClientConnectionState(0) <= CA_DISCONNECTED || Com_IsMenuLevel(nullptr);
 }
+
+#ifdef KISAK_SP
+// SP's front end ("frontend") loads behind the Treyarch intro video and the
+// level is running well before the video ends; a popup opened then broke the
+// front end (a black screen once the video was over). The TV room is up once
+// its menu "main" has opened and the input lock it opens next, "main_lockout",
+// has closed again; both report to the level script as menu level messages
+// (Directory_FrontendMenuMessage). Time of the last of those, 0 for none yet.
+int s_tvRoomSince;
+bool s_tvRoomLocked;
+#endif
+
+// Where the popup is offered at start: SP in the TV room, MP over its main
+// menu, which is there straight away.
+bool ReadyToOffer()
+{
+#ifdef KISAK_SP
+    return cls.uiStarted && com_sv_running && com_sv_running->current.enabled && Com_IsMenuLevel(nullptr)
+        && CL_GetLocalClientConnectionState(0) == CA_ACTIVE && s_tvRoomSince && !s_tvRoomLocked;
+#else
+    return AtMainMenu();
+#endif
+}
 } // namespace
+
+void Directory_FrontendMenuMessage(const char *state, const char *item)
+{
+#ifdef KISAK_SP
+    if (!state || !item) return;
+    const bool open = !I_stricmp(state, "open"), close = !I_stricmp(state, "close");
+    if (!I_stricmp(item, "main") && open)
+    {
+        s_tvRoomSince = Sys_Milliseconds();
+        s_tvRoomLocked = false;
+    }
+    else if (!I_stricmp(item, "main_lockout") && (open || close))
+    {
+        s_tvRoomLocked = open;
+        if (close) s_tvRoomSince = Sys_Milliseconds();
+    }
+#else
+    (void)state;
+    (void)item;
+#endif
+}
 
 void Directory_UpdateFrame()
 {
@@ -319,7 +363,14 @@ void Directory_UpdateFrame()
     }
     if (!cls.uiStarted) return;
     const int now = Sys_Milliseconds();
-    if (!s_uiSince) s_uiSince = now;
+    // How long the place to offer it has been up: restarts whenever it is not.
+    const bool ready = ReadyToOffer();
+    if (!ready) s_uiSince = 0;
+    else if (!s_uiSince) s_uiSince = now;
+#ifdef KISAK_SP
+    // In the TV room, counted from when it came up.
+    if (ready) s_uiSince = s_tvRoomSince;
+#endif
     auto *ui = UI_GetInfo(0);
     if (!ui) return;
     UiContext *dc = &ui->uiDC;
@@ -334,8 +385,9 @@ void Directory_UpdateFrame()
             Cbuf_AddText(0, "quit\n");
         }
     }
-    // Offer it once, over the main menu (not over a loading screen or a match).
-    if (!s_shown && info.phase == NxUpdatePhase::Available && AtMainMenu() && now - s_uiSince > 500 && Build(dc))
+    // Offer it once, over the main menu (not over the intro video, a loading
+    // screen or a match).
+    if (!s_shown && info.phase == NxUpdatePhase::Available && ready && now - s_uiSince > 1500 && Build(dc))
     {
         s_shown = true;
         Refresh();

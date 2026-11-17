@@ -1379,7 +1379,6 @@ bool first_time_called_0 = true;
 void __cdecl Path_MovingNodesInCylinder()
 {
     generic_avl_map_node_t *m_tree_root; // [esp+0h] [ebp-106Ch]
-    void *j; // [esp+18h] [ebp-1054h]
     unsigned int v3; // [esp+20h] [ebp-104Ch]
     int i; // [esp+24h] [ebp-1048h]
     int entityList[1025]; // [esp+4Ch] [ebp-1020h] BYREF
@@ -1420,8 +1419,8 @@ void __cdecl Path_MovingNodesInCylinder()
             }
             if (m_tree_root)
             {
-                for (j = m_tree_root->m_data; j; j = (void *)*((_DWORD *)j + 5))
-                    Path_NodesInCylinder_process(*((pathnode_t **)j + 4));
+                for (const pathnode_parent_t *parent = (const pathnode_parent_t *)m_tree_root->m_data; parent; parent = parent->m_next)
+                    Path_NodesInCylinder_process(parent->m_node);
             }
         }
     }

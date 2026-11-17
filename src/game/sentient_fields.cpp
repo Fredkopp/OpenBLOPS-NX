@@ -6,7 +6,7 @@
 #include <game_mp/g_spawn_mp.h>
 
 // The script field table below binds sentient_s members by raw offset; keep the layout honest.
-#ifndef KISAK_NX // nx-port: x86 offsets; the table below uses offsetof
+#ifndef KISAK_64BIT // nx-port: x86 offsets; the table below uses offsetof
 static_assert(offsetof(sentient_s, eTeam) == 4, "sentient field offset");
 static_assert(offsetof(sentient_s, scriptOwner) == 8, "sentient field offset");
 static_assert(offsetof(sentient_s, iThreatBias) == 12, "sentient field offset");

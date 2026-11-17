@@ -82,6 +82,11 @@ void __cdecl CL_DrawSpinnerLoadbar(
                 const float *color,
                 float percentDone);
 void __cdecl CL_RegisterDvars();
+#ifdef KISAK_SP
+// Sets sv_saveGameAvailable from the campaign progress (mis_01) for the
+// campaign TV's native RESUME GAME; see loadgame_continue in cl_main.cpp.
+void CL_UpdateCampaignResume_SP();
+#endif
 
 
 extern clientUIActive_t clientUIActives[MAX_LOCAL_CLIENTS];

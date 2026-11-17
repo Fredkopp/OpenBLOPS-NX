@@ -7,7 +7,7 @@
 #include <database/db_file_load.h>
 #include "ui_shared.h"
 #include <qcommon/common.h>
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 #include <client/client.h>
 #include <gfx_d3d/r_cinematic.h>
 #include <bgame/bg_misc.h>
@@ -29,7 +29,7 @@ void __cdecl UI_DrawHandlePic(
     float s1; // [esp+38h] [ebp-8h]
     float s0; // [esp+3Ch] [ebp-4h]
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     if ( material && sharedUiInfo.loadingScreen
         && (!R_Cinematic_IsStarted() || !cg_cinematicFullscreen->current.enabled)
         && CL_GetLocalClientConnectionState(0) < CA_ACTIVE

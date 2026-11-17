@@ -470,7 +470,7 @@ struct __declspec(align(4)) server_t // sizeof=0x5C28C
     volatile int mainThreadWaiting_SP;
 #endif
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 #ifdef KISAK_SP
 static_assert(sizeof(server_t) == 377548 + 2 * sizeof(void *) + 2 * sizeof(int) + ((MAX_CONFIGSTRINGS - 0xCBC) & ~1) * sizeof(unsigned short) + 3 * sizeof(int));
 #else

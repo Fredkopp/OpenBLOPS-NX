@@ -47,9 +47,7 @@ struct itemDef_s{int type=0,dataType=0;struct{const char*name=nullptr;rectDef_s 
  void*rectExpData=nullptr;GenericEventHandler*onEvent=nullptr;UIAnimInfo*animInfo=nullptr;menuDef_t*parent=nullptr;};
 struct menuDef_t{struct{const char*name="options_graphics";}window;int itemCount=0;itemDef_s**items=nullptr;};
 const void*focused=nullptr;bool Window_HasFocus(int,const decltype(itemDef_s::window)*w){return focused==w;}
-bool registered=false,setting=false;
-void _Dvar_RegisterBool(const char*n,bool def,unsigned flags,const char*){
- assert(!strcmp(n,"cg_performanceOverlay")&&!def&&flags==1);if(!registered){registered=true;setting=def;}}
+bool setting=false;
 struct dvar_t{struct{int integer;}current;};
 dvar_t baseLimit{{60}},savedLimit{{-1}};
 const dvar_t *com_maxfps=&baseLimit;
@@ -90,7 +88,7 @@ code+=function('src/ui/ui_utils.cpp','int __cdecl Item_IsTextDefType(')+'\n'
 code+='const dvar_t *nx_fpsLimit=&savedLimit;\n'+function('src/qcommon/common.cpp','int Com_GetFrameRateLimit(')+'\n'
 for sig in ('static void UI_NX_SetPreviewDvar(', 'static void UI_NX_CopyPreviewDvar(', 'static void UI_NX_SyncSettingsPreview('):
  code+=function('src/ui/ui_shared.cpp',sig)+'\n'
-for sig in ['static itemDef_s *UI_NX_FindItem(', 'static bool UI_NX_ItemNamed(', 'static itemDef_s *UI_NX_FindItemByDvar(', 'static void UI_NX_MoveItem(', 'static itemDef_s *UI_NX_CloneItem(', 'bool UI_NX_IsHiddenAimAssistHighlight(', 'static bool UI_AddGraphicsChoiceRow(', 'static void UI_AddPerformanceOverlayOption(', 'static void UI_NX_AddFrameRateOption(', 'static float Item_Multi_GetFloatValue(', 'int __cdecl Item_Multi_FindDvarByValue(', 'int __cdecl Item_Multi_CountSettings(', 'int __cdecl Item_List_NextEntryForKey(', 'static bool Item_Multi_CycleValue(', 'int __cdecl Item_Multi_HandleKey(', 'const char *__cdecl Item_Multi_Setting(']:
+for sig in ['static itemDef_s *UI_NX_FindItem(', 'static bool UI_NX_ItemNamed(', 'static itemDef_s *UI_NX_FindItemByDvar(', 'static void UI_NX_MoveItem(', 'static itemDef_s *UI_NX_CloneItem(', 'bool UI_NX_IsHiddenAimAssistHighlight(', 'static bool UI_AddGraphicsChoiceRow(', 'static void UI_NX_AddFrameRateOption(', 'static float Item_Multi_GetFloatValue(', 'int __cdecl Item_Multi_FindDvarByValue(', 'int __cdecl Item_Multi_CountSettings(', 'int __cdecl Item_List_NextEntryForKey(', 'static bool Item_Multi_CycleValue(', 'int __cdecl Item_Multi_HandleKey(', 'const char *__cdecl Item_Multi_Setting(']:
  code+=function('src/ui/ui_shared.cpp',sig)+'\n'
 code+=function('src/ui/ui_shared.cpp','void __cdecl Item_Action(')+'\n'
 code+='''int main(){
@@ -142,36 +140,8 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
   if row['dvar']=='sm_enable' and row['name']:code+=f' native[{i}].onEvent=&leave;\n'
  code+=f' menu.items=table;menu.itemCount={len(rows)};\n'
  code+=r'''
- auto*source=UI_NX_FindItemByDvar(&menu,"sm_enable");auto*last=UI_NX_FindItemByDvar(&menu,"cg_fov_default");
- const auto oldRect=source->window.rect;const auto oldText=source->typeData.textDef;
- UI_AddPerformanceOverlayOption(&menu);
- assert(menu.itemCount==int(ARRAY_COUNT(native))+5);
- auto*choice=UI_NX_FindItem(&menu,"options_graphics_performance",nullptr);
- assert(choice&&choice->type==10&&choice->dataType==10&&!strcmp(choice->dvar,"cg_performanceOverlay"));
- assert(choice->window.rect.y==last->window.rect.y+19&&choice->window.rect.x==source->window.rect.x);
- assert(choice->parent==&menu&&choice->typeData.textDef!=oldText&&choice->onEvent&&choice->onEvent->name==leave.name);
- auto*multi=choice->typeData.textDef->textTypeData.focusItemDef->focusTypeData.multi;
- assert(multi&&multi->count==2&&!multi->strDef&&multi->dvarValue[0]==0&&multi->dvarValue[1]==1);
- assert(!strcmp(multi->dvarList[0],"@MENU_OFF")&&!strcmp(multi->dvarList[1],"@MENU_ON"));
- int layers=0,highlights=0;
- for(int i=0;i<menu.itemCount;++i){auto*item=menu.items[i];
-  if(item->window.name&&!strncmp(item->window.name,"options_graphics_performance",28)){
-   ++layers;assert(item->visibleExp.numRpn==0&&!item->dvarFlags&&!item->showBits&&item->hideBits==~0ULL);
-   if(item!=choice&&Item_IsTextDefType(item))assert(!strcmp(item->typeData.textDef->text,"@OPENBLOPS_PERFORMANCE_OVERLAY"));
-   if(!strcmp(item->window.name,"options_graphics_performance_hl")){
-    ++highlights;assert(UI_NX_IsHiddenAimAssistHighlight(0,item));focused=&choice->window;
-    assert(!UI_NX_IsHiddenAimAssistHighlight(0,item));focused=nullptr;
-   }
-  }
-  if(Item_IsTextDefType(item)&&item->typeData.textDef){const char*t=item->typeData.textDef->text;
-   if(t&&(!strcmp(t,"@MENU_APPLY")||!strcmp(t,"@PLATFORM_BACK")))
-    assert(item->window.rect.y>=choice->window.rect.y+choice->window.rect.h+5&&item->window.rect.y+item->window.rect.h<=240);
-  }
- }
- assert(layers==5&&highlights==2);
- assert(source->typeData.textDef==oldText&&!memcmp(&source->window.rect,&oldRect,sizeof(oldRect))&&!strcmp(source->dvar,"sm_enable"));
- int count=menu.itemCount;auto*items=menu.items;setting=true;UI_AddPerformanceOverlayOption(&menu);
- assert(setting&&count==menu.itemCount&&items==menu.items);
+ auto*source=UI_NX_FindItemByDvar(&menu,"sm_enable");
+ int count=menu.itemCount;auto*items=menu.items;
 
  auto*vsync=UI_NX_FindItemByDvar(&menu,"ui_r_vsync");
  auto*filter=UI_NX_FindItemByDvar(&menu,"r_texFilterMipMode");
@@ -230,8 +200,7 @@ code+='puts("PASS: live settings previews, automatic and manual textures, SP/MP 
 cpp=out/'menu.cpp';exe=cpp.with_suffix('.exe');cpp.write_text(code)
 subprocess.run([a.compiler,'-std=c++17','-w',str(cpp),'-o',str(exe)],check=True,env=env)
 subprocess.run([str(exe)],check=True,env=env)
-# Compile the actual drawing gate: old archived cg_drawFPS=1 must stay hidden;
-# the new switch must work even when cg_drawFPS was previously zero.
+# Compile the actual drawing gate: the counter follows cg_drawFPS, as in retail.
 code=r'''
 #include <cassert>
 #define __cdecl
@@ -239,21 +208,20 @@ struct meminfo_t{};struct ScreenPlacement{}scrPlaceFull;
 struct Dvar{struct{bool enabled=false;int integer=0;float vector[2]{};}current;};
 Dvar corner,fps,stat,anim,snap,time;
 Dvar *cg_debugInfoCornerOffset=&corner,*cg_drawFPS=&fps,*com_statmon=&stat,*cg_drawAnimAttachTags=&anim,*cg_drawSnapshot=&snap,*cg_drawSnapshotTime=&time,*g_listEntityCounts=nullptr;
-int g_listEntityCountsValue=0,draws=0;bool overlay=false;
+int g_listEntityCountsValue=0,draws=0;
 void track_getbasicinfo(meminfo_t*){}void R_TrackStatistics(int){}
-int Dvar_GetInt(const char*){return 0;}bool Dvar_GetBool(const char*){return overlay;}
+int Dvar_GetInt(const char*){return 0;}
 float CG_DrawViewpos(ScreenPlacement*,float y,int){return y;}
 float CG_DrawFPS(int,ScreenPlacement*,float y,meminfo_t*){++draws;return y;}
 float CG_DrawStatmon(ScreenPlacement*,float y){return y;}float CG_DrawAnimTagInfo(ScreenPlacement*,float y){return y;}
 float CG_DrawSnapshot(int,float y){return y;}float DrawSnapshotInfo(ScreenPlacement*,float y){return y;}
 void DrawEntityCounts(ScreenPlacement*,float){}
 '''+function('src/cgame/cg_draw_debug.cpp','void __cdecl CG_DrawUpperRightDebugInfo(')+r'''
-int main(){fps.current.integer=1;CG_DrawUpperRightDebugInfo(0);assert(!draws);
-overlay=true;CG_DrawUpperRightDebugInfo(0);assert(draws==1);fps.current.integer=0;CG_DrawUpperRightDebugInfo(0);assert(draws==2);
-overlay=false;CG_DrawUpperRightDebugInfo(0);assert(draws==2);}
+int main(){CG_DrawUpperRightDebugInfo(0);assert(!draws);
+fps.current.integer=1;CG_DrawUpperRightDebugInfo(0);assert(draws==1);fps.current.integer=3;CG_DrawUpperRightDebugInfo(0);assert(draws==2);}
 '''
 cpp=out/'draw.cpp';exe=cpp.with_suffix('.exe');cpp.write_text(code)
 subprocess.run([a.compiler,'-std=c++17','-w',str(cpp),'-o',str(exe)],check=True,env=env);subprocess.run([str(exe)],check=True,env=env)
 assert 'CG_DrawVersion(' not in function('src/client_mp/cl_scrn_mp.cpp','void __cdecl CL_DrawScreen(')
 assert 'return false;' in function('src/ui/ui_main.cpp','bool __cdecl UI_ShouldDrawBuildNumber(')
-print('PASS: FPS/stats master toggle ignores legacy FPS setting; menu and gameplay build labels removed')
+print('PASS: FPS/stats counter follows cg_drawFPS; menu and gameplay build labels removed')

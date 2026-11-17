@@ -38,7 +38,7 @@
 #include <game/actor.h>
 #include <ik/ik_import.h>
 #include <EffectsCore/fx_system.h>
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 #include <game_mp/g_main_mp.h>
 #include <game/actor.h>
 #endif
@@ -232,7 +232,7 @@ void __cdecl CG_ActorProcessSnapshot(int localClientNum, centity_s *cent)
 #endif
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 // cgameGlob->time each entity last created its actor DObj, for the report below.
 static int s_nxActorDObjCreatedAt[1024];
 
@@ -390,7 +390,7 @@ void __cdecl CG_UpdateActorDObj(int localClientNum, centity_s *cent, actorInfo_t
                 ++numModels;
             }
 #endif
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             // One live DObj per actor tree. CG_UpdateEntInfo advances the tree
             // of every DObj in the snapshot, so a second DObj on the same tree
             // -- an old occupant of this actor slot that was never freed --
@@ -960,7 +960,7 @@ bool __cdecl CG_EntityNeedsScriptThread(int localClientNum, centity_s *cent)
     return 0;
 }
 
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
 extern const dvar_t *nx_physics;   // phys_main.cpp
 #endif
 
@@ -1129,7 +1129,7 @@ void __cdecl CG_ActorCorpse(int localClientNum, centity_s *cent)
     {
         __debugbreak();
     }
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
     // The DObj goes even for a corpse flagged EF_NODRAW: those skipped the
     // free below, kept the actor slot's tree, and the next zombie in the slot
     // animated at double speed again -- seen after killing several at once.
@@ -1138,7 +1138,7 @@ void __cdecl CG_ActorCorpse(int localClientNum, centity_s *cent)
 #endif
     if ( (cent->nextState.lerp.eFlags & 0x20) == 0 )
     {
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
         // HACK while the physics solver is unported (nx_physics off): there is
         // no ragdoll to take the body over when the death animation ends, and
         // the corpse's client anim tree starts empty, so it stood in its bind

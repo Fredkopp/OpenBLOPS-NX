@@ -59,7 +59,7 @@ struct __declspec(align(16)) GlassPhysics // sizeof=0xA0
     void IntegratePos(float deltaTime);
     void GetPosition(float *position, float (*axis)[3]);
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(GlassPhysics) == 160);
 #endif
 
@@ -104,7 +104,7 @@ struct ShardGroup // sizeof=0x54
         int mod);
     int __thiscall TracePoint(float *p0, const float *p1);
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(ShardGroup) == 84);
 #endif
 
@@ -169,7 +169,7 @@ struct GlassShard // sizeof=0x90
 
             void operator=(const GlassShard::Outline::Vertex *other);
         };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
         static_assert(sizeof(Outline::Vertex) == 24);
 #endif
         GlassShard::Outline::Vertex *verts; // XREF: GlassClient::Outlines::InitShards(GlassShard const *,GlassShard * * const,int)+4F/w
@@ -363,7 +363,7 @@ struct GlassShard // sizeof=0x90
     static int lastFreeMemorySize;
     static int removeReasonsCount[KISAK_TOTAL];
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(GlassShard) == 144);
 #endif
 

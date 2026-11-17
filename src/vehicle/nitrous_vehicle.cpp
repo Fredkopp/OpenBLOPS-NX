@@ -2099,7 +2099,7 @@ NitrousVehicle *__cdecl NitrousVehicle::add_vehicle(int id)
 
     if (id != -1)
     {
-#if defined(KISAK_SP) || defined(KISAK_NX)
+#if defined(KISAK_SP) || defined(KISAK_64BIT)
         // Walk native nodes and fields; x86 pointer-word indices truncate on LP64.
         for (NitrousVehicle *existing : g_rb_vehicle_list)
         {
@@ -3618,7 +3618,7 @@ void __cdecl G_SetVehDriverInputs(int localClientNum, int vehEntNum, usercmd_s *
 
 void __cdecl G_ClearVehicleInputs()
 {
-#if defined(KISAK_SP) || defined(KISAK_NX)
+#if defined(KISAK_SP) || defined(KISAK_64BIT)
     if (g_rb_vehicle_list.m_list_count > 0)
     {
         PROF_SCOPED("G_ClearVehicleInputs");

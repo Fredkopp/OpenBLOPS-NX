@@ -1,4 +1,14 @@
-export const executables = ['OpenBLOPS-NX.nro', 'OpenBLOPS-NX-MP.nro'];
+// Each console's release ZIP, its two executables and the SD folder they go to.
+export const consoles = {
+  switch: {
+    name: 'Nintendo Switch', archive: 'OpenBLOPS-NX.zip', folder: 'OpenBLOPS-NX',
+    download: 'OpenBLOPS-NX-Switch.zip', executables: ['OpenBLOPS-NX.nro', 'OpenBLOPS-NX-MP.nro'],
+  },
+  switch2: {
+    name: 'Nintendo Switch 2', archive: 'OpenBLOPS-NX2.zip', folder: 'OpenBLOPS-NX2',
+    download: 'OpenBLOPS-NX2-Switch2.zip', executables: ['OpenBLOPS-NX2.nro', 'OpenBLOPS-NX2-MP.nro'],
+  },
+};
 
 async function inflate(payload, size) {
   const output = new Uint8Array(size);
@@ -30,7 +40,8 @@ function titleOf(bytes) {
   return new TextDecoder().decode(name.subarray(0, name.indexOf(0) >>> 0));
 }
 
-export async function readRelease(buffer) {
+export async function readRelease(buffer, target = consoles.switch) {
+  const { executables } = target;
   const view = new DataView(buffer);
   const bytes = new Uint8Array(buffer);
   let end = buffer.byteLength - 22;

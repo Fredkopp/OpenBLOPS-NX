@@ -166,7 +166,7 @@ void __cdecl DynEnt_LoadEntities()
     char *data_p; // [esp+31A9Ch] [ebp-54h] BYREF
     char IsValidClassName; // [esp+31AA3h] [ebp-4Dh]
     char *src; // [esp+31AA4h] [ebp-4Ch]
-    char className[7]; // [esp+31AA8h] [ebp-48h] BYREF
+    char className[64]; // [esp+31AA8h] [ebp-48h] BYREF
     _BYTE v66[61]; // [esp+31AAFh] [ebp-41h] BYREF
 
     LoadRopeParams();

@@ -272,7 +272,7 @@ char __cdecl R_GetFrontBufferData(int x, int y, int width, int height, int bytes
     else
     {
         monitor = MonitorFromWindow((HWND)dx.windows[0].swapChain, 2u);
-        monitorInfo.cbSize = 40;
+        monitorInfo.cbSize = sizeof(monitorInfo);
         if ( !GetMonitorInfoA(monitor, &monitorInfo) )
         {
             Com_PrintError(8, "ERROR: cannot take screenshot: couldn't get screen dimensions\n");
@@ -442,7 +442,7 @@ char __cdecl R_TakeScreenshot(char *filename, int format)
     else
     {
         monitor = MonitorFromWindow((HWND)dx.windows[0].swapChain, 2u);
-        monitorInfo.cbSize = 40;
+        monitorInfo.cbSize = sizeof(monitorInfo);
         if ( !GetMonitorInfoA(monitor, &monitorInfo) )
         {
             Com_PrintError(8, "ERROR: cannot take screenshot: couldn't get screen dimensions\n");

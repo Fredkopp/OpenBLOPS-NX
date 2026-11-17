@@ -8,7 +8,7 @@
 #include "glass_client.h"
 #include <physics/physpreset_load_obj.h>
 #include <client/cl_debugdata.h>
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
 extern const dvar_t *nx_physics;   // phys_main.cpp
 #endif
 #include <gfx_d3d/r_bsp.h>
@@ -3875,7 +3875,7 @@ bool __thiscall GlassShard::InitPhysicsObj(bool enableCollisions)
     this->timeUntilAction = clGlasses->renderer->maxShardLife->current.value;
     if ( this->physObjId || this->glassPhysics )
         return 1;
-#if defined(KISAK_NX) && !defined(KISAK_SP)
+#if defined(KISAK_64BIT) && !defined(KISAK_SP)
     // KNOWN LIMITATION while physics is off: no rigid bodies, so a colliding
     // shard cannot be made. Asking anyway put the shard on the colliding list,
     // Phys_ObjCreate then failed, and the stale entry was later picked as the

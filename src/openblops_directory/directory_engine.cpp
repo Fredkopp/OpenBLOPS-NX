@@ -154,20 +154,32 @@ std::string DisplayName(const char *s)
             name += *s;
     return name.empty() ? "OpenBLOPS match" : name;
 }
+// The directory address is the build's (BO1_DIRECTORY_DEFAULT, from
+// OPENBLOPS_DIRECTORY_DEFAULT) and is not saved to the player's config. Older
+// builds archived it, so their configs still hold a
+// 'seta bo1_directory "..."' line, and seta archives the dvar again whenever a
+// config runs. Such a value is dropped back to the build's default and the
+// archive flag cleared, at registration and before each config write
+// (Directory_BeforeConfigWrite), so the line is not written again. A
+// '+set bo1_directory ...' override is not archived and stays.
+void ForgetSavedAddress()
+{
+    dvar_s *dvar = const_cast<dvar_s *>(Dvar_FindVar("bo1_directory"));
+    if (!dvar || !(dvar->flags & 1))
+        return;
+    dvar->flags &= ~1;
+    Dvar_SetString(dvar, BO1_DIRECTORY_DEFAULT);
+    Com_Printf(14, "Directory: dropped the directory address saved in the config\n");
+}
 void Initialize()
 {
     if (enabled)
         return;
     enabled = _Dvar_RegisterBool("bo1_directory_enabled", true, 1,
                                  "Use the community multiplayer server directory");
-    address = _Dvar_RegisterString("bo1_directory", BO1_DIRECTORY_DEFAULT, 1,
+    address = _Dvar_RegisterString("bo1_directory", BO1_DIRECTORY_DEFAULT, 0,
                                    "Directory numeric IPv4:UDP-port (no blocking DNS)");
-    // config.cfg saves archived dvars, so builds that started with an empty
-    // default left "bo1_directory" "" behind, which would hide a default
-    // added later. Empty means "use the build's default"; turn discovery off
-    // with bo1_directory_enabled 0 instead.
-    if (!address->current.string[0] && BO1_DIRECTORY_DEFAULT[0])
-        Dvar_SetString(const_cast<dvar_s *>(address), BO1_DIRECTORY_DEFAULT);
+    ForgetSavedAddress();
 #ifdef KISAK_SP
     const char *defaultCohort = "openblops-zombies-v1";
 #else
@@ -244,6 +256,10 @@ bool TryOpenBrowser()
 void Directory_Init()
 {
     Initialize();
+}
+void Directory_BeforeConfigWrite()
+{
+    ForgetSavedAddress();
 }
 bool Directory_Source(int source)
 {

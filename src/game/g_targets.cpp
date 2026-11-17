@@ -25,6 +25,49 @@ void __cdecl G_InitTargets()
     }
 }
 
+void G_GetTargetsForCheckpoint(TargetCheckpointSlot (&slots)[MAX_TARGETS])
+{
+    for (unsigned int i = 0; i < MAX_TARGETS; ++i)
+    {
+        const target_t &target = targGlob.targets[i];
+        TargetCheckpointSlot &slot = slots[i];
+        slot = TargetCheckpointSlot{};
+        if (!target.ent)
+            continue;
+        slot.entnum = target.ent->s.number;
+        for (int axis = 0; axis < 3; ++axis)
+            slot.offset[axis] = target.offset[axis];
+        slot.materialIndex = target.materialIndex;
+        slot.offscreenMaterialIndex = target.offscreenMaterialIndex;
+        slot.flags = target.flags;
+    }
+}
+
+// The target configstrings are restored with the others; this restores the
+// server list that target_getarray, lock-on and the HUD markers read.
+void G_SetTargetsFromCheckpoint(const TargetCheckpointSlot (&slots)[MAX_TARGETS])
+{
+    targGlob.targetCount = 0;
+    for (unsigned int i = 0; i < MAX_TARGETS; ++i)
+    {
+        const TargetCheckpointSlot &slot = slots[i];
+        target_t &target = targGlob.targets[i];
+        if (slot.entnum < 0 || slot.entnum >= MAX_GENTITIES)
+        {
+            target.ent = 0;
+            continue;
+        }
+        target.ent = &g_entities[slot.entnum];
+        target.ent->flags |= 0x1000000u;   // FL_TARGET, as Target_Set marks it
+        for (int axis = 0; axis < 3; ++axis)
+            target.offset[axis] = slot.offset[axis];
+        target.materialIndex = slot.materialIndex;
+        target.offscreenMaterialIndex = slot.offscreenMaterialIndex;
+        target.flags = slot.flags;
+        ++targGlob.targetCount;
+    }
+}
+
 void __cdecl Scr_Target_SetShader()
 {
     const char *v0; // eax

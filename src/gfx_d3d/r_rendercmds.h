@@ -252,7 +252,7 @@ struct GfxViewRenderControl // sizeof=0x38
     unsigned int renderingMode;
     unsigned int additionalPostFX;
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(GfxViewRenderControl) == 0x38);
 #endif
 

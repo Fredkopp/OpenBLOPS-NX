@@ -31,7 +31,7 @@
 #include <universal/com_fileaccess.h>
 #include <malloc.h>
 #include <string.h>
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 #include <mutex>
 #include <new>
 struct NxZipCache {
@@ -450,13 +450,13 @@ extern unzFile unzReOpen (const char* path, unzFile file)
 	s->file = fin;
 	// NOTE(mrsteyk): fucking dogshit.
 	s->pfile_in_zip_read = 0;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     s->cache = nullptr;
 #endif
 	return (unzFile)s;	
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 unzFile unzOpenEntry(const char *path, unzFile archive, unsigned long position)
 {
     auto *parent = reinterpret_cast<unz_s *>(archive);
@@ -585,7 +585,7 @@ extern unzFile unzOpen (const char* path)
 	s=(unz_s*)ALLOC(sizeof(unz_s));
 	if (!s) { ZIP_fclose(fin); return NULL; }
 	*s=us;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     s->cache = new (std::nothrow) NxZipCache;
 #endif
 //	unzGoToFirstFile((unzFile)s);	
@@ -607,7 +607,7 @@ extern int unzClose (unzFile file)
 
     if (s->pfile_in_zip_read!=NULL)
         unzCloseCurrentFile(file);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     if (s->cache) {
         for (auto idle : s->cache->idle)
             if (idle) unzClose(idle);
@@ -1402,7 +1402,7 @@ extern int unzOpenCurrentFile (unzFile file)
     return UNZ_OK;
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 int unzSeekCurrentFile(unzFile file, unsigned long position)
 {
     auto *s = reinterpret_cast<unz_s *>(file);

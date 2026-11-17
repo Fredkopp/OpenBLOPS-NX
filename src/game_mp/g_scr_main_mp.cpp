@@ -478,6 +478,12 @@ void __cdecl GScr_LoadGameTypeScript()
                                         GSCR_CALLBACKSETUP_SCRIPT,
                                         "CodeCallback_Dec20Message",
                                         1);
+    // Retail slot 1 (0x006124dc, stored at 0x01c79b30), enforced like the two above.
+    g_scr_data.saverestored = GScr_LoadScriptAndLabel(
+                                        SCRIPTINSTANCE_SERVER,
+                                        GSCR_CALLBACKSETUP_SCRIPT,
+                                        "CodeCallback_SaveRestored",
+                                        1);
 #endif
     g_scr_data.glassSmash = GScr_LoadScriptAndLabel(
                                         SCRIPTINSTANCE_SERVER,
@@ -494,7 +500,7 @@ void __cdecl GScr_LoadGameTypeScript()
     // Com_Error check (i.e. this file's bEnforceExists):
     //
     //     maps/_callbacksetup:
-    //       1  CodeCallback_SaveRestored            enforce 1   *** NOT LOADED HERE ***
+    //       1  CodeCallback_SaveRestored            enforce 1   (LOADED, run after a checkpoint restore)
     //       2  CodeCallback_StartGameType           enforce 1
     //       3  CodeCallback_PlayerConnect           enforce 1
     //       4  CodeCallback_PlayerDisconnect        enforce 1
@@ -539,9 +545,9 @@ void __cdecl GScr_LoadGameTypeScript()
     // consumer; it is loaded only because retail loads it and the label is present, so its handle
     // costs nothing.
     //
-    // WHY THE REMAINING FOUR ARE NOT ADDED: three of them (SaveRestored, ActorShouldReact,
+    // WHY THE REMAINING THREE ARE NOT ADDED: two of them (ActorShouldReact,
     // DisconnectedDuringLoad) have no field in scr_data_t_unnamed_type_gametype at all, and the
-    // fourth (playerrevive) has a field that NOTHING in this tree reads. Adding them therefore
+    // third (playerrevive) has a field that NOTHING in this tree reads. Adding them therefore
     // buys no behaviour, while each one is a new bEnforceExists=1 site, i.e. a new hard
     // Com_Error(ERR_DROP) at level load if any single assumption about SP's shipped
     // _callbacksetup is wrong. That trade is the wrong way round. A future pass that wants them
@@ -20015,7 +20021,7 @@ static void __cdecl GScr_WeaponMaxDist_SP()
     Scr_AddFloat(BG_GetWeaponDef(weaponIndex)->maxDist, SCRIPTINSTANCE_SERVER);
 }
 
-#ifndef KISAK_NX // nx-port: x86 layout asserts; the fields are read by name
+#ifndef KISAK_64BIT // nx-port: x86 layout asserts; the fields are read by name
 static_assert(offsetof(WeaponDef, fightDist) == 0x70c,
               "WeaponFightDist reads retail SP WeaponDef +0x70c. If fightDist has moved, this "
               "tree's WeaponDef no longer matches the layout that offset was verified against.");
@@ -20545,7 +20551,7 @@ static void GScr_GetWeaponClipModel_SP()
     Scr_AddString(modelName, SCRIPTINSTANCE_SERVER);
 }
 
-#ifndef KISAK_NX
+#ifndef KISAK_64BIT
 static_assert(offsetof(WeaponDef, worldClipModel) == 0x310);
 static_assert(offsetof(WeaponDef, weapType) == 0x1c);
 #endif
@@ -25658,10 +25664,28 @@ void (__cdecl *__cdecl BuiltIn_GetMethod(const char **pName, int *type))(scr_ent
 void __cdecl Scr_SetOrigin(gentity_s *ent, int)
 {
     float org[3]; // [esp+0h] [ebp-Ch] BYREF
-    int savedregs; // [esp+Ch] [ebp+0h] BYREF
 
+#ifdef KISAK_SP
+    // Retail SP 0x00530060: vehicles are teleported with their physics, so a
+    // script move of a driven boat sticks.
+    if ( ent->actor )
+        Scr_Error("cannot directly set the origin on AI.  Use the teleport command instead.\n", false);
+    Scr_GetVector(0, org, SCRIPTINSTANCE_SERVER);
+    if ( !std::isfinite(org[0]) || !std::isfinite(org[1]) || !std::isfinite(org[2]) )
+        Scr_Error("origin being set to NAN.", false);
+    BG_ClampOrigin(org, 18, 17, svs.mapCenter);
+    G_SetOrigin(ent, org);
+    if ( ent->scr_vehicle )
+    {
+        Vec3Copy(org, ent->scr_vehicle->phys.origin);
+        VEH_Teleport(ent, org, ent->r.currentAngles, nullptr);
+    }
+    if ( ent->sentient )
+        Sentient_InvalidateNearestNode(ent->sentient);
+#else
     Scr_GetVector(0, org, SCRIPTINSTANCE_SERVER);
     G_SetOrigin(ent, org);
+#endif
     if ( ent->r.linked )
         SV_LinkEntity(ent);
 }
@@ -25670,8 +25694,18 @@ void __cdecl Scr_SetAngles(gentity_s *ent, int)
 {
     float angles[3]; // [esp+0h] [ebp-Ch] BYREF
 
+#ifdef KISAK_SP
+    // Retail SP 0x0052A930.
+    if ( ent->actor )
+        Scr_Error("cannot directly set the angles on AI.  Use the teleport command instead.\n", false);
     Scr_GetVector(0, angles, SCRIPTINSTANCE_SERVER);
     G_SetAngle(ent, angles);
+    if ( ent->r.linked )
+        SV_LinkEntity(ent);
+#else
+    Scr_GetVector(0, angles, SCRIPTINSTANCE_SERVER);
+    G_SetAngle(ent, angles);
+#endif
 }
 
 void __cdecl Scr_SetExposureIndex(gentity_s *ent, int)

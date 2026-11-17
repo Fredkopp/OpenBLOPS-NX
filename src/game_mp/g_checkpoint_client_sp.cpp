@@ -30,6 +30,7 @@
 #include <cgame_mp/cg_snapshot_mp.h>
 #include <cgame_mp/cg_servercmds_mp.h>
 #include <cgame_mp/cg_view_mp.h>
+#include <cgame_mp/cg_animscripted_mp.h>
 #include <cgame_mp/cg_draw_mp.h>
 #include <bit>
 #include <client_mp/cl_input_mp.h>
@@ -187,7 +188,7 @@ bool G_CheckpointApplyClient_SP(const std::vector<std::uint8_t>& bytes,std::stri
         // Animation commands belong to the restored timeline. A future
         // watermark marks the checkpoint's full animation baseline as already
         // applied, leaving freshly rebuilt client actor trees in their bind pose.
-        cg.lastAppliedAnimCommandTime=-1;
+        cg.lastAppliedAnimCommandTime=-1;CG_ClearModelPendingAnimCommands_SP();
         cg.time=saved.time;cg.oldTime=saved.oldTime;cg.physicsTime=saved.physicsTime;cg.cameraData=saved.camera;cg.predictedPlayerState=level.clients[0].ps;cg.predictedErrorTime=0;std::memset(cg.predictedError,0,sizeof(cg.predictedError));
         cg.landTime = saved.landTime;
         cg.landChange = saved.landChange;
@@ -202,6 +203,16 @@ bool G_CheckpointApplyClient_SP(const std::vector<std::uint8_t>& bytes,std::stri
         cg.timeScaleTimeEnd=saved.scaleStartTime?std::bit_cast<int>(static_cast<unsigned>(saved.scaleEndTime)+wallDelta):0;
         Com_SetTimeScale(saved.timeScale);Dvar_SetBoolByName("hud_missionFailed",saved.missionFailed);
         cg.viewFade=0;cg.v_dmg_time=0;std::memset(cg.viewDamage,0,sizeof(cg.viewDamage));CG_ClearGenericFilter(&cg);CG_ClearScriptedBlur_SP(0);CG_ResetViewModelHidden_SP(0);CG_InitLocalEntities(0);
+        // Swimming state from the moment of death, as a fresh load has it: a
+        // death underwater left the swim arms and water effects linked to the
+        // camera (which also hides the gun) and the swim flag set, and the
+        // restored client scripts that would unlink them never linked them. The
+        // next frame starts swimming again if the restored player is in water.
+        cg.cameraLinkedEntitiesCount=0;cg.swimming=0;cg.swimmingStartTime=0;cg.underwaterVision=false;
+        // The water sheeting and screen drops a death underwater left on also
+        // keep death-time timestamps, which the restore's rewound cg.time puts
+        // in the future, so they would not fade until play caught up.
+        CG_StopWaterSheetingFX_SP(0);cg.waterDropCount=0;cg.waterDropStartTime=0;cg.waterDropStopTime=0;
         for(int i=0;i<VISIONSETMODECOUNT;++i){cg.visionSetFrom[i]=saved.vision[0][i];cg.visionSetTo[i]=saved.vision[1][i];cg.visionSetCurrent[i]=saved.vision[2][i];cg.visionSetLerpData[i]=saved.blend[i];}
         char* names[]={cg.visionNameNaked,cg.visionNameNight,cg.visionNameFlare,cg.visionNameInfrared,cg.visionNameTvguided,cg.visionNameExtraCam,cg.visionNameLastStand,cg.visionNameDeath,cg.visionNameLowHealth,cg.visionNameUnderwater};for(int i=0;i<10;++i)std::memcpy(names[i],saved.names[i],64);
         for(int i=0;i<3;++i){cl.viewangles[i]=saved.viewangles[i];cg.refdef.vieworg[i]=saved.viewOrg[i];cg.movieCameraOrigin[i]=saved.movieOrigin[i];cg.movieCameraAngles[i]=saved.movieAngles[i];cg.movieCameraVelocity[i]=saved.movieVelocity[i];}

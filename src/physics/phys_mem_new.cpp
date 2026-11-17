@@ -94,7 +94,7 @@ phys_slot_pool *phys_memory_manager::allocate_slot_pool()
     if ( m_list_preallocated_slot_pools_count >= 28 )
     {
         //v6 = phys_memory_manager::allocate(this, 0x18u, 8u);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         v6 = this->allocate(sizeof(phys_slot_pool), 8);
 #else
         v6 = this->allocate(24, 8);

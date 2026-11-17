@@ -620,7 +620,13 @@ int    CL_CGameRendering(int localClientNum)
         v6))
     {
         //BG_EvalVehicleName();
+#ifdef KISAK_SP
+        // Retail SP 0x7A1490 also draws the UI for the DEC-20 terminal catcher
+        // (0x100): its on-screen keyboard is a menu.
+        if ((CL_GetLocalClientUIGlobals(localClientNum)->keyCatchers & 0x150) != 0)
+#else
         if ((CL_GetLocalClientUIGlobals(localClientNum)->keyCatchers & 0x10) != 0)
+#endif
         {
             UI_UpdateTime(localClientNum, cls.realtime);
             UI_Refresh(localClientNum);

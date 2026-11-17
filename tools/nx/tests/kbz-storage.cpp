@@ -7,10 +7,11 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <vector>
 #include <zstd.h>
-#include "../../../src/nx/nx_kbz_storage.h"
+#include "../../../src/database/db_kbz_storage.h"
 
 static std::map<void *, size_t> allocations;
 static size_t liveBytes, peakBytes, allocationCalls, failAllocation, reads, failRead;
@@ -38,7 +39,7 @@ static size_t trackedRead(void *p, size_t size, size_t count, FILE *file) {
 #define calloc trackedCalloc
 #define free trackedFree
 #define fread trackedRead
-#include "../../../src/nx/nx_kbz_storage.cpp"
+#include "../../../src/database/db_kbz_storage.cpp"
 #undef malloc
 #undef calloc
 #undef free
@@ -58,6 +59,8 @@ static unsigned pmemFrees;
 static void Com_Printf(int, const char *, ...) {}
 static bool Assert_MyHandler(const char *, int, int, const char *, ...) { return false; }
 static void PMem_Free(const char *) { ++pmemFrees; }
+static std::mutex s_storageLock;
+static std::vector<const KbzStorage *> s_storages;
 static void DB_FreeXBlocks(XBlock *blocks, int) {
     for (int i = 0; i < 7; ++i)
         require(!blocks[i].data && !blocks[i].size, "KBZ blocks passed to the wrong allocator");
@@ -111,76 +114,76 @@ int main(int argc, char **argv) {
     try {
         require(argc >= 2, "missing output directory");
         auto path = std::filesystem::path(argv[1]) / "storage.kbz";
-        NxKbzStorage *storage = nullptr;
+        KbzStorage *storage = nullptr;
         for (uint32_t version = 1; version <= 3; ++version) {
             auto data = fixture(version); write(path, data);
             peakBytes = allocationCalls = reads = 0;
-            require(NX_ReadKbz(path.string().c_str(), &storage, progress) == 1, "valid fixture rejected");
+            require(DB_ReadKbz(path.string().c_str(), &storage, progress) == 1, "valid fixture rejected");
             const size_t successfulAllocations = allocationCalls, successfulReads = reads;
             require(previousProgress == data.size(), "progress did not reach EOF");
             require(storage->blocks[0][599999] == 0x5a, "resident block bytes changed");
             for (unsigned i = 0; i < 32; ++i) require(storage->blocks[1][i] == 0, "runtime block not zeroed");
-            require(peakBytes == sizeof(NxKbzStorage) + 600000 + 32 + storage->metadataSize,
+            require(peakBytes == sizeof(KbzStorage) + 600000 + 32 + storage->metadataSize,
                     "loader allocated an extra copy of the zone");
-            NX_FreeKbzStorage(storage); require(!liveBytes, "unload leaked memory");
+            DB_FreeKbzStorage(storage); require(!liveBytes, "unload leaked memory");
             for (size_t i = 1; i <= successfulAllocations; ++i) {
                 allocationCalls = 0; failAllocation = i;
-                require(NX_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
+                require(DB_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
                         "allocation failure leaked or published a zone");
             }
             failAllocation = 0;
             for (size_t i = 1; i <= successfulReads; ++i) {
                 reads = 0; failRead = i;
-                require(NX_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
+                require(DB_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
                         "short read leaked or published a zone");
             }
             failRead = 0;
             for (size_t length : {size_t(0), size_t(11), size_t(27), size_t(300000), data.size()-1}) {
                 write(path, {data.begin(), data.begin() + length});
-                require(NX_ReadKbz(path.string().c_str(), &storage) == -1 && !liveBytes, "truncated zone accepted");
+                require(DB_ReadKbz(path.string().c_str(), &storage) == -1 && !liveBytes, "truncated zone accepted");
             }
             auto bad = data; bad[4] = 99; write(path, bad);
-            require(NX_ReadKbz(path.string().c_str(), &storage) == -1 && !liveBytes, "unknown version accepted");
+            require(DB_ReadKbz(path.string().c_str(), &storage) == -1 && !liveBytes, "unknown version accepted");
             bad = data; std::memset(bad.data() + 600028 + 1, 0xff, 4); write(path, bad);
-            require(NX_ReadKbz(path.string().c_str(), &storage) == -1 && !liveBytes, "overflowing relocation accepted");
+            require(DB_ReadKbz(path.string().c_str(), &storage) == -1 && !liveBytes, "overflowing relocation accepted");
         }
         const auto unpacked = fixture(3);
         const auto packed = packFixture(unpacked);
         write(path, packed);
         peakBytes = 0;
-        require(NX_ReadKbz(path.string().c_str(), &storage, progress) == 1, "packed zone rejected");
+        require(DB_ReadKbz(path.string().c_str(), &storage, progress) == 1, "packed zone rejected");
         require(previousProgress == unpacked.size(), "packed progress did not reach EOF");
         require(storage->blocks[0][599999] == 0x5a && !storage->blocks[1][31], "packed zone data changed");
-        require(peakBytes <= sizeof(NxKbzStorage) + 600000 + 32 + storage->metadataSize + ReadSize,
+        require(peakBytes <= sizeof(KbzStorage) + 600000 + 32 + storage->metadataSize + ReadSize,
                 "packed loader allocated a second copy");
-        NX_FreeKbzStorage(storage);
+        DB_FreeKbzStorage(storage);
         require(!liveBytes, "packed unload leaked memory");
         for (size_t length : {size_t(4), size_t(12), packed.size() - 1}) {
             write(path, {packed.begin(), packed.begin() + length});
-            require(NX_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
+            require(DB_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
                     "truncated packed zone accepted");
         }
         auto badPacked = packed;
         badPacked.back() ^= 1;
         write(path, badPacked);
-        require(NX_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
+        require(DB_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
                 "damaged packed checksum accepted");
         badPacked = packed;
         badPacked[4] ^= 1;
         write(path, badPacked);
-        require(NX_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
+        require(DB_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
                 "incorrect expanded size accepted");
         badPacked = packed;
         badPacked.push_back(0);
         write(path, badPacked);
-        require(NX_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
+        require(DB_ReadKbz(path.string().c_str(), &storage) == -1 && !storage && !liveBytes,
                 "trailing packed bytes accepted");
-        require(NX_ReadKbz((path.string()+".missing").c_str(), &storage) == 0 && !storage, "missing file not distinguished");
+        require(DB_ReadKbz((path.string()+".missing").c_str(), &storage) == 0 && !storage, "missing file not distinguished");
         write(path, fixture(3));
         for (unsigned i = 0; i < 3; ++i) {
             g_zones[i].index = i + 1;
             strcpy(g_zoneNames[i + 1].name, i == 0 ? "code" : "map");
-            require(NX_ReadKbz(path.string().c_str(), &g_zones[i].kbz) == 1, "zone setup failed");
+            require(DB_ReadKbz(path.string().c_str(), &g_zones[i].kbz) == 1, "zone setup failed");
         }
         g_zoneCount = 3;
         const size_t oneZone = liveBytes / 3;
@@ -193,7 +196,7 @@ int main(int argc, char **argv) {
             g_zoneCount = 3;
             g_zones[2] = {}; g_zones[2].index = 2; g_zones[2].flags = 0x40000000;
             const auto previousFrees = pmemFrees;
-            require(NX_ReadKbz(path.string().c_str(), &g_zones[2].kbz) == 1, "reload failed");
+            require(DB_ReadKbz(path.string().c_str(), &g_zones[2].kbz) == 1, "reload failed");
             DB_UnloadXAssetsMemory(&g_zones[2]);
             require(liveBytes == 2 * oneZone && !g_zones[2].kbz && pmemFrees == previousFrees,
                     "reload leaked or used the PMem allocator for a heap zone");
@@ -201,8 +204,8 @@ int main(int argc, char **argv) {
         DB_UnloadXAssetsMemory(&g_zones[1]); DB_UnloadXAssetsMemory(&g_zones[0]);
         require(!g_zoneCount && !liveBytes, "zone shutdown leaked memory");
         for (int i = 2; i < argc; ++i) {
-            require(NX_ReadKbz(argv[i], &storage) == 1, argv[i]);
-            NX_FreeKbzStorage(storage); require(!liveBytes, "retail zone leaked");
+            require(DB_ReadKbz(argv[i], &storage) == 1, argv[i]);
+            DB_FreeKbzStorage(storage); require(!liveBytes, "retail zone leaked");
         }
         puts("PASS: KBZ and KBZZ reads, malformed frames, allocation/I/O failures, progress and 100 unload/reload cycles");
     } catch (const std::exception &error) { fprintf(stderr, "FAIL: %s\n", error.what()); return 1; }

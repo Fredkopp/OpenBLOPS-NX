@@ -8,6 +8,13 @@
 #include <universal/surfaceflags.h>
 #include <game_mp/g_combat_mp.h>
 #include "actor_script_cmd.h"
+
+// Retail SP validates missile origins with 18 xy bits (0x007E7AC8); MP maps use 16.
+#ifdef KISAK_SP
+static constexpr char MISSILE_ORIGIN_XY_BITS = 18;
+#else
+static constexpr char MISSILE_ORIGIN_XY_BITS = 16;
+#endif
 #include <game_mp/g_spawn_mp.h>
 #include <clientscript/cscr_vm.h>
 #include <game_mp/g_trigger_mp.h>
@@ -571,7 +578,7 @@ void    G_ExplodeMissile(gentity_s *ent)
         origin[0] = (float)(int)origin[0];
         origin[1] = (float)(int)origin[1];
         origin[2] = (float)(int)origin[2];
-        if (BG_ValidateOrigin(origin, 16, 17, svs.mapCenter))
+        if (BG_ValidateOrigin(origin, MISSILE_ORIGIN_XY_BITS, 17, svs.mapCenter))
         {
             G_SetOrigin(ent, origin);
             doEvent = 1;
@@ -1489,7 +1496,7 @@ LABEL_90:
                     }
                 }
                 G_RunThink(ent);
-                if ( ent->r.inuse && !BG_ValidateOrigin(origin, 16, 17, svs.mapCenter) )
+                if ( ent->r.inuse && !BG_ValidateOrigin(origin, MISSILE_ORIGIN_XY_BITS, 17, svs.mapCenter) )
                 {
                     if ( weapDef->guidedMissileType == MISSILE_GUIDANCE_TVGUIDED )
                         G_UnlinkPlayerToRocket(ent);
@@ -3696,7 +3703,7 @@ void __cdecl MissileTrajectory(gentity_s *ent, float *result)
     if ( !weapDef && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\game\\g_missile.cpp", 3283, 0, "%s", "weapDef") )
         __debugbreak();
     MapCenter = (const float *)SV_GetMapCenter();
-    validOrigin = BG_ValidateOrigin(ent->r.currentOrigin, 16, 17, MapCenter);
+    validOrigin = BG_ValidateOrigin(ent->r.currentOrigin, MISSILE_ORIGIN_XY_BITS, 17, MapCenter);
     if ( validOrigin )
     {
         if ( level.time <= ent->s.lerp.u.actor.actorNum

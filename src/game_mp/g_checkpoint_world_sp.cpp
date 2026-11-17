@@ -1,6 +1,7 @@
 #include "g_checkpoint_world_sp.h"
 #ifdef KISAK_SP
 #include "g_main_mp.h"
+#include <game/g_targets.h>
 #include "g_utils_mp.h"
 #include "g_anim_commands_sp.h"
 #include "checkpoint_resource_catalog.h"
@@ -156,6 +157,7 @@ template<class V>void CorpseFields(V& v,corpseInfo_t& x){
 template<class V>void SoundNotifyFields(V& v,SPSoundNotifyState& x){v.StringId("notify",x.notifyString);v.Field("alias",x.alias);v.Field("replace",x.notifyReplaceAllowed);v.Field("start",x.startTime);v.Field("length",x.lengthMs);}
 struct SavedGlobals {
     unsigned random=0;int aiLimit=0,physicsSnapshot=0,physicsUpdate=0;threat_bias_t threat{};PathLinkInfo blockers[2048]{};int blockersInitialized=0;std::vector<const char*> configstrings=std::vector<const char*>(MAX_CONFIGSTRINGS,nullptr);
+    TargetCheckpointSlot targets[MAX_TARGETS]{};   // Target_Set list (Strela/lock-on targets, HUD markers)
 };
 template<class V>void GlobalFields(V& v,SavedGlobals& x){
     v.Field("blockers_initialized",x.blockersInitialized);for(auto& link:x.blockers){v.Field("from",link.from);v.Field("to",link.to);v.Field("previous",link.prev);v.Field("next",link.next);if(link.prev>=2048||link.next>=2048)throw std::runtime_error("checkpoint navigation blocker list invalid");}
@@ -164,6 +166,9 @@ template<class V>void GlobalFields(V& v,SavedGlobals& x){
     v.Field("physics_snapshot",x.physicsSnapshot);v.Field("physics_update",x.physicsUpdate);v.Field("random",x.random);v.Field("ai_limit",x.aiLimit);unsigned count=static_cast<unsigned>(x.configstrings.size());v.Field("configstring_count",count);
     if(count!=MAX_CONFIGSTRINGS)throw std::runtime_error("checkpoint configstring schema mismatch");
     for(auto& text:x.configstrings)v.Text("configstring",text);
+    for(auto& target:x.targets){v.Field("target_entity",target.entnum);v.Field("target_offset",target.offset);v.Field("target_material",target.materialIndex);
+        v.Field("target_offscreen_material",target.offscreenMaterialIndex);v.Field("target_flags",target.flags);
+        if(target.entnum<-1||target.entnum>=MAX_GENTITIES)throw std::runtime_error("checkpoint target entity invalid");}
 }
 void Word(std::vector<std::uint8_t>& out,unsigned value){for(int i=0;i<4;++i)out.push_back(static_cast<std::uint8_t>(value>>(8*i)));}
 void Record(std::vector<std::uint8_t>& out,unsigned type,unsigned slot,unsigned id,const std::vector<std::uint8_t>& bytes){
@@ -253,6 +258,7 @@ void G_CheckpointApplyWorld_SP(const std::vector<checkpoint::NativeRecord>& reco
             for(unsigned i=0;i<MAX_CONFIGSTRINGS;++i){const char* text=globals.configstrings[i]?globals.configstrings[i]:"";
                 const char* existing=sv.configstrings[i]?SL_ConvertToString(sv.configstrings[i],SCRIPTINSTANCE_SERVER):"";
                 if(std::strcmp(existing?existing:"",text))SV_SetConfigstring(i,const_cast<char*>(text));}
+            G_SetTargetsFromCheckpoint(globals.targets);
             break;}
         default:throw std::runtime_error("unsupported live world record");
         }
@@ -371,6 +377,7 @@ bool G_CheckpointCaptureWorld_SP(checkpoint::Resources& refs,std::vector<std::ui
         context="animation commands";record.clear();G_CheckpointCaptureAnimCommands_SP(record);G_CheckpointApplyAnimCommands_SP(record,{},false);Record(bytes,11,0,0,record);
         context="globals";SavedGlobals globals,globalsStage;globals.random=holdrand;std::memcpy(globals.blockers,g_path.pathLinkInfoArray,sizeof(globals.blockers));globals.blockersInitialized=g_path.pathLinkInfoArrayInited;globals.threat=g_threatBias;globals.physicsSnapshot=physGlob.timeLastSnapshot;globals.physicsUpdate=physGlob.timeLastUpdate;globals.aiLimit=G_GetAILimit_SP();
         for(unsigned i=0;i<MAX_CONFIGSTRINGS;++i)globals.configstrings[i]=sv.configstrings[i]?SL_ConvertToString(sv.configstrings[i],SCRIPTINSTANCE_SERVER):nullptr;
+        G_GetTargetsForCheckpoint(globals.targets);
         capture(globals,globalsStage,[](auto& io,auto& x){GlobalFields(io,x);},9,0,0);
         context="resource catalog";auto catalog=BuildCatalog(refs);std::vector<checkpoint::ResourceDescriptor> restored;
         capture(catalog,restored,[](auto& io,auto& x){checkpoint::ResourceCatalogFields(io,x);},8,0,0);

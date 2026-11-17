@@ -2811,6 +2811,22 @@ bool __cdecl BG_ValidateOriginValue(float val, char bits, float mapCenterValue)
             && (int)val >= (int)(float)(mapCenterValue - (float)maxVal);
 }
 
+// Retail SP 0x00589DE0: moves a position back inside the range that the
+// network origin fields can encode around the map center.
+void __cdecl BG_ClampOrigin(float *pos, char xyBits, char zBits, const float *mapCenter)
+{
+    const float maxXY = (float)(1 << (xyBits - 1));
+    const float maxZ = (float)(1 << (zBits - 1));
+    for (int i = 0; i < 3; ++i)
+    {
+        const float range = i == 2 ? maxZ : maxXY;
+        const float high = mapCenter[i] + range;
+        const float low = mapCenter[i] - range;
+        const float clamped = pos[i] - high >= 0.0f ? high : pos[i];
+        pos[i] = low - pos[i] >= 0.0f ? low : clamped;
+    }
+}
+
 template<typename EventType, typename EventParmType>
 void BG_AddEvent(
     unsigned int newEvent,

@@ -866,8 +866,8 @@ int __cdecl R_SetIndexData(GfxCmdBufPrimState *state, unsigned __int8 *indices, 
     return baseIndex;
 }
 
-#ifdef KISAK_NX
-// nx-port: shaders from a KBZ zone are created by nx_kbz.cpp's build step, one
+#ifdef KISAK_64BIT
+// nx-port: shaders from a KBZ zone are created by db_kbz.cpp's build step, one
 // technique set at a time. A pass it never reached (the first map load hit
 // one: pimp_shader_vertcolorsimple, drawing a 2D pic) would assert below and
 // trap, so a shader that still holds its load def is created at first use
@@ -889,7 +889,7 @@ void __cdecl R_SetPixelShader(GfxCmdBufState *state, const MaterialPixelShader *
     {
         __debugbreak();
     }
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     if ( !pixelShader->prog.ps && pixelShader->prog.loadDef.program )
     {
         MaterialPixelShader *mutableShader = (MaterialPixelShader *)pixelShader;
@@ -932,7 +932,7 @@ void __cdecl R_UpdateVertexDecl(GfxCmdBufState *state)
     {
         __debugbreak();
     }
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     if ( pass->vertexDecl && !pass->vertexDecl->isLoaded )   // see R_NxCreateShaderLate
     {
         MaterialPass *mutablePass = (MaterialPass *)pass;
@@ -975,7 +975,7 @@ void __cdecl R_SetVertexShader(GfxCmdBufState *state, const MaterialVertexShader
         {
             __debugbreak();
         }
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         if ( !vertexShader->prog.vs && vertexShader->prog.loadDef.program )
         {
             MaterialVertexShader *mutableShader = (MaterialVertexShader *)vertexShader;

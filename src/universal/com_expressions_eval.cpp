@@ -14266,7 +14266,7 @@ char __cdecl EvaluateExpression(
     OperandStack dataStack; // [esp+Ch] [ebp-13B8h] BYREF
 
     rpn = statement->rpn;
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     // nx-port: restore the caller's statement on the way out (was set to 0), so
     // an expression function that evaluates another statement leaves the outer
     // one's file/line for its errors.
@@ -14444,7 +14444,7 @@ void Expression_Error(const char *str, ...)
     va_start(va, str);
     if ( !Expression_Throttle() )
     {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         // A nested evaluation (an expression function evaluating another
         // statement) clears s_currentStatement on its way out; an error in the
         // outer statement then dereferenced null (MP main menu, playercard).
@@ -14471,7 +14471,7 @@ void Expression_Warn(const char *str, ...)
     va_start(va, str);
     if ( !Expression_Throttle() )
     {
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         _snprintf(buf, 0x400u, "^3Expression Warning (%s:%d): ",
                   s_currentStatement && s_currentStatement->filename ? s_currentStatement->filename : "?",
                   s_currentStatement ? s_currentStatement->line : 0);

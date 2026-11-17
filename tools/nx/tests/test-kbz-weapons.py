@@ -25,7 +25,7 @@ for name in ('Mark_XModelPtr', 'Mark_XModelPtrArray'):
 exe = output / 'kbz-weapons.exe'
 subprocess.run([args.compiler, '-std=c++17', '-O2', '-Wall', '-Wextra',
                 '-I' + str(output), str(Path(__file__).with_name('kbz-weapons.cpp')),
-                str(root / 'src/nx/nx_kbz_storage.cpp'), '-o', str(exe)], check=True)
+                str(root / 'src/database/db_kbz_storage.cpp'), '-lzstd', '-o', str(exe)], check=True)
 zones = sorted(args.zones.glob('*.kbz')) if args.zones else []
 if args.zones:
     assert zones, 'no KBZ fixtures found'

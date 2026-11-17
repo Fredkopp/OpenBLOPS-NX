@@ -52,6 +52,8 @@ inline void *_aligned_malloc(size_t size,size_t alignment) { return memalign(ali
 inline void _aligned_free(void *p) { free(p); }
 
 extern "C" VkResult NX_SarekCreateSurface(VkInstance, VkSurfaceKHR*);
+// The present rate for a D3D9 sync interval (src/nx/nx_display.cpp).
+extern "C" Result NX_DxvkSetSyncInterval(uint32_t syncInterval);
 // The Vulkan device's allocation callbacks (horizon_alloc.cpp), given at
 // vkCreateDevice and vkDestroyDevice (tools/nx/patch-dxvk-sarek.py).
 extern "C" const VkAllocationCallbacks *NX_DxvkDeviceAllocator(void);

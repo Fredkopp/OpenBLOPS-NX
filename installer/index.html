@@ -10,11 +10,18 @@
 <body>
   <main>
     <header>
-      <p class="platform">Nintendo Switch</p>
+      <p class="platform">Nintendo Switch and Switch 2</p>
       <h1>OpenBLOPS-NX</h1>
       <p>Install Campaign, Zombies, and Multiplayer from your own PC copy of Call of Duty: Black Ops.</p>
     </header>
     <section class="setup" aria-label="Installer setup">
+      <div class="step">
+        <div><h2>Console</h2><p id="console-label">The build for your console.</p></div>
+        <select id="console" aria-label="Console">
+          <option value="switch">Nintendo Switch</option>
+          <option value="switch2">Nintendo Switch 2</option>
+        </select>
+      </div>
       <div class="step">
         <div><h2>Black Ops folder</h2><p id="source-label">Choose the PC folder containing main and zone.</p></div>
         <button id="source" type="button">Choose game folder</button>
@@ -37,7 +44,7 @@
     </section>
     <footer>
       <a href="https://github.com/HDErick/OpenBLOPS-NX/releases/latest">Latest GitHub release</a>
-      <span>Output goes to <code>switch/OpenBLOPS-NX/</code>.</span>
+      <span>Output goes to <code id="output-path">switch/OpenBLOPS-NX/</code>.</span>
     </footer>
   </main>
 </body>

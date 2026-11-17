@@ -1,4 +1,4 @@
-#include "nx_bink_audio.h"
+#include "bink_audio.h"
 #include <switch.h>
 #include <cassert>
 
@@ -13,25 +13,25 @@ void appletHook(AppletHookCookie *, void (*fn)(AppletHookType, void *), void *) 
 int main()
 {
     ticks = 1000000;
-    NX_BinkInitClock();
-    assert(NX_BinkHasFocus() && NX_BinkTimeUs() == 1000);
+    Sys_BinkInitClock();
+    assert(Sys_BinkHasFocus() && Sys_BinkTimeUs() == 1000);
     ticks += 1000000;
     focus = AppletFocusState_OutOfFocus;
     callback(AppletHookType_OnFocusState, nullptr);
-    const auto paused = NX_BinkTimeUs();
+    const auto paused = Sys_BinkTimeUs();
     ticks += 60000000000;
-    assert(!NX_BinkHasFocus() && NX_BinkTimeUs() == paused);
+    assert(!Sys_BinkHasFocus() && Sys_BinkTimeUs() == paused);
     callback(AppletHookType_OnFocusState, nullptr);
     focus = AppletFocusState_InFocus;
     callback(AppletHookType_OnResume, nullptr);
-    assert(NX_BinkHasFocus() && NX_BinkTimeUs() == paused);
+    assert(Sys_BinkHasFocus() && Sys_BinkTimeUs() == paused);
     ticks += 1000000;
-    assert(NX_BinkTimeUs() == paused + 1000);
-    NX_BinkInitClock();
+    assert(Sys_BinkTimeUs() == paused + 1000);
+    Sys_BinkInitClock();
     focus = AppletFocusState_OutOfFocus;
     callback(AppletHookType_OnFocusState, nullptr);
     ticks += 1000000000;
     focus = AppletFocusState_InFocus;
     callback(AppletHookType_OnFocusState, nullptr);
-    assert(NX_BinkTimeUs() == paused + 1000);
+    assert(Sys_BinkTimeUs() == paused + 1000);
 }

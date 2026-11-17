@@ -786,6 +786,12 @@ void R_ResolveIntZ_PC()
 
     iassert(dx.supportsIntZ);
 
+#ifdef NX_DXVK
+    // The floatz texture is the scene's depth buffer (r_rendertarget.cpp).
+    if (g_nxIntZDepthBuffer)
+        return;
+#endif
+
 #ifdef KISAK_NVAPI_INTZ
     if (dx.nvInitialized)
     {
@@ -5772,7 +5778,6 @@ void __cdecl RB_RegisterBackendAssets()
 //    }
 //}
 
-// aislop (pow)
 void __cdecl RB_SaveScreen_BlendBlurred(
     const GfxBlendSaveScreenBlurredParam *p,
     const GfxViewInfo *viewInfo)
@@ -5817,14 +5822,8 @@ void __cdecl RB_SaveScreen_BlendBlurred(
     if (frameTime < 0 || frameTime >= p->fadeMsec)
         return;
 
-    /* -----------------------------------------
-       Alpha computation (SSE pow path)
-       ----------------------------------------- */
-
-    float t = (float)frameTime / (float)p->fadeMsec;
-
-    // pow(t, 0.01f)
-    float alpha = powf(t, 0.01f);
+    // Retail 0x6EC362: the saved screen fades to 1% over fadeMsec at any frame rate.
+    float alpha = (float)pow(0.009999999776482582, (float)frameTime / (float)p->fadeMsec);
 
     if (alpha > 0.99f)
         alpha = 0.99f;

@@ -5,6 +5,8 @@ struct menuDef_t;
 struct itemDef_s;
 #if defined(OPENBLOPS_NO_STEAM_AUTH)
 void Directory_Init();
+// Keeps an old build's saved directory address out of the config being written.
+void Directory_BeforeConfigWrite();
 void Directory_MenuOpening(int localClientNum, UiContext *dc, menuDef_t *menu);
 bool Directory_HandleMenuEvent(int localClientNum, UiContext *dc, itemDef_s *item, const char *event);
 bool Directory_HandleControllerKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key);
@@ -37,6 +39,9 @@ const char *Directory_UpdateGateMenu(const char *name);
 bool Directory_UpdateOpenGate();
 bool Directory_UpdateMenuEvent(int localClientNum, UiContext *dc, itemDef_s *item, const char *event);
 bool Directory_UpdateControllerKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key);
+// A front end menu level message (Cmd_MenuLevelMessage_f): SP offers the
+// update popup once the TV room is up.
+void Directory_FrontendMenuMessage(const char *state, const char *item);
 #endif
 #else
 inline void Directory_MenuOpening(int, UiContext *, menuDef_t *)
@@ -60,6 +65,9 @@ inline const char *Directory_BrowserMenu(const char *name)
     return name;
 }
 inline void Directory_Init()
+{
+}
+inline void Directory_BeforeConfigWrite()
 {
 }
 inline bool Directory_PopulateServers(int, int)

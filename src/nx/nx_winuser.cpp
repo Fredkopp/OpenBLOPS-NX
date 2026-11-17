@@ -3,6 +3,8 @@
 // record, the message queue is always empty, and the registered wndproc is
 // invoked directly for the window-lifecycle messages the game's bookkeeping
 // depends on (WM_CREATE / WM_ACTIVATE / WM_SETFOCUS).
+#include "nx_install.h"
+
 #include <windows.h>
 
 #include <switch.h>
@@ -63,8 +65,8 @@ HWND CreateWindowExA(DWORD, LPCSTR className, LPCSTR windowName, DWORD,
     s_window.inUse = true;
     s_window.x = x;
     s_window.y = y;
-    s_window.w = w > 0 ? w : 1280;
-    s_window.h = h > 0 ? h : 720;
+    s_window.w = w > 0 ? w : NX_SCREEN_WIDTH;
+    s_window.h = h > 0 ? h : NX_SCREEN_HEIGHT;
     s_window.proc = NULL;
     strncpy(s_window.title, windowName ? windowName : "", sizeof(s_window.title) - 1);
     for (int i = 0; i < s_classCount; ++i) {
@@ -132,8 +134,8 @@ BOOL GetWindowRect(HWND wnd, LPRECT rect)
     NxWindow *w = nxWnd(wnd);
     rect->left = w ? w->x : 0;
     rect->top = w ? w->y : 0;
-    rect->right = rect->left + (w ? w->w : 1280);
-    rect->bottom = rect->top + (w ? w->h : 720);
+    rect->right = rect->left + (w ? w->w : NX_SCREEN_WIDTH);
+    rect->bottom = rect->top + (w ? w->h : NX_SCREEN_HEIGHT);
     return TRUE;
 }
 
@@ -142,8 +144,8 @@ BOOL GetClientRect(HWND wnd, LPRECT rect)
     NxWindow *w = nxWnd(wnd);
     rect->left = 0;
     rect->top = 0;
-    rect->right = w ? w->w : 1280;
-    rect->bottom = w ? w->h : 720;
+    rect->right = w ? w->w : NX_SCREEN_WIDTH;
+    rect->bottom = w ? w->h : NX_SCREEN_HEIGHT;
     return TRUE;
 }
 
@@ -280,8 +282,8 @@ LRESULT CallNextHookEx(HHOOK, int, WPARAM, LPARAM) { return 0; }
 int GetSystemMetrics(int index)
 {
     switch (index) {
-    case SM_CXSCREEN: return 1280;
-    case SM_CYSCREEN: return 720;
+    case SM_CXSCREEN: return NX_SCREEN_WIDTH;
+    case SM_CYSCREEN: return NX_SCREEN_HEIGHT;
     default: return 0; // includes SM_REMOTESESSION
     }
 }
@@ -292,8 +294,8 @@ HGDIOBJ GetStockObject(int) { return (HGDIOBJ)(uintptr_t)1; }
 int GetDeviceCaps(HDC, int index)
 {
     switch (index) {
-    case HORZRES: return 1280;
-    case VERTRES: return 720;
+    case HORZRES: return NX_SCREEN_WIDTH;
+    case VERTRES: return NX_SCREEN_HEIGHT;
     case BITSPIXEL: return 32;
     default: return 0;
     }
@@ -310,8 +312,8 @@ BOOL GetMonitorInfoA(HMONITOR, LPMONITORINFO info)
     if (info) {
         info->rcMonitor.left = 0;
         info->rcMonitor.top = 0;
-        info->rcMonitor.right = 1280;
-        info->rcMonitor.bottom = 720;
+        info->rcMonitor.right = NX_SCREEN_WIDTH;
+        info->rcMonitor.bottom = NX_SCREEN_HEIGHT;
         info->rcWork = info->rcMonitor;
         info->dwFlags = 1; // MONITORINFOF_PRIMARY
     }
@@ -321,7 +323,7 @@ BOOL GetMonitorInfoA(HMONITOR, LPMONITORINFO info)
 BOOL EnumDisplayMonitors(HDC, const RECT *, MONITORENUMPROC proc, LPARAM data)
 {
     if (proc) {
-        RECT r = { 0, 0, 1280, 720 };
+        RECT r = { 0, 0, NX_SCREEN_WIDTH, NX_SCREEN_HEIGHT };
         proc((HMONITOR)(uintptr_t)1, NULL, &r, data);
     }
     return TRUE;

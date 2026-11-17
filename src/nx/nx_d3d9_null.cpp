@@ -4892,7 +4892,7 @@ static void nxGlDumpTargets(void)
 // never reached -- and reference counting through that pointer used to end in
 // free() on zone memory: the picmip change after a vid_restart crashed that
 // way. Such a call is refused and named instead (the first few times), and
-// nx_kbz.cpp's audit uses the texture test to find which images they are.
+// db_kbz.cpp's audit uses the texture test to find which images they are.
 static bool nxIsOurObject(const void *p)
 {
     const NxD3DObject *o = (const NxD3DObject *)p;

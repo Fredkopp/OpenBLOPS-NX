@@ -59,7 +59,7 @@ void R_Cinematic_CheckBinkError() {}
 void R_Cinematic_UpdateTimeInMsec(const BINKREALTIME *) {}
 void R_Cinematic_RelinquishIO() { cinematicGlob.fileIoState = CIN_IOSTATE_RELINQUISHED; }
 void R_Cinematic_SeizeIO() { cinematicGlob.fileIoState = CIN_IOSTATE_SEIZED; }
-bool NX_BinkFinished(HBINK b) { return b->LastFrameNum == b->Frames; }
+bool Bink_Finished(HBINK b) { return b->LastFrameNum == b->Frames; }
 S32 BinkPause(HBINK, S32 paused) { return paused; }
 S32 BinkDoFrame(HBINK b)
 {

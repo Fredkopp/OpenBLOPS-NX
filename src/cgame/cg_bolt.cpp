@@ -36,7 +36,7 @@ unsigned int __cdecl CG_AddBolt(
                 const float *position,
                 const float *normal,
                 unsigned __int8 tagIndex,
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
                 intptr_t physUserBody)
 #else
                 int physUserBody)

@@ -11,24 +11,30 @@ from tempfile import TemporaryDirectory
 
 INSTALLER = Path(__file__).resolve().parent
 REPOSITORY = "HDErick/OpenBLOPS-NX"
-ARCHIVE = "OpenBLOPS-NX.zip"
+# The Switch release is required; the Switch 2 one is served when the release has it.
+ARCHIVES = (("OpenBLOPS-NX.zip", True), ("OpenBLOPS-NX2.zip", False))
 
 
 def refresh_release():
     release_dir = INSTALLER / "release"
     release_dir.mkdir(exist_ok=True)
-    with TemporaryDirectory(dir=release_dir) as temporary:
-        subprocess.run(
-            ["gh", "release", "download", "--repo", REPOSITORY,
-             "--pattern", ARCHIVE, "--dir", temporary],
-            check=True,
-        )
-        archive = Path(temporary) / ARCHIVE
-        subprocess.run(
-            ["node", str(INSTALLER / "check-release.mjs"), str(archive)],
-            check=True,
-        )
-        archive.replace(release_dir / ARCHIVE)
+    for name, required in ARCHIVES:
+        with TemporaryDirectory(dir=release_dir) as temporary:
+            downloaded = subprocess.run(
+                ["gh", "release", "download", "--repo", REPOSITORY,
+                 "--pattern", name, "--dir", temporary],
+                check=required,
+            ).returncode == 0
+            if not downloaded:
+                (release_dir / name).unlink(missing_ok=True)
+                print(f"The latest release has no {name}.", flush=True)
+                continue
+            archive = Path(temporary) / name
+            subprocess.run(
+                ["node", str(INSTALLER / "check-release.mjs"), str(archive)],
+                check=True,
+            )
+            archive.replace(release_dir / name)
 
 
 def main():

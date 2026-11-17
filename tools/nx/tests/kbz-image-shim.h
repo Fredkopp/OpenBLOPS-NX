@@ -47,8 +47,8 @@ enum XAssetType { ASSET_TYPE_MATERIAL=6, ASSET_TYPE_TECHNIQUE_SET=7, ASSET_TYPE_
     ASSET_TYPE_SOUND=9, ASSET_TYPE_SOUND_PATCH=10, ASSET_TYPE_CLIPMAP=11,
     ASSET_TYPE_CLIPMAP_PVS=12, ASSET_TYPE_GFXWORLD=17, ASSET_TYPE_MENU=22, ASSET_TYPE_WEAPON=24, ASSET_TYPE_FX=28,
     ASSET_TYPE_COUNT=43 };
-struct NxKbzStorage;
-struct XZone { NxKbzStorage *kbz = nullptr; };
+struct KbzStorage;
+struct XZone { KbzStorage *kbz = nullptr; };
 inline int DB_GetXAssetTypeSize(XAssetType type) { return type == ASSET_TYPE_IMAGE ? sizeof(GfxImage) : 1; }
 union XAssetHeader { void *data; GfxImage *image; MaterialTechniqueSet *techniqueSet;
     Material *material; GfxWorld *gfxWorld; Menu *menu; void *sound, *soundPatch; };
@@ -74,8 +74,10 @@ inline void Load_VertexBuffer(void **, uint8_t *, int) {}
 inline int SL_GetString(const char *, unsigned, int) { return 0; }
 inline XAssetHeader DB_FindXAssetHeader(XAssetType, char *, int, int) { return {}; }
 inline const char *DB_GetXAssetNameNoAssert(const XAsset *asset) { return asset->header.image->name; }
-extern "C" inline void nx_normalize_path(const char *in, char *out, size_t size) { snprintf(out,size,"%s",in); }
-extern "C" inline const char *nx_get_install_dir() { return "."; }
+inline void Sys_KbzNativePath(const char *in, char *out, size_t size) { snprintf(out,size,"%s",in); }
+inline const char *Sys_KbzInstallDir() { return "."; }
+inline void Sys_KbzHoldDeviceLock(bool) {}
+inline bool Sys_KbzBackgroundLoading() { return false; }
 
 inline std::unordered_map<const void *, std::unique_ptr<Texture>> liveTextures;
 inline std::unordered_map<std::string, std::unique_ptr<GfxImage>> active;
@@ -83,7 +85,7 @@ inline std::vector<std::unique_ptr<GfxImage>> pending, inactive;
 inline std::vector<std::pair<GfxImage *, int>> uploadQueue;
 inline bool queueUploads=false, keepExisting=false;
 inline unsigned uploads=0;
-extern "C" inline bool NX_D3D_IsTexture(const void *p) { return liveTextures.count(p) != 0; }
+inline bool Sys_KbzIsTexture(const void *p) { return liveTextures.count(p) != 0; }
 inline void upload(GfxImage *image, int format) {
     auto texture=std::make_unique<Texture>(); texture->format=format;
     image->texture.basemap=texture.get(); liveTextures.emplace(texture.get(),std::move(texture)); ++uploads;
@@ -100,7 +102,7 @@ inline void RB_Resource_Flush() {
     uploadQueue.clear();
 }
 inline bool R_DuplicateTexture(GfxImage *dst, const GfxImage *src) {
-    if (!NX_D3D_IsTexture(src->texture.basemap)) throw std::runtime_error("alias is not a texture");
+    if (!Sys_KbzIsTexture(src->texture.basemap)) throw std::runtime_error("alias is not a texture");
     dst->texture=src->texture; ++dst->texture.basemap->refs; return true;
 }
 inline XAssetHeader DB_AddXAsset(XAssetType type, XAssetHeader input) {

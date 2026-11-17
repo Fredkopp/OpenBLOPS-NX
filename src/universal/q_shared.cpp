@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <qcommon/common.h>
 #include <stdarg.h>
+#include <setjmp.h>
 #include <qcommon/threads.h>
 #include <qcommon/cm_trace.h>
 #include <gfx_d3d/r_model.h>
@@ -23,8 +24,8 @@ struct va_info_t
 
 va_info_t va_info[15];
 TraceThreadInfo g_traceThreadInfo[15];
-#ifdef KISAK_NX
-jmp_buf g_com_error[15]; // real AArch64 jmp_bufs (x86 int[16] is far too small)
+#ifdef KISAK_64BIT
+jmp_buf g_com_error[15]; // real jmp_bufs (the x86 int[16] is too small on 64-bit)
 #else
 int g_com_error[15][16];
 #endif

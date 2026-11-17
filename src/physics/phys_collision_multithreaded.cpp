@@ -2,6 +2,7 @@
 #include "physics_system.h"
 #include "physics_system_internal.h"
 #include "phys_contact_manifold.h"
+#include <atomic>
 
 phys_collision_pair *g_list_pcp_iterator;
 contact_point_info *g_list_output_cpi;
@@ -223,7 +224,7 @@ void __cdecl process_list_do_gjk_collide_and_contact_manifold(phys_link_list<phy
         g_list_output_cpi = 0;
         cpi_allocator = contact_point_info::get_cpi_allocator();
         //v2 = phys_transient_allocator::allocate(cpi_allocator, 12, 4, 0, "phys_transient_allocator out of memory.");
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         void **input = (void **)cpi_allocator->allocate(3 * sizeof(void *), sizeof(void *), 0, "phys_transient_allocator out of memory.");
         input[0] = (void *)&g_list_output_cpi;
         input[1] = (void *)g_physics_system->m_search_tree_rbc_contact.m_tree_root;
@@ -241,7 +242,7 @@ void __cdecl process_list_do_gjk_collide_and_contact_manifold(phys_link_list<phy
     }
 }
 
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 int    phys_gjk_collide_jq_batch_function(jqBatch *pBatch)
 {
     void *v2;
@@ -260,17 +261,20 @@ int    phys_gjk_collide_jq_batch_function(jqBatch *pBatch)
         phys_collision_pair **pcp_iterator = (phys_collision_pair **)input[2];
         v12.m_cpi_allocator = contact_point_info::get_cpi_allocator();
         v12.m_rbc_contact_search_tree_root = (rigid_body_constraint_contact *)input[1];
-        for ( i = __atomic_load_n(pcp_iterator, __ATOMIC_SEQ_CST); i; i = __atomic_load_n(pcp_iterator, __ATOMIC_SEQ_CST) )
+        std::atomic_ref<phys_collision_pair *> pairs(*pcp_iterator);
+        for ( i = pairs.load(); i; i = pairs.load() )
         {
-            if ( __sync_val_compare_and_swap(pcp_iterator, i, i->m_next_link) == i )
+            phys_collision_pair *expected = i;
+            if ( pairs.compare_exchange_strong(expected, i->m_next_link) )
                 phys_collide_do_gjk_collide_and_contact_manifold(i, &v10, &v12);
         }
         m_first = v12.m_list_cpi.m_first;
         if ( m_first )
         {
+            std::atomic_ref<contact_point_info *> output(*output_cpi);
             do
-                v8 = __atomic_load_n(output_cpi, __ATOMIC_SEQ_CST);
-            while ( __sync_val_compare_and_swap(output_cpi, v8, m_first) != v8 );
+                v8 = output.load();
+            while ( !output.compare_exchange_strong(v8, m_first) );
             if ( !v12.m_list_cpi.m_last_next_ptr
                 && _tlAssert("C:\\projects_pc\\cod\\codsrc\\tl\\physics\\include\\phys_mem.h", 263, "m_last_next_ptr", "") )
             {

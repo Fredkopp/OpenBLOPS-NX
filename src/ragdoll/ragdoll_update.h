@@ -91,7 +91,7 @@ char __cdecl Ragdoll_BodyNewState(RagdollBody *body, RagdollBodyState state);
 void __cdecl Ragdoll_BodyUpdate(int msec, RagdollBody *body);
 void __cdecl Ragdoll_Update(int msec);
 void __cdecl Ragdoll_RemoveConstraintsForRope(int rope_id);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
 intptr_t __cdecl Ragdoll_GetRBForBone(int entnum, unsigned int boneName);
 #else
 int __cdecl Ragdoll_GetRBForBone(int entnum, unsigned int boneName);

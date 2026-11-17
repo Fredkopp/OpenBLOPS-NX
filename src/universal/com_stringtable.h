@@ -14,7 +14,7 @@ struct StringTable // sizeof=0x14
     StringTableCell *values;
     __int16 *cellIndex;
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(StringTable) == 20);
 #endif
 

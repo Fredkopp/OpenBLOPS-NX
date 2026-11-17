@@ -68,7 +68,7 @@ void R_WarnOncePerFrame(GfxWarningType warnType, ...)
 {
     char message[1028]; // [esp+0h] [ebp-410h] BYREF
     float frameRate; // [esp+408h] [ebp-8h]
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
     va_list vargs;
 #else
     char *vargs; // [esp+40Ch] [ebp-4h]
@@ -87,7 +87,7 @@ void R_WarnOncePerFrame(GfxWarningType warnType, ...)
         s_warnCount[warnType] = rg.frontEndFrameCount + (int)(float)(frameRate * r_warningRepeatDelay->current.value);
         va_copy(vargs, va);
         _vsnprintf(message, 0x400u, s_warnFormat[warnType], va);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         va_end(vargs);
 #else
         vargs = 0;

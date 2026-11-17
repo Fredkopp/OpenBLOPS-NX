@@ -83,6 +83,6 @@ int main() {
 for mode in ('SP', 'MP'):
     exe = output / (mode + '.exe')
     subprocess.run([args.compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
-                    '-DKISAK_NX', '-DKISAK_' + mode, str(source), '-o', str(exe)], check=True)
+                    '-DKISAK_NX', '-DKISAK_64BIT', '-DKISAK_' + mode, str(source), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
     print('PASS:', mode, 'vehicle lookup/reuse, anonymous allocations, empty/occupied/unoccupied input clearing')

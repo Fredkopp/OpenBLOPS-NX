@@ -1,7 +1,8 @@
-import { readRelease } from './release.mjs';
+import { consoles, readRelease } from './release.mjs';
 import { ZipWriter } from './zip-writer.mjs';
 
 const element = id => document.getElementById(id);
+const consoleSelect = element('console');
 const sourceButton = element('source');
 const sourceInput = element('source-files');
 const destinationButton = element('destination');
@@ -9,7 +10,9 @@ const installButton = element('install');
 const zipButton = element('zip');
 const progress = element('progress');
 const errors = element('errors');
-const controls = [sourceButton, destinationButton, installButton, zipButton];
+const controls = [consoleSelect, sourceButton, destinationButton, installButton, zipButton];
+// The chosen console's release and install folder (release.mjs).
+let target = consoles[consoleSelect.value];
 const canPickFolders = typeof showDirectoryPicker === 'function';
 const canSaveFile = typeof showSaveFilePicker === 'function';
 const canStreamDownload = 'serviceWorker' in navigator && typeof ReadableStream === 'function';
@@ -104,10 +107,39 @@ sourceInput.addEventListener('change', () => {
   updateButtons();
 });
 
+function showTarget() {
+  element('console-label').textContent = `Installs to switch/${target.folder}/.`;
+  element('output-path').textContent = `switch/${target.folder}/`;
+  if (destination) element('destination-label').textContent = `${destination.name}/switch/${target.folder}/`;
+}
+
+consoleSelect.addEventListener('change', () => {
+  target = consoles[consoleSelect.value];
+  showTarget();
+});
+
+// The site carries a console's release only when the latest GitHub release has it.
+async function checkConsoles() {
+  for (const option of consoleSelect.options) {
+    const { archive, name } = consoles[option.value];
+    const response = await fetch(`./release/${archive}`, { method: 'HEAD', cache: 'no-cache' }).catch(() => null);
+    if (response && !response.ok) {
+      option.disabled = true;
+      option.textContent = `${name} (not in the latest release)`;
+    }
+  }
+  const available = [...consoleSelect.options].find(option => !option.disabled);
+  if (consoleSelect.selectedOptions[0]?.disabled && available) {
+    consoleSelect.value = available.value;
+    target = consoles[consoleSelect.value];
+    showTarget();
+  }
+}
+
 async function pickDestination() {
   try {
     destination = await showDirectoryPicker({ id: 'openblops-readwrite', mode: 'readwrite' });
-    element('destination-label').textContent = `${destination.name}/switch/OpenBLOPS-NX/`;
+    element('destination-label').textContent = `${destination.name}/switch/${target.folder}/`;
     status(sourceEntries ? 'Ready. Choose Install to folder.' : 'Destination set. Now choose the Black Ops folder.');
   } catch (error) {
     if (error.name !== 'AbortError') status(error.message);
@@ -116,7 +148,7 @@ async function pickDestination() {
 }
 
 // Where the install goes: a folder (SD card or staging), or a ZIP holding
-// switch/OpenBLOPS-NX/ to extract onto the SD card's root.
+// switch/<console folder>/ to extract onto the SD card's root.
 function folderSink(root) {
   return {
     async save(parts, stream) {
@@ -131,10 +163,10 @@ function folderSink(root) {
   };
 }
 
-function zipSink(writable) {
+function zipSink(writable, folder) {
   const zip = new ZipWriter(writable);
   return {
-    save: (parts, stream) => zip.add(['switch', 'OpenBLOPS-NX', ...parts].join('/'), stream),
+    save: (parts, stream) => zip.add(['switch', folder, ...parts].join('/'), stream),
     close: () => zip.close(),
   };
 }
@@ -204,7 +236,7 @@ function convert(worker, file, pack = false) {
 }
 
 // Executables that load packed (zstd) zones carry this marker
-// (src/nx/nx_kbz_storage.cpp); zones are packed only for those.
+// (src/database/db_kbz_storage.cpp); zones are packed only for those.
 const PACKED_ZONE_MARKER = new TextEncoder().encode('openblops-kbzz-1');
 
 function contains(bytes, needle) {
@@ -220,10 +252,11 @@ function contains(bytes, needle) {
 // The latest GitHub release, which the Pages workflow (and serve.py locally)
 // publishes next to the installer: GitHub's own release downloads do not
 // allow cross-origin reads, so the browser cannot fetch them directly.
-async function downloadRelease() {
-  const response = await fetch('./release/OpenBLOPS-NX.zip', { cache: 'no-cache' });
+async function downloadRelease(release) {
+  const response = await fetch(`./release/${release.archive}`, { cache: 'no-cache' });
+  if (response.status === 404) throw new Error(`The latest release has no ${release.name} build yet.`);
   if (!response.ok) {
-    throw new Error('The latest OpenBLOPS-NX release could not be downloaded. Reload the page and try again.');
+    throw new Error(`The latest ${release.archive} could not be downloaded. Reload the page and try again.`);
   }
   return response.arrayBuffer();
 }
@@ -249,7 +282,8 @@ async function install(toZip) {
   errors.replaceChildren();
   element('issues').hidden = true;
   let worker, sink;
-  const zipName = 'OpenBLOPS-NX-Switch.zip';
+  const release = target;
+  const zipName = release.download;
   try {
     let zipFile;
     if (toZip && canSaveFile) {
@@ -259,13 +293,14 @@ async function install(toZip) {
       });
     } else if (!toZip && sourceHandle) {
       const sourceFromDestination = await destination.resolve(sourceHandle);
+      const sourceFolder = sourceFromDestination?.slice(0, 2).join('/').toLowerCase();
       if (await sourceHandle.resolve(destination) !== null ||
-          sourceFromDestination?.slice(0, 2).join('/').toLowerCase() === 'switch/openblops-nx') {
+          Object.values(consoles).some(({ folder }) => sourceFolder === `switch/${folder.toLowerCase()}`)) {
         throw new Error('Choose an SD card or staging folder outside the Black Ops installation.');
       }
     }
     status('Checking the release ZIP and game folders…');
-    const programs = await downloadRelease().then(readRelease);
+    const programs = await readRelease(await downloadRelease(release), release);
     const under = name => sourceEntries.filter(({ parts }) => parts.length > 1 && parts[0].toLowerCase() === name)
       .map(({ parts, getFile }) => ({ parts: [name, ...parts.slice(1)], getFile }));
     const zoneFiles = under('zone');
@@ -275,10 +310,10 @@ async function install(toZip) {
     worker = new Worker('./converter-worker.js', { type: 'module' });
     await convert(worker, null);
     if (toZip) {
-      sink = zipSink(canSaveFile ? await zipFile.createWritable() : await serviceWorkerWritable(zipName));
+      sink = zipSink(canSaveFile ? await zipFile.createWritable() : await serviceWorkerWritable(zipName), release.folder);
     } else {
       const switchFolder = await destination.getDirectoryHandle('switch', { create: true });
-      sink = folderSink(await switchFolder.getDirectoryHandle('OpenBLOPS-NX', { create: true }));
+      sink = folderSink(await switchFolder.getDirectoryHandle(release.folder, { create: true }));
     }
     const gameFiles = mainFiles.filter(({ parts }) => !/\.(log|dmp|mdmp)$/i.test(parts.at(-1)));
     const assets = [...gameFiles, { parts: ['localization.txt'], getFile: localization.getFile }];
@@ -325,11 +360,11 @@ async function install(toZip) {
     await sink.close();
     sink = null;
     const where = toZip
-      ? 'Extract the ZIP to the root of the SD card (it holds switch/OpenBLOPS-NX/).'
+      ? `Extract the ZIP to the root of the SD card (it holds switch/${release.folder}/).`
       : 'Launch in Homebrew Menu application mode.';
     status(failed
-      ? `Packaged both Switch builds. Converted ${jobs.size - failed} of ${jobs.size} zones; check the report for zones that could affect gameplay. ${where}`
-      : `Packaged both Switch builds and converted all ${jobs.size} zones. ${where}`);
+      ? `Packaged both ${release.name} executables. Converted ${jobs.size - failed} of ${jobs.size} zones; check the report for zones that could affect gameplay. ${where}`
+      : `Packaged both ${release.name} executables and converted all ${jobs.size} zones. ${where}`);
   } catch (error) {
     if (error.name === 'AbortError') status('Cancelled.');
     else status(error.message || String(error));
@@ -350,4 +385,6 @@ if (canPickFolders) {
   destinationButton.disabled = true;
   element('destination-label').textContent = 'Folder install needs desktop Chrome or Edge. Use Save as ZIP here.';
 }
+showTarget();
+checkConsoles();
 updateButtons();

@@ -19,6 +19,45 @@ bool s_bootEndPending = false;
 u64 s_bootEndBy;
 AppletHookCookie s_hook;
 
+#ifdef KISAK_NX2
+// On Switch 2 FastLoad drops the GPU to its minimum clock and
+// CancelCpuBoostMode does not undo it: a boost ends with Normal, then cancel,
+// and boosting stops when neither restores the configuration.
+u32 s_boostFrom;
+AppletOperationMode s_boostOperation;
+
+u32 performanceConfiguration()
+{
+    u32 configuration = 0;
+    appletGetCurrentPerformanceConfiguration(&configuration);
+    return configuration;
+}
+
+// Waits up to 100 ms; docking also ends the boost.
+bool boostRestored()
+{
+    for (int i = 0; i < 20; ++i)
+    {
+        if (appletGetOperationMode() != s_boostOperation || performanceConfiguration() == s_boostFrom)
+            return true;
+        svcSleepThread(5000000);
+    }
+    return false;
+}
+
+Result endBoost()
+{
+    const Result normal = appletSetCpuBoostMode(ApmCpuBoostMode_Normal);
+    if (R_SUCCEEDED(normal) && boostRestored())
+        return normal;
+    const Result cancel = appletCancelCpuBoostMode();
+    if (R_SUCCEEDED(cancel) && boostRestored())
+        return cancel;
+    s_supported = false;
+    return 0;
+}
+#endif
+
 void applyBoost(const char *reason, bool force = false)
 {
     if (!s_supported)
@@ -32,7 +71,16 @@ void applyBoost(const char *reason, bool force = false)
     }
 
     // FastLoad also lowers the GPU clock; Normal restores the system profile.
+#ifdef KISAK_NX2
+    if (wanted && !s_active.load())
+    {
+        s_boostFrom = performanceConfiguration();
+        s_boostOperation = appletGetOperationMode();
+    }
+    Result rc = wanted ? appletSetCpuBoostMode(ApmCpuBoostMode_FastLoad) : endBoost();
+#else
     Result rc = appletSetCpuBoostMode(wanted ? ApmCpuBoostMode_FastLoad : ApmCpuBoostMode_Normal);
+#endif
     if (R_FAILED(rc))
     {
         std::printf("[nx-load-boost] CPU boost %s failed: %08x (%s)\n",

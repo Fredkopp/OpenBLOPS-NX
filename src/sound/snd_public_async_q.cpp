@@ -13,6 +13,22 @@
 #include <client/splitscreen.h>
 #include <client_mp/cl_main_mp.h>
 #endif
+#include <atomic>
+
+// The command and notify queues are single-producer/single-consumer rings shared by the main
+// thread and the sound worker. Retail relies on x86 store ordering; weakly ordered CPUs need the
+// slot states and ring indices published with release and read with acquire.
+template <typename T>
+static T SND_LoadAcquire(T &value)
+{
+    return std::atomic_ref<T>(value).load(std::memory_order_acquire);
+}
+
+template <typename T>
+static void SND_StoreRelease(T &value, T newValue)
+{
+    std::atomic_ref<T>(value).store(newValue, std::memory_order_release);
+}
 
 void __cdecl SND_InitCommands()
 {
@@ -60,7 +76,7 @@ snd_command *__cdecl SND_GetNewCommand()
     {
         __debugbreak();
     }
-    if (g_snd.commands[g_snd.command_free].type)
+    if (SND_LoadAcquire(g_snd.commands[g_snd.command_free].type))
     {
         Com_PrintError(
             9,
@@ -136,7 +152,7 @@ unsigned int __cdecl SND_CommandPush(snd_command *cmd)
         __debugbreak();
     }
     id = g_snd.command_id++;
-    if ( SND_NextCommandIndex(g_snd.command_q_head) == g_snd.command_q_tail )
+    if ( SND_NextCommandIndex(g_snd.command_q_head) == SND_LoadAcquire(g_snd.command_q_tail) )
     {
         Com_PrintError(9, "Failed to push sound command: queue is full\n");
         memset(cmd, 0, sizeof(snd_command));
@@ -157,7 +173,7 @@ unsigned int __cdecl SND_CommandPush(snd_command *cmd)
         }
         cmd->timestamp = Sys_Milliseconds();
         g_snd.command_q[g_snd.command_q_head] = cmd;
-        g_snd.command_q_head = SND_NextCommandIndex(g_snd.command_q_head);
+        SND_StoreRelease(g_snd.command_q_head, (unsigned int)SND_NextCommandIndex(g_snd.command_q_head));
         if ( g_snd.command_q_head < g_snd.command_q_tail )
             SND_LogCommandQHWM(g_snd.command_q_head + 1024 - g_snd.command_q_tail);
         else
@@ -199,7 +215,7 @@ const snd_command *__cdecl SND_CommandPeek()
     {
         __debugbreak();
     }
-    if ( g_snd.command_q_tail == g_snd.command_q_head )
+    if ( g_snd.command_q_tail == SND_LoadAcquire(g_snd.command_q_head) )
         return 0;
     else
         return g_snd.command_q[g_snd.command_q_tail];
@@ -257,9 +273,9 @@ void __cdecl SND_CommandPop()
     {
         __debugbreak();
     }
-    g_snd.command_q[g_snd.command_q_tail]->type = SND_COMMAND_NOP;
+    SND_StoreRelease(g_snd.command_q[g_snd.command_q_tail]->type, SND_COMMAND_NOP);
     g_snd.command_q[g_snd.command_q_tail] = 0;
-    g_snd.command_q_tail = SND_NextCommandIndex(g_snd.command_q_tail);
+    SND_StoreRelease(g_snd.command_q_tail, (unsigned int)SND_NextCommandIndex(g_snd.command_q_tail));
 }
 
 unsigned int __cdecl SND_CommandPump()
@@ -565,7 +581,7 @@ snd_notify *__cdecl SND_GetNewNotify()
     {
         __debugbreak();
     }
-    if (g_snd.notifies[g_snd.notify_free].type)
+    if (SND_LoadAcquire(g_snd.notifies[g_snd.notify_free].type))
     {
         Com_PrintError(9, "No notify space in sound queue.\n");
     }
@@ -627,7 +643,7 @@ void __cdecl SND_NotifyPush(snd_notify *cmd)
     //{
     //    __debugbreak();
     //}
-    if (SND_NextNotifyIndex(g_snd.notify_q_head) == g_snd.notify_q_tail
+    if (SND_NextNotifyIndex(g_snd.notify_q_head) == SND_LoadAcquire(g_snd.notify_q_tail)
         && !Assert_MyHandler(
             "C:\\projects_pc\\cod\\codsrc\\src\\sound\\snd_public_async_q.cpp",
             584,
@@ -647,7 +663,7 @@ void __cdecl SND_NotifyPush(snd_notify *cmd)
     {
         __debugbreak();
     }
-    if (SND_NextNotifyIndex(g_snd.notify_q_head) != g_snd.notify_q_tail)
+    if (SND_NextNotifyIndex(g_snd.notify_q_head) != SND_LoadAcquire(g_snd.notify_q_tail))
     {
         if (g_snd.notify_q[g_snd.notify_q_head]
             && !Assert_MyHandler(
@@ -660,7 +676,7 @@ void __cdecl SND_NotifyPush(snd_notify *cmd)
             __debugbreak();
         }
         g_snd.notify_q[g_snd.notify_q_head] = cmd;
-        g_snd.notify_q_head = SND_NextNotifyIndex(g_snd.notify_q_head);
+        SND_StoreRelease(g_snd.notify_q_head, (unsigned int)SND_NextNotifyIndex(g_snd.notify_q_head));
         if (g_snd.notify_q_head < g_snd.notify_q_tail)
             SND_LogNotifyQHWM(g_snd.notify_q_head + 512 - g_snd.notify_q_tail);
         else
@@ -703,7 +719,7 @@ const snd_notify *__cdecl SND_NotifyPeek()
     {
         __debugbreak();
     }
-    if ( g_snd.notify_q_tail == g_snd.notify_q_head )
+    if ( g_snd.notify_q_tail == SND_LoadAcquire(g_snd.notify_q_head) )
         return 0;
     else
         return g_snd.notify_q[g_snd.notify_q_tail];
@@ -751,9 +767,9 @@ void __cdecl SND_NotifyPop()
     {
         __debugbreak();
     }
-    g_snd.notify_q[g_snd.notify_q_tail]->type = SND_NOTIFY_NOP;
+    SND_StoreRelease(g_snd.notify_q[g_snd.notify_q_tail]->type, SND_NOTIFY_NOP);
     g_snd.notify_q[g_snd.notify_q_tail] = 0;
-    g_snd.notify_q_tail = SND_NextNotifyIndex(g_snd.notify_q_tail);
+    SND_StoreRelease(g_snd.notify_q_tail, (unsigned int)SND_NextNotifyIndex(g_snd.notify_q_tail));
 }
 
 void __cdecl SND_NotifyPump()

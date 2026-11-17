@@ -14,7 +14,7 @@ struct Glyph // sizeof=0x18
     float s1;
     float t1;
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(Glyph) == 24);
 #endif
 
@@ -27,7 +27,7 @@ struct Font_s // sizeof=0x18
     struct Material *glowMaterial;
     Glyph *glyphs;
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(Font_s) == 24);
 #endif
 

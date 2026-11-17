@@ -6,6 +6,7 @@
 #include "r_dvars.h"
 #include <universal/com_workercmds.h>
 #include "r_workercmds.h"
+#include <xmmintrin.h>
 
 WaterGlob waterGlob;
 volatile unsigned int g_waterLock;

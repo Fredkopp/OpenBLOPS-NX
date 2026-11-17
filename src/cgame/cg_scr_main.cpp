@@ -46,6 +46,7 @@
 #include <gfx_d3d/r_primarylights.h>
 #include "cg_camerashake.h"
 #include <DynEntity/DynEntity_client.h>
+#include <DynEntity/DynEntity_load_obj.h>
 #include <clientscript/cscr_memorytree.h>
 #include <cgame_mp/cg_animscripted_mp.h>
 #include "cg_event.h"
@@ -10925,10 +10926,89 @@ void __cdecl CScr_GetEntityField(unsigned int entnum, int clientNum, unsigned in
         Scr_GetGenericField((unsigned __int8 *)ent, f->type, f->ofs, SCRIPTINSTANCE_CLIENT, 0);
 }
 
+#ifdef KISAK_SP
+// Retail SP 0x00A60898: the fields client scripts read on GetDynEnt / GetDynEntArray results.
+// Each one lives in the dynent's client state (0), pose (1) or definition (2).
+struct cdynent_field_s
+{
+    const char *name;
+    int ofs;
+    fieldtype_t type;
+    int source;
+    void (__cdecl *setter)(unsigned int, const cdynent_field_s *);
+    void (__cdecl *getter)(unsigned int, const cdynent_field_s *);
+};
+
+static unsigned __int8 *CScr_GetDynEntFieldBase(unsigned int entnum, int source)
+{
+    if ( source == 0 )
+        return reinterpret_cast<unsigned __int8 *>(DynEnt_GetClientEntity(entnum));
+    if ( source == 1 )
+        return reinterpret_cast<unsigned __int8 *>(const_cast<DynEntityPose *>(DynEnt_GetClientPose(entnum)));
+    return reinterpret_cast<unsigned __int8 *>(const_cast<DynEntityDef *>(DynEnt_GetEntityDef(entnum)));
+}
+
+static void __cdecl CScr_GetDynEntServerString(unsigned int entnum, const cdynent_field_s *f)
+{
+    const unsigned __int16 name = *reinterpret_cast<unsigned __int16 *>(CScr_GetDynEntFieldBase(entnum, f->source) + f->ofs);
+    if ( name )
+        Scr_AddString(SL_ConvertToString(name, SCRIPTINSTANCE_SERVER), SCRIPTINSTANCE_CLIENT);
+}
+
+static void __cdecl CScr_DynEntReadOnly(unsigned int entnum, const cdynent_field_s *f)
+{
+    Scr_Error(SCRIPTINSTANCE_CLIENT, va("dynent field field %s is read-only", f->name), 0);
+}
+
+static const cdynent_field_s dynent_fields[] =
+{
+    { "origin", (int)offsetof(DynEntityPose, pose.origin), F_VECTOR, 1, NULL, NULL },
+    { "health", (int)offsetof(DynEntityClient, health), F_INT, 0, NULL, NULL },
+    { "targetname", (int)offsetof(DynEntityDef, targetname), F_STRING, 2, &CScr_DynEntReadOnly, &CScr_GetDynEntServerString },
+    { "target", (int)offsetof(DynEntityDef, target), F_STRING, 2, &CScr_DynEntReadOnly, &CScr_GetDynEntServerString },
+    { NULL, 0, F_INT, 0, NULL, NULL }
+};
+
+// Retail SP 0x00569360.
+static void CScr_GetDynEntField(unsigned int entnum, unsigned int offset)
+{
+    const cdynent_field_s *f = &dynent_fields[offset];
+    if ( f->getter )
+        f->getter(entnum, f);
+    else
+        Scr_GetGenericField(CScr_GetDynEntFieldBase(entnum, f->source), f->type, f->ofs, SCRIPTINSTANCE_CLIENT, 0);
+}
+
+// Retail SP 0x0060B270.
+static int CScr_SetDynEntField(unsigned int entnum, unsigned int offset)
+{
+    const cdynent_field_s *f = &dynent_fields[offset];
+    if ( f->setter )
+        f->setter(entnum, f);
+    else
+        Scr_SetGenericField(CScr_GetDynEntFieldBase(entnum, f->source), f->type, f->ofs, SCRIPTINSTANCE_CLIENT, 0);
+    return 1;
+}
+
+// Retail SP 0x0052CEB0.
+static void CScr_AddFieldsForDynEnt()
+{
+    for ( const cdynent_field_s *f = dynent_fields; f->name; ++f )
+        Scr_AddClassField(4, (char *)f->name, (unsigned __int16)(f - dynent_fields), SCRIPTINSTANCE_CLIENT);
+}
+#endif
+
 void __cdecl CScr_GetObjectField(unsigned int classnum, unsigned int entnum, int clientNum, unsigned int offset)
 {
     const char *v4; // eax
 
+#ifdef KISAK_SP
+    if ( classnum == 4 )
+    {
+        CScr_GetDynEntField(entnum, offset);
+        return;
+    }
+#endif
     if ( classnum )
     {
         v4 = va("bad class num %u", classnum);
@@ -10947,6 +11027,10 @@ int __cdecl CScr_SetObjectField(unsigned int classnum, unsigned int entnum, int 
 
     if ( !classnum )
         return CScr_SetEntityField(entnum, clientNum, offset);
+#ifdef KISAK_SP
+    if ( classnum == 4 )
+        return CScr_SetDynEntField(entnum, offset);
+#endif
     v5 = va("bad class num %u", classnum);
     if ( !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\cgame\\cg_scr_main.cpp", 10527, 0, v5) )
         __debugbreak();
@@ -11018,6 +11102,9 @@ void __cdecl CScr_PostLoadScripts()
     for ( classnum = 0; classnum < 5; ++classnum )
         Scr_SetClassMap(SCRIPTINSTANCE_CLIENT, classnum);
     CScr_AddFieldsForEntity();
+#ifdef KISAK_SP
+    CScr_AddFieldsForDynEnt();
+#endif
     CScr_AddFieldsForRadiant();
 }
 

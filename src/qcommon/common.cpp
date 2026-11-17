@@ -4,6 +4,7 @@
 #include <switch.h>
 #include <nx/nx_load_boost.h>
 #include <nx/nx_stall_scope.h>
+#include <nx/nx_display.h>
 #endif
 #include <live/live_storage.h>
 
@@ -97,6 +98,9 @@
 #include <cgame/cg_clouds.h>
 #include <devgui/devgui.h>
 #include "tl_support.h"
+#ifdef KISAK_SP
+#include <dec20/dec20_terminal.h>
+#endif
 
 cmd_function_s Com_Error_f_VAR;
 cmd_function_s Com_Crash_f_VAR;
@@ -166,7 +170,12 @@ static const dvar_t *nx_fpsLimit;
 int Com_GetFrameRateLimit()
 {
     const int limit = nx_fpsLimit->current.integer;
+#ifdef KISAK_NX2
+    // Switch 2: with no limit chosen, the display's refresh rate (60 or 120 Hz).
+    return limit < 0 ? NX_DisplayRefreshRate() : limit;
+#else
     return limit < 0 ? com_maxfps->current.integer : limit;
+#endif
 }
 #endif
 const dvar_t *arcademode;
@@ -696,7 +705,13 @@ void __cdecl Com_InitDynamicRender()
     v1 = Com_IsMenuLevel(0);
     R_ExtraCam_Init(v1);
     v2 = Com_IsMenuLevel(0);
+#ifdef KISAK_SP
+    // Retail SP 0x0062D980: the frontend's monitors (the DEC-20 terminal among them) render
+    // into a 1024x1024 target, mission levels into 1024x512.
+    R_UI3D_OnetimeInit(0x400u, v2 ? 0x400u : 0x200u, 0, v2, 0);
+#else
     R_UI3D_OnetimeInit(0x80u, 0x80u, 0, v2, 0);
+#endif
 }
 
 void __cdecl Com_InitDynamicMemorySystems()
@@ -718,7 +733,11 @@ void __cdecl Com_InitDynamicMemorySystems()
 
 void __cdecl Com_ShutdownDynamicMemorySystems()
 {
-    //BLOPS_NULLSUB();
+#ifdef KISAK_SP
+    // Retail SP 0x0043C750 unloads terminal.ff first: it was loaded during play,
+    // above the buffers freed below.
+    Dec20_Shutdown();
+#endif
     Demo_DeallocatePlaybackMemory();
     GlassCl_FreeMemory();
     R_UI3D_Shutdown();
@@ -806,10 +825,9 @@ void __cdecl    Com_ErrorAbort()
     Sys_Error((char*)"%s", com_errorMessage);
 }
 
-#ifdef KISAK_NX
-extern "C" void NX_D3D_HoldDeviceLock(bool hold);
-void Image_NX_AbortImageLoad();
-void NX_KBZ_AbortImageBatch();
+#ifdef KISAK_64BIT
+#include <database/db_kbz.h>
+void Image_Kbz_AbortImageLoad();
 #endif
 void Com_Error(errorParm_t code, const char *fmt, ...)
 {
@@ -817,10 +835,10 @@ void Com_Error(errorParm_t code, const char *fmt, ...)
     int *Value; // eax
     va_list va; // [esp+18h] [ebp+10h] BYREF
 
-#ifdef KISAK_NX
-    NX_D3D_HoldDeviceLock(false);
-    Image_NX_AbortImageLoad();
-    NX_KBZ_AbortImageBatch();
+#ifdef KISAK_64BIT
+    Sys_KbzHoldDeviceLock(false);
+    Image_Kbz_AbortImageLoad();
+    DB_KbzAbortImageBatch();
 #endif
     va_start(va, fmt);
     if ( (code == ERR_DROP || code == ERR_SCRIPT_DROP) && G_ExitAfterToolComplete() )
@@ -885,7 +903,7 @@ void Com_Error(errorParm_t code, const char *fmt, ...)
             TaskManager2_ComErrorCleanup();
             GlassCl_WaitUpdate();
             Value = (int *)Sys_GetValue(2);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
             longjmp(*(jmp_buf *)Value, -1);
 #else
             longjmp(Value, -1);
@@ -917,7 +935,7 @@ void __cdecl Com_CheckError()
     if ( errorEntered )
     {
         Value = (int *)Sys_GetValue(2);
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         longjmp(*(jmp_buf *)Value, -1);
 #else
         longjmp(Value, -1);
@@ -1375,6 +1393,22 @@ void __cdecl Com_SetRecommended(int localClientNum, int restart)
     // which picks Extra from the Switch's memory; use High instead. Runs on
     // first start and from the options menu's "set recommended"; a choice made
     // in the options afterwards is saved in config.cfg and stands.
+#ifdef KISAK_NX2
+    // Switch 2: the recommended PC settings with High textures, 4x anisotropic
+    // filtering (r_texFilterAnisoMax only caps it) and a depth prepass, without
+    // MSAA, depth of field or v-sync.
+    Dvar_SetIntByName("r_aaSamples", 1);
+    Dvar_SetIntByName("r_texFilterAnisoMin", 4);
+    Dvar_SetBoolByName("r_vsync", false);
+    Dvar_SetBoolByName("r_dof_enable", false);
+    Dvar_SetBoolByName("r_depthPrepass", true);
+    Dvar_SetBoolByName("r_picmip_manual", true);
+    Dvar_SetIntByName("r_picmip", 1);
+    Dvar_SetIntByName("r_picmip_bump", 1);
+    Dvar_SetIntByName("r_picmip_spec", 1);
+    Com_Printf(16, "[nx] Switch 2 defaults over the recommended settings: anti-aliasing off, 4x anisotropic filtering,"
+                   " depth of field off, depth prepass on, v-sync off, textures high\n");
+#else
     Dvar_SetIntByName("r_aaSamples", 1);
     Dvar_SetBoolByName("r_vsync", false);
     Dvar_SetBoolByName("sm_enable", false);
@@ -1385,6 +1419,7 @@ void __cdecl Com_SetRecommended(int localClientNum, int restart)
     Dvar_SetIntByName("r_picmip_spec", 1);
     Com_Printf(16, "[nx] Switch defaults over the recommended settings: anti-aliasing off, v-sync off, shadows off,"
                    " bullet impacts off, textures high\n");
+#endif
 #endif
     checksum = Com_ConfigureChecksum(csv, filesize);
     FS_FreeFile(csv);
@@ -1675,6 +1710,51 @@ void __cdecl Com_CheckSetRecommended(int localClientNum)
         Com_SetRecommended(localClientNum, 0);
 }
 
+#ifdef KISAK_NX
+// A config.cfg saved by an earlier release keeps that release's defaults. On
+// the first boot after an update, bring it up to each newer revision of the
+// Switch defaults once; nx_settingsRevision records the last one applied, so
+// a choice made in the options afterwards stands.
+static void Com_NX_ApplySettingsRevisions()
+{
+    const int latestRevision = 3;
+    const dvar_s *nx_settingsRevision = _Dvar_RegisterInt(
+        "nx_settingsRevision", 0, 0, 1000, 1u, "Last revision of the Switch default settings applied to config.cfg");
+    const int appliedRevision = nx_settingsRevision->current.integer;
+    if ( appliedRevision >= latestRevision )
+        return;
+
+    if ( appliedRevision < 1 )
+    {
+        // 60 fps cap and High textures
+        Dvar_SetIntByName("com_maxfps", 60);
+        Dvar_SetBoolByName("r_picmip_manual", true);
+        Dvar_SetIntByName("r_picmip", 1);
+        Dvar_SetIntByName("r_picmip_bump", 1);
+        Dvar_SetIntByName("r_picmip_spec", 1);
+    }
+    if ( appliedRevision < 2 )
+    {
+        // Earlier releases saved cg_drawFPS "Simple" and hid it behind an
+        // options toggle; the counter now follows cg_drawFPS as in retail.
+        Dvar_SetIntByName("cg_drawFPS", 0);
+    }
+#ifndef KISAK_NX2
+    if ( appliedRevision < 3 )
+    {
+        // The FPS LIMIT option (nx_fpsLimit) defaults to 60 FPS. It used to
+        // default to -1, following com_maxfps; a limit picked in the options
+        // stays.
+        if ( Dvar_GetInt("nx_fpsLimit") < 0 )
+            Dvar_SetIntByName("nx_fpsLimit", 60);
+    }
+#endif
+
+    Dvar_SetInt((dvar_s *)nx_settingsRevision, latestRevision);
+    Com_Printf(16, "[nx] Updated the saved settings to Switch defaults revision %i\n", latestRevision);
+}
+#endif
+
 bool __cdecl Com_HasConfigureFileChanged()
 {
     int filesize; // [esp+0h] [ebp-Ch]
@@ -1778,7 +1858,7 @@ unsigned int __cdecl Com_CalculateStreamBuffer()
 
 void __cdecl Com_Init(char *commandLine)
 {
-    if ( _setjmp((int *)Sys_GetValue(2)) )
+    if ( _setjmp(*(jmp_buf *)Sys_GetValue(2)) )
     {
         Sys_Error(va("Error during initialization:\n%s\n", com_errorMessage));
     }
@@ -1787,7 +1867,7 @@ void __cdecl Com_Init(char *commandLine)
 
     Monkey_Start();
 
-    if ( !_setjmp((int*)Sys_GetValue(2)) )
+    if ( !_setjmp(*(jmp_buf *)Sys_GetValue(2)) )
         Com_AddStartupCommands();
 
 #ifdef KISAK_SP
@@ -1837,7 +1917,7 @@ void __cdecl Com_Init(char *commandLine)
 #ifndef KISAK_DEDICATED
     if (!com_sv_running->current.enabled && !IsDedicatedServer())
     {
-        if (_setjmp((int *)Sys_GetValue(2)))
+        if (_setjmp(*(jmp_buf *)Sys_GetValue(2)))
         {
             Sys_Error(va("Error during initialization:\n%s\n", com_errorMessage));
         }
@@ -2215,6 +2295,10 @@ void __cdecl Com_Init_Try_Block_Function(char *commandLine)
     R_StreamSetInitData(Com_CalculateStreamBuffer());
     com_recommendedSet = _Dvar_RegisterBool("com_recommendedSet", 0, 1u, "Use recommended settings");
     Com_CheckSetRecommended(0);
+    SEH_ApplyInstalledLanguage();
+#ifdef KISAK_NX
+    Com_NX_ApplySettingsRevisions();
+#endif
     Com_StartupVariable(0);
 
     if ( !useFastFile->current.enabled )
@@ -2567,7 +2651,12 @@ void Com_InitDvars()
     com_maxfps = _Dvar_RegisterInt("com_maxfps", 85, 0, 1000, 1u, "Cap frames per second");
 #endif
 #ifdef KISAK_NX
-    nx_fpsLimit = _Dvar_RegisterInt("nx_fpsLimit", -1, -1, 1000, 1u, "Switch frame rate limit (-1 uses com_maxfps, 0 is unlimited)");
+#ifdef KISAK_NX2
+    // Switch 2: -1 follows the screen refresh rate (src/nx/nx_display.cpp).
+    nx_fpsLimit = _Dvar_RegisterInt("nx_fpsLimit", -1, -1, 1000, 1u, "Switch frame rate limit (-1 follows the refresh rate, 0 is unlimited)");
+#else
+    nx_fpsLimit = _Dvar_RegisterInt("nx_fpsLimit", 60, -1, 1000, 1u, "Switch frame rate limit (-1 uses com_maxfps, 0 is unlimited)");
+#endif
     nx_splog = _Dvar_RegisterBool("nx_splog", 0, 0, "Log the SP bring-up traces (lines starting \"SP \")");
 #endif
     arcademode = _Dvar_RegisterBool("arcademode", 0, 0x100u, "Current game is an arcade mode game");
@@ -2859,6 +2948,7 @@ void __cdecl Com_WriteConfigToFile(int localClientNum, char *filename)
 #else
         Gamepad_WriteBindings(localClientNum, f);
 #endif
+        Directory_BeforeConfigWrite();
         Dvar_WriteVariables(f);
         Con_WriteFilterConfigString(f);
         FS_FCloseFile(f);
@@ -3453,7 +3543,7 @@ void __cdecl Com_Frame()
     cl_flame_proftimer.reset();
     Value = Sys_GetValue(2);
     //if ( !_setjmp3(Value, 0) )
-    if ( !_setjmp((int*)Value) )
+    if ( !_setjmp(*(jmp_buf *)Value) )
     {
         Com_CheckSyncFrame();
         Com_Frame_Try_Block_Function();
@@ -3713,6 +3803,9 @@ unsigned int Com_Frame_Try_Block_Function()
 #endif
             Com_UpdateMenu();
             CG_UpdateClouds(mseca);
+#ifdef KISAK_SP
+            Dec20_Update();
+#endif
             PhysicsSystem_Update();
         }
         //BG_EvalVehicleName(0);
@@ -3889,7 +3982,7 @@ void Com_StartHunkUsers()
 
     Value = Sys_GetValue(2);
     //if ( _setjmp3(Value, 0) )
-    if (_setjmp((int *)Value))
+    if (_setjmp(*(jmp_buf *)Value))
     {
         Sys_Error((char*)"Error during initialization:\n%s\n", com_errorMessage);
 

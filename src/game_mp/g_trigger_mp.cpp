@@ -236,6 +236,10 @@ void __cdecl SP_trigger_disk(gentity_s *ent, SpawnVar *spawnVar)
 
 void __cdecl hurt_touch(gentity_s *self, gentity_s *other, int __formal)
 {
+#ifdef KISAK_SP
+    if ( (self->spawnflags & 2) != 0 && other->actor )
+        return;
+#endif
     if ( other->takedamage && self->item[0].index <= level.time )
     {
         G_Trigger(self, other);

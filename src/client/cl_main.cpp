@@ -169,13 +169,84 @@ void __cdecl CL_DrawFramedPicPhysical(
 }
 
 cmd_function_s CL_UpdateGamerProfile_VAR;
+// The front end's main menu runs "select_save_device" as it opens, and the
+// save device popups "force_select_save_device": the console's storage device
+// picker. There is no device to pick here, so they do nothing (they used to
+// print "Unknown command").
+cmd_function_s CL_SelectSaveDevice_VAR;
+cmd_function_s CL_ForceSelectSaveDevice_VAR;
+static void __cdecl CL_SelectSaveDevice_f()
+{
+}
 cmd_function_s CL_CommitDvarToProfiles_VAR;
 cmd_function_s CL_UpdateDvarsFromProfile_VAR;
 cmd_function_s CL_UpdateProfileFromStats_VAR;
+
+#ifdef KISAK_SP
+// The campaign TV's native RESUME GAME (main_sp) shows while sv_saveGameAvailable
+// is set and runs "loadgame_continue". Retail loaded its on-disk checkpoint
+// save; this build keeps checkpoints in memory only, so RESUME continues from
+// the campaign progress saved in config.cfg instead: mis_01, which
+// _endmission.gsc sets to the index of the next level in its list.
+namespace
+{
+const char *const s_campaignLevels_SP[] = {
+    "cuba", "so_narrative1_frontend", "vorkuta", "pentagon", "flashpoint", "so_narrative2_frontend",
+    "khe_sanh", "hue_city", "kowloon", "so_narrative3_frontend", "fullahead", "creek_1",
+    "so_narrative4_frontend", "river", "wmd_sr71", "wmd", "pow", "so_narrative5_frontend",
+    "rebirth", "int_escape", "underwaterbase", "outro",
+};
+constexpr int s_campaignLastMission_SP = 20;   // underwaterbase, once the campaign is finished
+
+int CL_CampaignProgress_SP()
+{
+    return Dvar_FindVar("mis_01") ? Dvar_GetInt("mis_01") : 0;
+}
+
+cmd_function_s CL_LoadGameContinue_VAR;
+cmd_function_s CL_UpdateSaveGameAvailable_VAR;
+void __cdecl CL_LoadGameContinue_SP()
+{
+    const int progress = CL_CampaignProgress_SP();
+    if (progress <= 0)
+    {
+        Com_Printf(14, "loadgame_continue: no campaign progress\n");
+        return;
+    }
+    const int levelCount = static_cast<int>(sizeof(s_campaignLevels_SP) / sizeof(s_campaignLevels_SP[0]));
+    const char *map = s_campaignLevels_SP[progress < levelCount ? progress : s_campaignLastMission_SP];
+    Com_Printf(14, "loadgame_continue: campaign progress %i -> %s\n", progress, map);
+    // The difficulty (g_gameskill) is not archived, so ask for it the way
+    // mission select does: ui_load_level, then the difficulty popup, whose
+    // choice sets the skill and sends the frontend level script "startlevel"
+    // (DoStartLevelSequence -> ChangeLevel(ui_load_level)).
+    Dvar_SetStringByName("ui_load_level", const_cast<char *>(map));
+    Cbuf_AddText(0, "set newgame_difficulty 0\n");
+    Cbuf_AddText(0, "openmenu popmenu_difficulty\n");
+}
+}
+
+void CL_UpdateCampaignResume_SP()
+{
+    static const dvar_s *available = _Dvar_RegisterBool("sv_saveGameAvailable", false, 0, "Campaign RESUME GAME is available");
+    static const dvar_s *unreadable = _Dvar_RegisterBool("sv_saveGameNotReadable", false, 0, "Campaign save cannot be read");
+    Dvar_SetBool(const_cast<dvar_s *>(available), CL_CampaignProgress_SP() > 0);
+    Dvar_SetBool(const_cast<dvar_s *>(unreadable), false);
+}
+#endif
+
 void __cdecl CL_RegisterCommands()
 {
     CL_Platform_RegisterCommands();
+#ifdef KISAK_SP
+    Cmd_AddCommandInternal("loadgame_continue", CL_LoadGameContinue_SP, &CL_LoadGameContinue_VAR);
+    // The campaign menus run "update_sv_savegameavailable" when they open:
+    // refresh RESUME GAME from the saved campaign progress.
+    Cmd_AddCommandInternal("update_sv_savegameavailable", CL_UpdateCampaignResume_SP, &CL_UpdateSaveGameAvailable_VAR);
+#endif
     Cmd_AddCommandInternal("updategamerprofile", CL_UpdateGamerProfile, &CL_UpdateGamerProfile_VAR);
+    Cmd_AddCommandInternal("select_save_device", CL_SelectSaveDevice_f, &CL_SelectSaveDevice_VAR);
+    Cmd_AddCommandInternal("force_select_save_device", CL_SelectSaveDevice_f, &CL_ForceSelectSaveDevice_VAR);
     Cmd_AddCommandInternal("commitdvartoprofiles", CL_CommitDvarToProfiles, &CL_CommitDvarToProfiles_VAR);
     Cmd_AddCommandInternal("updatedvarsfromprofile", CL_UpdateDvarsFromProfile, &CL_UpdateDvarsFromProfile_VAR);
     Cmd_AddCommandInternal("updateprofilefromstats", CL_UpdateProfileFromStats, &CL_UpdateProfileFromStats_VAR);

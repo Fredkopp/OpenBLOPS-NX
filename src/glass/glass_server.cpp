@@ -665,6 +665,22 @@ void __cdecl GlassSv_Touch(unsigned int glassId, gentity_s *other)
 }
 
 float PREDICT_TIME = 0.15f;
+
+// ExpandBoundsToWidth without its asserts. Some map glass has an inverted
+// bounding box (Redemption: maxs[1] < mins[1]), which retail release, built
+// without asserts, runs through this same arithmetic; the asserting version
+// took the game down when a vehicle drove near such a pane.
+static void GlassSv_ExpandBoundsToWidth(float *mins, float *maxs)
+{
+    const float height = maxs[2] - mins[2];
+    const float width = (maxs[0] - mins[0]) - (maxs[1] - mins[1]) < 0.0f ? maxs[1] - mins[1] : maxs[0] - mins[0];
+    if (width > height)
+    {
+        const float diff = (width - height) * 0.5f;
+        mins[2] -= diff;
+        maxs[2] += diff;
+    }
+}
 void __cdecl GlassSv_PredictTouch(gentity_s *other)
 {
     scr_vehicle_s *scr_vehicle; // ecx
@@ -748,7 +764,7 @@ void __cdecl GlassSv_PredictTouch(gentity_s *other)
             v4 = v11->absmax[0];
             v5 = v11->absmax[1];
             v6 = v11->absmax[2];
-            ExpandBoundsToWidth(&v8, &v4);
+            GlassSv_ExpandBoundsToWidth(&v8, &v4);
             v8 = v8 - v29;
             v9 = v9 - v30;
             v10 = v10 - v31;

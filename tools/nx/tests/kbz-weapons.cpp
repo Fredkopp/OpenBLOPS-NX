@@ -1,4 +1,4 @@
-#include "../../../src/nx/nx_kbz_weapons.h"
+#include "../../../src/database/db_kbz_weapons.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -20,7 +20,7 @@ template<class T> static T read(const void *p) { T value; memcpy(&value, p, size
 int main(int argc, char **argv) {
     try {
         alignas(8) unsigned char bytes[192]{};
-        NxKbzStorage fixture{};
+        KbzStorage fixture{};
         fixture.blockCount = 1; fixture.blocks[0] = bytes; fixture.sizes[0] = sizeof(bytes);
         auto *tags = reinterpret_cast<uint16_t *>(bytes + 2);
         auto **models = reinterpret_cast<XModel **>(tags);
@@ -31,22 +31,22 @@ int main(int argc, char **argv) {
         bool reproduced = false;
         try { Mark_XModelPtrArray(16); } catch (const std::runtime_error &) { reproduced = true; }
         assert(reproduced);
-        assert(NX_ExpandKbzWeaponModels(fixture, models, tags));
+        assert(DB_ExpandKbzWeaponModels(fixture, models, tags));
         assert(models == fixture.emptyWeaponModels);
         varXModelPtr = models; Mark_XModelPtrArray(16);
         assert(read<XModel *>(bytes + 72) == &sentinel);
-        assert(NX_ExpandKbzWeaponModels(fixture, models, tags));
+        assert(DB_ExpandKbzWeaponModels(fixture, models, tags));
         models = reinterpret_cast<XModel **>(tags); tags[0] = 1;
-        assert(!NX_ExpandKbzWeaponModels(fixture, models, tags));
+        assert(!DB_ExpandKbzWeaponModels(fixture, models, tags));
         tags[0] = 0; fixture.sizes[0] = 65;
-        assert(!NX_ExpandKbzWeaponModels(fixture, models, tags));
+        assert(!DB_ExpandKbzWeaponModels(fixture, models, tags));
         XModel *valid[16]{}; valid[15] = &sentinel; models = valid;
-        assert(NX_ExpandKbzWeaponModels(fixture, models, tags) && models == valid);
+        assert(DB_ExpandKbzWeaponModels(fixture, models, tags) && models == valid);
 
         unsigned expanded = 0, visited = 0;
         for (int arg = 1; arg < argc; ++arg) {
-            NxKbzStorage *storage = nullptr;
-            assert(NX_ReadKbz(argv[arg], &storage) == 1);
+            KbzStorage *storage = nullptr;
+            assert(DB_ReadKbz(argv[arg], &storage) == 1);
             const unsigned char *assets = storage->metadata + storage->relocCount * 10;
             registeredModels.clear();
             for (unsigned i = 0; i < storage->relocCount; ++i) {
@@ -70,14 +70,14 @@ int main(int argc, char **argv) {
                     auto **array = read<XModel **>(definition + field);
                     if (!array) continue;
                     auto **original = array;
-                    assert(NX_ExpandKbzWeaponModels(*storage, array, hideTags));
+                    assert(DB_ExpandKbzWeaponModels(*storage, array, hideTags));
                     expanded += array != original;
                     memcpy(definition + field, &array, sizeof(array));
                     varXModelPtr = array; Mark_XModelPtrArray(16);
                     ++visited;
                 }
             }
-            NX_FreeKbzStorage(storage);
+            DB_FreeKbzStorage(storage);
         }
         printf("PASS: reproduced unload overread; bounds/nonzero rejection; %u model arrays marked, %u legacy aliases expanded across %d zones\n", visited, expanded, argc - 1);
     } catch (const std::exception &error) {

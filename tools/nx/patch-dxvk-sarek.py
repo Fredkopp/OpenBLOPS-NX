@@ -202,12 +202,52 @@ replace('src/d3d9/d3d9_swapchain.cpp',
     presenterDesc.fullScreenExclusive = PickFullscreenMode();
 
     if (m_presenter->recreateSwapChain(presenterDesc) != VK_SUCCESS)''')
+# The game sets the present rate (src/nx/nx_display.cpp); trees patched
+# before call nwindowSetSwapInterval directly.
+file=source/'src/d3d9/d3d9_swapchain.cpp'
+text=file.read_text()
+old_interval='      if (R_FAILED(nwindowSetSwapInterval(nwindowGetDefault(), SyncInterval != 0)))\n'
+if old_interval in text:
+    file.write_text(text.replace(old_interval, '      if (R_FAILED(NX_DxvkSetSyncInterval(SyncInterval)))\n'))
 replace('src/d3d9/d3d9_swapchain.cpp',
     '''      m_context->beginRecording(
         m_device->createCommandList());''',
-    '''      if (R_FAILED(nwindowSetSwapInterval(nwindowGetDefault(), SyncInterval != 0)))
+    '''      if (R_FAILED(NX_DxvkSetSyncInterval(SyncInterval)))
         throw DxvkError("D3D9SwapChainEx: Failed to set display swap interval");
 
       m_context->beginRecording(
         m_device->createCommandList());''')
+# NVK on Horizon runs vkCmdCopyImage on the slow copy engine; same-size
+# copies (the game's StretchRect resolves) are faster as draws.
+replace('src/dxvk/dxvk_device.h', '    VkBool32 preferFbResolve          : 1;\n',
+    '    VkBool32 preferFbResolve          : 1;\n    VkBool32 preferFbColorCopy        : 1;\n')
+replace('src/dxvk/dxvk_device.cpp',
+    '''    hints.preferFbDepthStencilCopy = m_extensions.extShaderStencilExport
+      && (m_adapter->matchesDriver(DxvkGpuVendor::Amd, VK_DRIVER_ID_MESA_RADV_KHR, 0, 0)''',
+    '''    hints.preferFbColorCopy = m_adapter->matchesDriver(VK_DRIVER_ID_MESA_NVK);
+    hints.preferFbDepthStencilCopy = m_extensions.extShaderStencilExport
+      && (m_adapter->matchesDriver(VK_DRIVER_ID_MESA_NVK)
+       || m_adapter->matchesDriver(DxvkGpuVendor::Amd, VK_DRIVER_ID_MESA_RADV_KHR, 0, 0)''')
+replace('src/dxvk/dxvk_context.cpp',
+    '''            && (srcImage != dstImage);
+    }
+
+    if (!useFb) {
+      this->copyImageHw(''',
+    '''            && (srcImage != dstImage);
+    }
+
+    if (m_device->perfHints().preferFbColorCopy) {
+      useFb |= (dstSubresource.aspectMask == VK_IMAGE_ASPECT_COLOR_BIT)
+            && (srcSubresource.aspectMask == VK_IMAGE_ASPECT_COLOR_BIT)
+            && (dstImage->info().usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+            && (srcImage->info().usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+            && (dstImage->info().format == srcImage->info().format)
+            && (dstImage->info().sampleCount == VK_SAMPLE_COUNT_1_BIT)
+            && (srcImage->info().sampleCount == VK_SAMPLE_COUNT_1_BIT)
+            && (srcImage != dstImage);
+    }
+
+    if (!useFb) {
+      this->copyImageHw(''')
 print('DXVK Sarek Horizon patches ready')

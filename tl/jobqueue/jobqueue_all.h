@@ -198,7 +198,7 @@ struct __declspec(align(4)) jqBatch // sizeof=0x7C
 
     jqBatch();
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(sizeof(jqBatch) == 124);
 #endif
 
@@ -412,7 +412,7 @@ struct jqBatchPool // sizeof=0x180
 
     ~jqBatchPool();
 };
-#ifndef KISAK_NX // nx-port: x86 layout assert
+#ifndef KISAK_64BIT // nx-port: x86 layout assert
 static_assert(offsetof(jqBatchPool, group) % 8 == 0, "jqPool.group must be 8-byte aligned");
 #endif
 

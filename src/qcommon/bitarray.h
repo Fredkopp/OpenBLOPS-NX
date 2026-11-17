@@ -15,7 +15,7 @@ struct bitarray // sizeof=0x10
     {
         unsigned int v2; // kr00_4
         int i; // [esp+0h] [ebp-Ch]
-#ifdef KISAK_NX
+#ifdef KISAK_64BIT
         va_list argList;
 #else
         char *argList; // [esp+8h] [ebp-4h]

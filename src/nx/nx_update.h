@@ -5,6 +5,8 @@
 // its tag differs from this build's NACP version, the popup
 // (nx_update_menu.cpp) offers it; installing downloads OpenBLOPS-NX.zip and
 // unpacks it at the SD card's root (the zip holds switch/OpenBLOPS-NX/...).
+// Switch 2 builds take OpenBLOPS-NX2.zip, with switch/OpenBLOPS-NX2/ (nx_install.h).
+// Each build unpacks only the files under its own folder.
 //
 // Each file goes to <file>.new first and is then renamed into place. One that
 // cannot be replaced while it is in use is named in update_pending.txt and

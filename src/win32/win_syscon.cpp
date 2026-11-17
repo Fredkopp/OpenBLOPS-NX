@@ -30,7 +30,7 @@ LRESULT __stdcall InputLineWndProc(HWND__ *hWnd, UINT uMsg, HWND__ *wParam, LPAR
         Sys_Print(displayBuffer);
         return 0;
     }
-    return CallWindowProcA((WNDPROC)s_wcd.SysInputLineWndProc, hWnd, uMsg, (WPARAM)wParam, lParam);
+    return CallWindowProcA(s_wcd.SysInputLineWndProc, hWnd, uMsg, (WPARAM)wParam, lParam);
 }
 
 void __cdecl Sys_CreateConsole(HINSTANCE__ *hInstance)
@@ -134,10 +134,10 @@ void __cdecl Sys_CreateConsole(HINSTANCE__ *hInstance)
                                                      hInstance,
                                                      0);
             SendMessageA(s_wcd.hwndBuffer, 0x30u, (WPARAM)s_wcd.hfBufferFont, 0);
-            s_wcd.SysInputLineWndProc = (int (__stdcall *)(HWND__ *, unsigned int, unsigned int, int))SetWindowLongA(
+            s_wcd.SysInputLineWndProc = (WNDPROC)SetWindowLongPtrA(
                                                                                                                                                                                                     s_wcd.hwndInputLine,
-                                                                                                                                                                                                    -4,
-                                                                                                                                                                                                    (int)InputLineWndProc);
+                                                                                                                                                                                                    GWLP_WNDPROC,
+                                                                                                                                                                                                    (LONG_PTR)InputLineWndProc);
             SendMessageA(s_wcd.hwndInputLine, 0x30u, (WPARAM)s_wcd.hfBufferFont, 0);
             SetFocus(s_wcd.hwndInputLine);
             Con_GetTextCopy(text, 0x4000);

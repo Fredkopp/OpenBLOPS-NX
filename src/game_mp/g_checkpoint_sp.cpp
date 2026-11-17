@@ -10,6 +10,7 @@
 #include "g_checkpoint_client_sp.h"
 #include "g_main_mp.h"
 #include "g_cmds_mp.h"
+#include "g_spawn_mp.h"
 #include <clientscript/cscr_save_write.h>
 #include <clientscript/cscr_vm.h>
 #include <clientscript/cscr_variable.h>
@@ -266,6 +267,10 @@ void RestoreCheckpointMain_SP(){
     float originError=0;for(int i=0;i<3;++i)originError+=std::fabs(level.clients[0].ps.origin[i]-(snapshotTest?testOrigin[i]:committedOrigin[i]));
     Com_Printf(15,"CHECKPOINT_RESTORE {\"stage\":\"applied\",\"ok\":%s,\"time\":%i,\"health\":%i,\"generation\":%u,\"origin_error\":%.4f,\"checkpoint_id\":%i}\n",applied?"true":"false",level.time,g_entities[0].health,mapGeneration,originError,snapshotTest?0:committedId);
     if(!applied){Com_Printf(15,"CHECKPOINT_RESTORE_ERROR apply: %s\n",error.c_str());Cbuf_AddText(0,"quit\n");return;}loadedWallTime=static_cast<unsigned>(Sys_Milliseconds());if(test)restoredAt=static_cast<unsigned>(level.time);
+    // Retail SP 0x0046BE71: the level's save-restored callbacks run on the world entity once
+    // the game is back, so missions can re-apply what the save does not hold (client dvars,
+    // extra cameras, vision sets).
+    if(g_scr_data.saverestored)Scr_FreeThread(Scr_ExecEntThread(&g_entities[ENTITYNUM_WORLD],g_scr_data.saverestored,0),SCRIPTINSTANCE_SERVER);
 }
 void CaptureCheckpointMain_SP(){
     if(static_cast<unsigned>(std::strtoul(Cmd_Argv(1),nullptr,10))!=mapGeneration)return;
