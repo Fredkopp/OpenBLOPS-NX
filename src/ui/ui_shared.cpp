@@ -5323,6 +5323,12 @@ static void UI_NX_EnsureMenuFocus(int localClientNum, UiContext *dc, menuDef_t *
         Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 0);
 }
 
+static bool UI_NX_IsMainMenu(const menuDef_t *menu)
+{
+    const char *name = menu->window.name;
+    return name && (!I_stricmp(name, "main") || !I_stricmp(name, "main_text") || !I_stricmp(name, "main_sp"));
+}
+
 static bool UI_NX_RunBackPrompt(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
     for (int i = 0; i < menu->itemCount; ++i)
@@ -6235,7 +6241,8 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                                 {
                                     if (UI_NX_RunBackPrompt(localClientNum, dc, menu))
                                         return;
-                                    if (dc->openMenuCount > 1 || (!menu->fullScreen && !Com_IsMenuLevel(localClientNum)))
+                                    if (!UI_NX_IsMainMenu(menu)
+                                        && (dc->openMenuCount > 1 || (!menu->fullScreen && !Com_IsMenuLevel(localClientNum))))
                                         Menus_Close(localClientNum, dc, menu);
                                     break;
                                 }
