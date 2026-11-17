@@ -165,9 +165,12 @@ void R_InitRenderTargets_PC()
         }
         R_ShareRenderTarget(R_RENDERTARGET_RESOLVED_SCENE, R_RENDERTARGET_RESOLVED_POST_SUN);
 #ifdef KISAK_NX
+        // The scene with bloom applied, so the colour pass can read it without
+        // a resolve (rb_postfx.cpp). 29 is "$bloom_applied" in g_imageProgNames.
+        constexpr int bloomAppliedImage = 29;
         if (dx.multiSampleType == D3DMULTISAMPLE_NONE && !r_reflectionProbeGenerate->current.enabled)
             R_InitFullscreenRenderTargetImage(
-                29, FULLSCREEN_SCENE, 0, backBufferFormat, RENDERTARGET_USAGE_TEXTURE,
+                bloomAppliedImage, FULLSCREEN_SCENE, 0, backBufferFormat, RENDERTARGET_USAGE_TEXTURE,
                 &gfxRenderTargets[R_RENDERTARGET_BLOOM_APPLIED]);
 #endif
         R_InitFullscreenRenderTargetImage(

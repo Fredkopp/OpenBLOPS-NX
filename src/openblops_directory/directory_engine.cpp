@@ -29,6 +29,7 @@
 #include <win32/win_net.h>
 #ifdef KISAK_NX
 #include <switch.h>
+#include <ui/ui_keyboard.h>
 #else
 #include <wincrypt.h>
 #endif
@@ -269,29 +270,17 @@ bool Directory_Source(int source)
 #ifdef KISAK_NX
 static bool EditDirectoryText(const char *dvar, bool password, int limit)
 {
-    SwkbdConfig keyboard{};
-    if (R_FAILED(swkbdCreate(&keyboard, 0)))
-    {
-        Com_PrintWarning(13, "Could not open the Switch software keyboard.\n");
+    UiNxTextRequest request;
+    request.header = SEH_GetPortString(password ? "OPENBLOPS_SERVER_PASSWORD" : "OPENBLOPS_SERVER_NAME", true);
+    request.headerIsUtf8 = true;
+    request.initialText = Dvar_GetString(dvar);
+    request.maxChars = limit;
+    request.password = password;
+    char text[256];
+    if (!UI_NX_EditText(request, text, sizeof(text)))
         return false;
-    }
-    if (password)
-        swkbdConfigMakePresetPassword(&keyboard);
-    else
-        swkbdConfigMakePresetDefault(&keyboard);
-    swkbdConfigSetHeaderText(&keyboard, SEH_GetPortString(
-        password ? "OPENBLOPS_SERVER_PASSWORD" : "OPENBLOPS_SERVER_NAME", true));
-    swkbdConfigSetInitialText(&keyboard, Dvar_GetString(dvar));
-    swkbdConfigSetStringLenMax(&keyboard, limit);
-    char text[48 * 4 + 1]{};
-    const Result result = swkbdShow(&keyboard, text, sizeof(text));
-    swkbdClose(&keyboard);
-    if (R_SUCCEEDED(result) && std::strlen(text) <= static_cast<size_t>(limit))
-    {
-        Dvar_SetStringByName(dvar, text);
-        return true;
-    }
-    return false;
+    Dvar_SetStringByName(dvar, text);
+    return true;
 }
 #endif
 

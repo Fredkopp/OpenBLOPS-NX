@@ -73,7 +73,62 @@ const char *SEH_GetPortString(const char *reference, bool utf8)
     for (const PortString &entry : portStrings)
         if (!strcmp(reference, entry.reference))
             return (utf8 ? entry.utf8 : entry.game)[SEH_PortLanguage()];
-    return nullptr;
+    // A key missing from port_ui_translations.tsv shows as its name. Callers
+    // pass the result to printf-style formatting, so it must never be null.
+    return reference;
+}
+
+bool SEH_GameTextToUtf8(const char *text, char *out, size_t size)
+{
+    // The port's first five language columns (English, French, German,
+    // Italian, Spanish) use Windows-1252. Its 0x80-0x9F range needs a table;
+    // 0xA0-0xFF match the Unicode code points. 0 marks an unassigned byte.
+    static constexpr unsigned short cp1252[32] = {
+        0x20AC, 0, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+        0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017D, 0,
+        0, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+        0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0, 0x017E, 0x0178,
+    };
+    if (!size)
+        return false;
+    const bool latin = SEH_PortLanguage() <= 4;
+    bool exact = true;
+    size_t length = 0;
+    for (const unsigned char *ch = reinterpret_cast<const unsigned char *>(text ? text : ""); *ch; ++ch)
+    {
+        unsigned int code = *ch;
+        if (code >= 0x80)
+            code = latin ? (code < 0xA0 ? cp1252[code - 0x80] : code) : 0;
+        if (!code)
+        {
+            code = '?';
+            exact = false;
+        }
+        char encoded[3];
+        size_t count = 0;
+        if (code < 0x80)
+            encoded[count++] = static_cast<char>(code);
+        else if (code < 0x800)
+        {
+            encoded[count++] = static_cast<char>(0xC0 | (code >> 6));
+            encoded[count++] = static_cast<char>(0x80 | (code & 0x3F));
+        }
+        else
+        {
+            encoded[count++] = static_cast<char>(0xE0 | (code >> 12));
+            encoded[count++] = static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+            encoded[count++] = static_cast<char>(0x80 | (code & 0x3F));
+        }
+        if (length + count >= size)
+        {
+            exact = false;
+            break;
+        }
+        memcpy(out + length, encoded, count);
+        length += count;
+    }
+    out[length] = 0;
+    return exact;
 }
 
 const char *SEH_LocalizePortText(const char *english)

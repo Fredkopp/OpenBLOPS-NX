@@ -40,13 +40,14 @@
 #include "ui_atoms.h"
 #include <client/cl_console.h>
 #include <iterator>
+#include <unordered_map>
+#include <vector>
 #include <client_mp/cl_input_mp.h>
 #include <sound/snd_public_async.h>
 #include <cgame/cg_sound.h>
 #ifdef KISAK_NX
 #include <algorithm>
-#include <switch.h>
-#include <vector>
+#include "ui_keyboard.h"
 #endif
 #if defined(KISAK_SP) || defined(KISAK_NX)
 #include <ui/ui_main.h>                 // ui_menuLvlNotify, for the "cmd mlvl" menu notifications
@@ -88,8 +89,33 @@ scrollInfo_s scrollInfo;
 
 int g_editingField;
 itemDef_s *g_editItem;
+
+// The port adds rows to some menus when they open: the copies, their texts and
+// the menus' new item arrays come from the heap. They belong to the menu asset
+// they were added to and are freed with it, in Menus_RemoveMenu.
+static std::unordered_map<const menuDef_t *, std::vector<void *>> s_menuPatchMemory;
+
+static void *UI_NX_MenuAlloc(const menuDef_t *menu, size_t size)
+{
+    void *memory = calloc(1, size);
+    if (memory)
+        s_menuPatchMemory[menu].push_back(memory);
+    return memory;
+}
+
+static void UI_NX_FreeMenuAllocations(const menuDef_t *menu)
+{
+    const auto patched = s_menuPatchMemory.find(menu);
+    if (patched == s_menuPatchMemory.end())
+        return;
+    for (void *memory : patched->second)
+        free(memory);
+    s_menuPatchMemory.erase(patched);
+}
+
 #ifdef KISAK_NX
 static const menuDef_t *s_nxClassFactionEditMenu;
+static void UI_NX_ForgetMenuKind(const menuDef_t *menu);
 #endif
 rectDef_s rect;
 
@@ -1484,7 +1510,9 @@ void __cdecl Menus_RemoveMenu(XAssetHeader header)
 #ifdef KISAK_NX
     if (s_nxClassFactionEditMenu == header.menu)
         s_nxClassFactionEditMenu = nullptr;
+    UI_NX_ForgetMenuKind(header.menu);
 #endif
+    UI_NX_FreeMenuAllocations(header.menu);
     int i; // [esp+0h] [ebp-Ch]
     int localClientNum; // [esp+4h] [ebp-8h]
     uiInfo_s *uiInfo; // [esp+8h] [ebp-4h]
@@ -4027,19 +4055,66 @@ static bool UI_NX_IsSettingsMenu(const menuDef_t *menu)
         || (menu && menu->window.name && !I_stricmp(menu->window.name, "options_graphics_defaults"));
 }
 
+// Item_IsVisible asks which menu an item belongs to for every item, every
+// frame. Items are drawn menu by menu, so remembering the last menu's answer
+// leaves one name comparison per menu instead of several per item.
+enum UiNxMenuKind : unsigned char
+{
+    UI_NX_MENU_OTHER,
+    UI_NX_MENU_CUSTOM_CLASS,
+    UI_NX_MENU_CLASS_LIST,
+    UI_NX_MENU_WEAPON,
+    UI_NX_MENU_GAMEPAD_OPTIONS,
+};
+static const menuDef_t *s_nxKindMenu;
+static UiNxMenuKind s_nxKind;
+
+static UiNxMenuKind UI_NX_MenuKind(const menuDef_t *menu)
+{
+    if (!menu || !menu->window.name)
+        return UI_NX_MENU_OTHER;
+    if (menu == s_nxKindMenu)
+        return s_nxKind;
+    static constexpr struct { const char *name; UiNxMenuKind kind; } kinds[] = {
+        {"menu_cac_custom", UI_NX_MENU_CUSTOM_CLASS},
+        {"cac_main", UI_NX_MENU_CLASS_LIST},
+        {"cac_weapon", UI_NX_MENU_WEAPON},
+        {"options_gamepad", UI_NX_MENU_GAMEPAD_OPTIONS},
+    };
+    UiNxMenuKind kind = UI_NX_MENU_OTHER;
+    for (const auto &entry : kinds)
+        if (!I_stricmp(menu->window.name, entry.name))
+            kind = entry.kind;
+    s_nxKindMenu = menu;
+    s_nxKind = kind;
+    return kind;
+}
+
+// A freed menu's address can be reused by the next menu loaded.
+static void UI_NX_ForgetMenuKind(const menuDef_t *menu)
+{
+    if (s_nxKindMenu == menu)
+        s_nxKindMenu = nullptr;
+}
+
+bool UI_NX_IsGamepadOptionsMenu(const menuDef_t *menu)
+{
+    return UI_NX_MenuKind(menu) == UI_NX_MENU_GAMEPAD_OPTIONS;
+}
+
 static bool UI_NX_IsCustomClassMenu(const menuDef_t *menu)
 {
-    return menu && menu->window.name && !I_stricmp(menu->window.name, "menu_cac_custom");
+    return UI_NX_MenuKind(menu) == UI_NX_MENU_CUSTOM_CLASS;
 }
 
 static bool UI_NX_IsClassListMenu(const menuDef_t *menu)
 {
-    return menu && menu->window.name && !I_stricmp(menu->window.name, "cac_main");
+    return UI_NX_MenuKind(menu) == UI_NX_MENU_CLASS_LIST;
 }
 
 static bool UI_NX_IsWeaponMenu(const menuDef_t *menu)
 {
-    return menu && menu->window.name && !I_stricmp(menu->window.name, "cac_weapon");
+    return UI_NX_MenuKind(menu) == UI_NX_MENU_WEAPON;
 }
 
 static bool UI_NX_IsClassEditorMenu(const menuDef_t *menu)
@@ -4716,40 +4791,26 @@ static void UI_NX_EditTextField(int localClientNum, UiContext *dc, itemDef_s *it
     if (!field || !item->dvar)
         return;
 
-    SwkbdConfig keyboard{};
-    if (R_FAILED(swkbdCreate(&keyboard, 0)))
+    // Edit field item types (itemDef_s::type).
+    constexpr int numericField = 7, fileNameField = 13, upperCaseField = 14, alphaNumericField = 22,
+                  decimalField = 30;
+    UiNxTextRequest request;
+    if (const textDef_s *label = Item_GetTextDef(item); label && label->text && *label->text)
+        request.header = *label->text == '@' ? UI_SafeTranslateString(label->text + 1) : label->text;
+    request.initialText = Dvar_GetVariantString(item->dvar);
+    request.maxChars = field->maxChars > 0 ? field->maxChars : 255;
+    request.password = strstr(item->dvar, "password") != nullptr;
+    request.filter = item->type == numericField ? UI_NX_TEXT_DIGITS
+        : item->type == decimalField ? UI_NX_TEXT_DECIMAL
+        : item->type == fileNameField ? UI_NX_TEXT_FILENAME
+        : item->type == alphaNumericField ? UI_NX_TEXT_ALNUM
+        : UI_NX_TEXT_PLAIN;
+    char value[256];
+    if (!UI_NX_EditText(request, value, sizeof(value)))
         return;
-    if (strstr(item->dvar, "password"))
-        swkbdConfigMakePresetPassword(&keyboard);
-    else
-        swkbdConfigMakePresetDefault(&keyboard);
-    if (item->type == 7 || item->type == 30)
-        swkbdConfigSetType(&keyboard, SwkbdType_NumPad);
-    if (item->type == 30)
-        swkbdConfigSetLeftOptionalSymbolKey(&keyboard, ".");
-    const int limit = field->maxChars > 0 && field->maxChars < 255 ? field->maxChars : 255;
-    swkbdConfigSetStringLenMax(&keyboard, limit);
-    swkbdConfigSetInitialText(&keyboard, Dvar_GetVariantString(item->dvar));
-    char value[1024]{};
-    const Result result = swkbdShow(&keyboard, value, sizeof(value));
-    swkbdClose(&keyboard);
-    if (R_FAILED(result) || strlen(value) > static_cast<size_t>(limit))
-        return;
-    for (char &ch : value)
-    {
-        if (!ch)
-            break;
-        if (static_cast<unsigned char>(ch) < 32 || ch == '@' || ch == '^'
-            || (item->type == 13 && !I_isforfilename(ch))
-            || (item->type == 22 && !I_isalnum(ch))
-            || (item->type == 7 && !I_isdigit(ch))
-            || (item->type == 30 && !I_isdigit(ch) && ch != '.' && ch != Com_GetDecimalDelimiter()))
-            return;
-        if (item->type == 14)
-            ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
-        if (item->type == 30 && ch == Com_GetDecimalDelimiter())
-            ch = '.';
-    }
+    if (item->type == upperCaseField)
+        for (char *ch = value; *ch; ++ch)
+            *ch = static_cast<char>(toupper(static_cast<unsigned char>(*ch)));
     Dvar_SetFromStringByName(item->dvar, value);
     Item_Action(localClientNum, dc, item);
 }
@@ -13092,18 +13153,15 @@ static void UI_NX_MoveItem(itemDef_s *item, float dy)
 static itemDef_s *UI_NX_CloneItem(menuDef_t *menu, const itemDef_s *src, const char *name, float dy,
                                   bool focusable)
 {
-    itemDef_s *item = (itemDef_s *)malloc(sizeof(itemDef_s));
+    itemDef_s *item = (itemDef_s *)UI_NX_MenuAlloc(menu, sizeof(itemDef_s));
     if ( !item )
         return nullptr;
     memcpy(item, src, sizeof(*item));
     if ( Item_IsTextDefType(src) && src->typeData.textDef )
     {
-        textDef_s *text = (textDef_s *)malloc(sizeof(textDef_s));
+        textDef_s *text = (textDef_s *)UI_NX_MenuAlloc(menu, sizeof(textDef_s));
         if ( !text )
-        {
-            free(item);
             return nullptr;
-        }
         memcpy(text, src->typeData.textDef, sizeof(*text));
         item->typeData.textDef = text;
     }
@@ -13116,7 +13174,7 @@ static itemDef_s *UI_NX_CloneItem(menuDef_t *menu, const itemDef_s *src, const c
     {
         if ( handler->name && !I_stricmp(handler->name, "leavefocus") )
         {
-            if ( GenericEventHandler *leave = (GenericEventHandler *)malloc(sizeof(GenericEventHandler)) )
+            if ( GenericEventHandler *leave = (GenericEventHandler *)UI_NX_MenuAlloc(menu, sizeof(GenericEventHandler)) )
             {
                 *leave = *handler;
                 leave->next = nullptr;
@@ -13405,15 +13463,12 @@ static bool UI_NX_AddControlsCategory(menuDef_t *menu)
     }
 
     const int count = menu->itemCount - (tabsEnd - tabsStart) + 1;
-    itemDef_s **items = static_cast<itemDef_s **>(malloc(count * sizeof(*items)));
+    itemDef_s **items = static_cast<itemDef_s **>(UI_NX_MenuAlloc(menu, count * sizeof(*items)));
     if (!items)
         return false;
     itemDef_s *controls = UI_NX_CloneItem(menu, source, settingsControlsItem, controlsY - category.y, false);
     if (!controls)
-    {
-        free(items);
         return false;
-    }
 
     static GenericEventScript open{.action = "play uin_navigation_click ; close self ; open options_gamepad ;"};
     static GenericEventScript focus{.action = "play uin_navigation_over ; setLocalVarInt ui_highlight 0 ; setLocalVarString ui_choicegroup \"\" ;"};
@@ -13471,7 +13526,7 @@ static void UI_NX_ReplaceGamepadSidebar(menuDef_t *menu, const menuDef_t *root)
         return;
 
     const int count = root->itemCount + menu->itemCount - firstSetting;
-    itemDef_s **items = static_cast<itemDef_s **>(malloc(count * sizeof(*items)));
+    itemDef_s **items = static_cast<itemDef_s **>(UI_NX_MenuAlloc(menu, count * sizeof(*items)));
     if (!items)
         return;
     for (int i = 0; i < root->itemCount; ++i)
@@ -13479,16 +13534,7 @@ static void UI_NX_ReplaceGamepadSidebar(menuDef_t *menu, const menuDef_t *root)
         const itemDef_s *source = root->items[i];
         itemDef_s *item = UI_NX_CloneItem(menu, source, source->window.name, 0.0f, false);
         if (!item)
-        {
-            for (int j = 0; j < i; ++j)
-            {
-                if (textDef_s *text = Item_GetTextDef(items[j]))
-                    free(text);
-                free(items[j]);
-            }
-            free(items);
-            return;
-        }
+            return;   // the copies made so far are freed with the menu
         item->onEvent = source->onEvent;
         item->rectExpData = source->rectExpData;
         item->window.dynamicFlags[0] &= ~2;
@@ -13626,14 +13672,14 @@ static void UI_NX_AddAimAssistOption(menuDef_t *menu)
     if ( !addedCount )
         return;
 
-    itemDef_s **items = (itemDef_s **)malloc((menu->itemCount + addedCount) * sizeof(itemDef_s *));
+    itemDef_s **items = (itemDef_s **)UI_NX_MenuAlloc(menu, (menu->itemCount + addedCount) * sizeof(itemDef_s *));
     if ( !items )
         return;
     memcpy(items, menu->items, (lastIndex + 1) * sizeof(itemDef_s *));
     memcpy(&items[lastIndex + 1], added, addedCount * sizeof(itemDef_s *));
     memcpy(&items[lastIndex + 1 + addedCount], &menu->items[lastIndex + 1],
            (menu->itemCount - lastIndex - 1) * sizeof(itemDef_s *));
-    menu->items = items;   // the zone's array stays as it was; this one lives as long as the menu
+    menu->items = items;   // the zone's array stays as it was; this one is freed with the menu
     menu->itemCount += addedCount;
     UI_NX_FitGamepadDiagram(menu, invert->window.rect.y + dy + rowStep + invert->window.rect.h,
                             invert->window.rect.vertAlign);
@@ -13686,7 +13732,7 @@ static bool UI_AddGraphicsChoiceRow(menuDef_t *menu, const itemDef_s *after, flo
         }
         if ( choice )
         {
-            focusItemDef_s *focus = (focusItemDef_s *)calloc(1, sizeof(focusItemDef_s));
+            focusItemDef_s *focus = (focusItemDef_s *)UI_NX_MenuAlloc(menu, sizeof(focusItemDef_s));
             if ( !focus ) return false;
             focus->focusTypeData.multi = values;
             copy->typeData.textDef->textTypeData.focusItemDef = focus;
@@ -13695,7 +13741,7 @@ static bool UI_AddGraphicsChoiceRow(menuDef_t *menu, const itemDef_s *after, flo
         added[count++] = copy;
     }
     if ( !count ) return false;
-    itemDef_s **items = (itemDef_s **)malloc((menu->itemCount + count) * sizeof(itemDef_s *));
+    itemDef_s **items = (itemDef_s **)UI_NX_MenuAlloc(menu, (menu->itemCount + count) * sizeof(itemDef_s *));
     if ( !items ) return false;
     memcpy(items, menu->items, (lastIndex + 1) * sizeof(itemDef_s *));
     memcpy(items + lastIndex + 1, added, count * sizeof(itemDef_s *));

@@ -124,7 +124,7 @@ bool UI_IsHiddenBotSettingsHighlight(int contextIndex, const itemDef_s *item);  
 int __cdecl Item_IsVisible(int localClientNum, int contextIndex, itemDef_s *item)
 {
 #ifdef KISAK_NX
-    if (item->parent && item->parent->window.name && !I_stricmp(item->parent->window.name, "options_gamepad"))
+    if (UI_NX_IsGamepadOptionsMenu(item->parent))
     {
         const rectDef_s &rect = item->window.rectClient;
         if (rect.vertAlign == 1

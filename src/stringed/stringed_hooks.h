@@ -151,7 +151,12 @@ int __cdecl SEH_StringEd_SetLanguageStrings(unsigned int iLanguage);
 const char *__cdecl SE_GetString(char *psPackageAndStringReference);
 const char *__cdecl SE_GetString_FastFile(char *psPackageAndStringReference);
 const char *__cdecl SEH_StringEd_GetString(char *pszReference);
+// Never null for an OPENBLOPS_ key (an unknown key returns itself); null for
+// any other reference.
 const char *SEH_GetPortString(const char *reference, bool utf8 = false);
+// Converts text in the game's encoding for the current language to UTF-8.
+// Returns false when a character had to be replaced or the text was cut.
+bool SEH_GameTextToUtf8(const char *text, char *out, size_t size);
 const char *SEH_LocalizePortText(const char *english);
 char *__cdecl SEH_SafeTranslateString(const char *pszReference);
 void __cdecl SEH_LocalizeTextMessageWithBindings(

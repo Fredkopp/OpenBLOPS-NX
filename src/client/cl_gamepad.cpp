@@ -685,9 +685,10 @@ void __cdecl CL_GamepadButtonEvent(
             {
                 if ( buttonEvent == 1
 #ifdef KISAK_NX
-                    && (key == 2 || key == 14)
+                    // The Switch's A button arrives as K_BUTTON_B (by position).
+                    && (key == K_BUTTON_B || key == K_BUTTON_START)
 #else
-                    && (key == 1 || key == 14)
+                    && (key == K_BUTTON_A || key == K_BUTTON_START)
 #endif
                     && ((LocalClientUIGlobals->keyCatchers & 0x10) == 0 || ActiveMenu == UIMENU_NONE) )
                 {

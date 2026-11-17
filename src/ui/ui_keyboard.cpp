@@ -8,7 +8,11 @@
 #include <stringed/stringed_hooks.h>
 #ifdef KISAK_NX
 #include <algorithm>
+#include <stdio.h>
 #include <switch.h>
+#include <qcommon/common.h>
+#include <ui/ui_main.h>
+#include <universal/q_shared.h>
 #endif
 
 keyBoardUtitlity uiKeyboard;
@@ -51,25 +55,115 @@ void __cdecl UI_ClearKeyboardActive()
 }
 
 #ifdef KISAK_NX
+static UiNxTextFilter s_nxTextFilter;
+
+static bool UI_NX_IsAllowedChar(unsigned char ch, UiNxTextFilter filter)
+{
+    if (ch < 32 || ch >= 127)
+        return false;
+    if (filter != UI_NX_TEXT_ANY && (ch == '@' || ch == '^'))
+        return false;
+    switch (filter)
+    {
+    case UI_NX_TEXT_FILENAME:
+        return I_isforfilename(ch);
+    case UI_NX_TEXT_ALNUM:
+        return I_isalnum(ch);
+    case UI_NX_TEXT_DIGITS:
+        return I_isdigit(ch);
+    case UI_NX_TEXT_DECIMAL:
+        return I_isdigit(ch) || ch == '.' || ch == static_cast<unsigned char>(Com_GetDecimalDelimiter());
+    default:
+        return true;
+    }
+}
+
+// Runs when the player confirms. text is UTF-8; on refusal it is overwritten
+// with the message the keyboard shows before letting the player edit again.
+static SwkbdTextCheckResult UI_NX_CheckText(char *text, size_t size)
+{
+    for (size_t i = 0; text[i];)
+    {
+        const unsigned char lead = static_cast<unsigned char>(text[i]);
+        if (lead < 0x80 && UI_NX_IsAllowedChar(lead, s_nxTextFilter))
+        {
+            ++i;
+            continue;
+        }
+        const size_t length = lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;
+        char character[5]{};
+        for (size_t j = 0; j < length && text[i + j]; ++j)
+            character[j] = text[i + j];
+        snprintf(text, size, SEH_GetPortString("OPENBLOPS_KEYBOARD_INVALID_CHAR", true), character);
+        return SwkbdTextCheckResult_Bad;
+    }
+    return SwkbdTextCheckResult_OK;
+}
+
+bool UI_NX_EditText(const UiNxTextRequest &request, char *out, size_t outSize)
+{
+    if (!out || outSize < 2)
+        return false;
+    SwkbdConfig keyboard{};
+    if (R_FAILED(swkbdCreate(&keyboard, 0)))
+    {
+        Com_PrintWarning(13, "Could not open the Switch software keyboard.\n");
+        return false;
+    }
+    if (request.password)
+        swkbdConfigMakePresetPassword(&keyboard);
+    else
+        swkbdConfigMakePresetDefault(&keyboard);
+    if (request.filter == UI_NX_TEXT_DIGITS || request.filter == UI_NX_TEXT_DECIMAL)
+        swkbdConfigSetType(&keyboard, SwkbdType_NumPad);
+    if (request.filter == UI_NX_TEXT_DECIMAL)
+        swkbdConfigSetLeftOptionalSymbolKey(&keyboard, ".");
+
+    char utf8[1024];
+    if (request.header && *request.header)
+    {
+        if (request.headerIsUtf8)
+            swkbdConfigSetHeaderText(&keyboard, request.header);
+        else if (SEH_GameTextToUtf8(request.header, utf8, sizeof(utf8)))
+            swkbdConfigSetHeaderText(&keyboard, utf8);
+    }
+    SEH_GameTextToUtf8(request.initialText, utf8, sizeof(utf8));
+    swkbdConfigSetInitialText(&keyboard, utf8);
+    const int limit = std::clamp(std::min(request.maxChars, static_cast<int>(outSize) - 1), 1, 255);
+    swkbdConfigSetStringLenMax(&keyboard, limit);
+    s_nxTextFilter = request.filter;
+    swkbdConfigSetTextCheckCallback(&keyboard, UI_NX_CheckText);
+
+    char value[1024]{};
+    const Result result = swkbdShow(&keyboard, value, sizeof(value));
+    swkbdClose(&keyboard);
+    // The text check lets ASCII through only, so a byte is a character here.
+    if (R_FAILED(result) || strlen(value) > static_cast<size_t>(limit))
+        return false;
+    for (char &ch : value)
+    {
+        if (!ch)
+            break;
+        if (!UI_NX_IsAllowedChar(static_cast<unsigned char>(ch), request.filter))
+            return false;
+        if (request.filter == UI_NX_TEXT_DECIMAL && ch == Com_GetDecimalDelimiter())
+            ch = '.';
+    }
+    I_strncpyz(out, value, static_cast<int>(outSize));
+    return true;
+}
+
 static void UI_NX_OpenVirtualKeyboard(int keyboardType, const char *title, const char *initialText, int size)
 {
     if (uiKeyboard.keyboardActive || size < 2)
         return;
-    SwkbdConfig keyboard{};
-    if (R_FAILED(swkbdCreate(&keyboard, 0)))
-        return;
-    swkbdConfigMakePresetDefault(&keyboard);
-    if (title && *title && std::all_of(title, title + strlen(title), [](unsigned char ch) {
-            return ch >= 32 && ch < 127;
-        }))
-        swkbdConfigSetHeaderText(&keyboard, title);
-    swkbdConfigSetInitialText(&keyboard, initialText);
-    const int limit = std::min(size - 1, 255);
-    swkbdConfigSetStringLenMax(&keyboard, limit);
-    char value[1024]{};
-    const Result result = swkbdShow(&keyboard, value, sizeof(value));
-    swkbdClose(&keyboard);
-    if (R_FAILED(result) || strlen(value) > static_cast<size_t>(limit))
+    UiNxTextRequest request;
+    // Menus pass the title as a string reference ("@MENU_..."), as their text.
+    request.header = title && *title == '@' ? UI_SafeTranslateString(title + 1) : title;
+    request.initialText = initialText;
+    request.maxChars = size - 1;
+    char value[256];
+    if (!UI_NX_EditText(request, value, sizeof(value)))
         return;
 
     UI_SetActiveKeyboardType(keyboardType);

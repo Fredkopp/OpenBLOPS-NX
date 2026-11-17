@@ -154,28 +154,20 @@ int Item_ListBox_HandleKey(int,UiContext*,itemDef_s *item,int key,int down,int f
  return 1;
 }
 #ifdef KISAK_NX
-struct SwkbdConfig {bool password=false;int limit=0;};
-using Result=int;
-#define R_FAILED(result) ((result)!=0)
-#define R_SUCCEEDED(result) ((result)==0)
+struct UiNxTextRequest {const char *header=nullptr;bool headerIsUtf8=false;const char *initialText="";int maxChars=255;bool password=false;int filter=0;};
 int keyboardResult=0,keyboardsClosed=0;
 const char *keyboardText="pad password";
-Result swkbdCreate(SwkbdConfig*,int){return 0;}
-void swkbdConfigMakePresetPassword(SwkbdConfig *keyboard){keyboard->password=true;}
-void swkbdConfigMakePresetDefault(SwkbdConfig*){}
 const char *SEH_GetPortString(const char *key,bool utf8){assert(utf8);return key;}
-void swkbdConfigSetHeaderText(SwkbdConfig*,const char *key){
- assert(!strcmp(key,"OPENBLOPS_SERVER_PASSWORD")||!strcmp(key,"OPENBLOPS_SERVER_NAME"));
-}
 bool Directory_UpdateControllerKey(int,UiContext*,menuDef_t*,int){return false;}
-void swkbdConfigSetInitialText(SwkbdConfig*,const char*){}
-void swkbdConfigSetStringLenMax(SwkbdConfig *keyboard,int limit){keyboard->limit=limit;}
-Result swkbdShow(SwkbdConfig *keyboard,char *text,size_t size){
- assert(keyboard->password&&keyboard->limit==32);
+bool UI_NX_EditText(const UiNxTextRequest &request,char *text,size_t size){
+ assert(request.headerIsUtf8);
+ assert(!strcmp(request.header,"OPENBLOPS_SERVER_PASSWORD")||!strcmp(request.header,"OPENBLOPS_SERVER_NAME"));
+ assert(request.password&&request.maxChars==32);
+ ++keyboardsClosed;
+ if(keyboardResult)return false;
  snprintf(text,size,"%s",keyboardText);
- return keyboardResult;
+ return true;
 }
-void swkbdClose(SwkbdConfig*){++keyboardsClosed;}
 void Com_PrintWarning(int,const char*,...){}
 bool Item_IsTextField(const itemDef_s *item){return item->type==5;}
 #endif

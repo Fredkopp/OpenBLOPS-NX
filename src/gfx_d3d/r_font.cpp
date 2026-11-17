@@ -94,6 +94,9 @@ const Glyph *__cdecl R_GetCharacterGlyph(Font_s *font, unsigned int letter)
     int mid; // [esp+Ch] [ebp-4h]
 
 #ifdef KISAK_NX
+    // Button prompts are font glyphs 1 (A), 2 (B), 3 (X), 4 (Y). Input is
+    // mapped by position, so the key the game calls A is the Switch's B:
+    // swap the glyphs (1<->2, 3<->4) to print the label on the button.
     if (letter >= 1 && letter <= 4)
         letter = ((letter - 1) ^ 1u) + 1;
 #endif
