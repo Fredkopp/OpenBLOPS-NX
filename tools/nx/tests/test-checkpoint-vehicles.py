@@ -82,6 +82,7 @@ bool requestPending=false,commitRequested=false,lastSaveSuccessful=false,restore
 unsigned mapGeneration=19;
 std::string requestedName;
 float preparedOrigin[3]{},committedOrigin[3]{};
+std::vector<std::uint8_t> fallbackImage;Resources fallbackResources;int fallbackId=0;float fallbackOrigin[3]{};
 std::vector<std::string> commands,logs;
 constexpr int SV_CMD_RELIABLE=0;
 const char* va(const char* format,...) {
