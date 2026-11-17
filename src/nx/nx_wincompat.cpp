@@ -1794,20 +1794,33 @@ extern "C" char *fake_heap_end;
 #ifndef KISAK_NX2
 // Every heap growth goes through _sbrk_r (linked with --wrap=_sbrk_r). Log
 // large steps and every refusal, with the break position, to tell a heap that
-// is really full from one malloc cannot grow. This runs under malloc's lock,
-// so format on the stack and write() instead of printf.
+// is really full from one malloc cannot grow.
 extern "C" void *__real__sbrk_r(struct _reent *r, ptrdiff_t incr);
 static char *s_heapBreak;
+static char s_sbrkLines[8][192];
+static unsigned s_sbrkHead, s_sbrkTail;
 
 static void nxSbrkLog(const char *fmt, ...)
 {
-    char buf[256];
+    const unsigned head = s_sbrkHead;
+    if (head - __atomic_load_n(&s_sbrkTail, __ATOMIC_ACQUIRE) >= 8)
+        return;
     va_list args;
     va_start(args, fmt);
-    int n = vsnprintf(buf, sizeof(buf), fmt, args);
+    vsnprintf(s_sbrkLines[head % 8], sizeof(s_sbrkLines[0]), fmt, args);
     va_end(args);
-    if (n > 0)
-        write(fileno(stdout), buf, n < (int)sizeof(buf) ? n : (int)sizeof(buf) - 1);
+    __atomic_store_n(&s_sbrkHead, head + 1, __ATOMIC_RELEASE);
+}
+
+extern "C" void nx_sbrk_flush_log(void)
+{
+    unsigned tail = s_sbrkTail;
+    while (tail != __atomic_load_n(&s_sbrkHead, __ATOMIC_ACQUIRE)) {
+        char line[sizeof(s_sbrkLines[0])];
+        memcpy(line, s_sbrkLines[tail % 8], sizeof(line));
+        __atomic_store_n(&s_sbrkTail, ++tail, __ATOMIC_RELEASE);
+        fputs(line, stdout);
+    }
 }
 
 static ptrdiff_t s_lastSbrkIncr;
@@ -1839,6 +1852,10 @@ extern "C" void *__wrap__sbrk_r(struct _reent *r, ptrdiff_t incr)
                   (unsigned long long)((uintptr_t)__builtin_return_address(0) - nx_text_base()),
                   (size_t)(s_heapBreak - fake_heap_start) >> 20);
     return p;
+}
+#else
+extern "C" void nx_sbrk_flush_log(void)
+{
 }
 #endif
 
