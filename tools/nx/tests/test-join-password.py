@@ -32,6 +32,7 @@ void Directory_CancelJoinPassword();
 void Menus_OpenByName(int,int*,const char*n){if(!strcmp(n,"join_password_popmenu")){popup=true;++opened;}else{assert(!strcmp(n,"error_popmenu"));++errors;}}
 void Menus_CloseByName(int,int*,const char*n){assert(!strcmp(n,"join_password_popmenu"));popup=false;++closed;Directory_CancelJoinPassword();}
 void CG_SetThirdPerson(int){}
+const char*UI_SafeTranslateString(const char*key){return key;}
 '''
 for sig in ['bool Directory_PromptJoinPassword(', 'bool Directory_HasPasswordPrompt(', 'void Directory_CancelJoinPassword(', 'bool Directory_AcceptJoinPassword(']:code+=function('src/openblops_directory/directory_engine.cpp',sig)+'\n'
 code+=r'''

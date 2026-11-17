@@ -134,6 +134,7 @@ bool IsDedicatedServer() { return false; }
 void Key_WriteBindings(int,int) { }
 void Gamepad_WriteBindings(int,int) { }
 void Con_WriteFilterConfigString(int) { }
+void Directory_BeforeConfigWrite() { }
 void Dvar_WriteSingleVariable(const dvar_s*,int*);
 void Dvar_WriteVariables(int f) {
  for(const auto& [name,dvar]:dvars) Dvar_WriteSingleVariable(&dvar,&f);

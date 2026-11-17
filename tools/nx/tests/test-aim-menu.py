@@ -54,8 +54,8 @@ int main(){
  for(int i=0;i<menu.itemCount;++i){
   auto*item=menu.items[i];if(item==option)assistIndex=i;if(item==accel)accelIndex=i;
   if(!item->typeData.textDef||item==&label||item==&choice)continue;
-  if(item->typeData.textDef->text&&!strcmp(item->typeData.textDef->text,"AIM ASSIST"))++assistLabels,assert(item->window.rect.y==100);
-  if(item->typeData.textDef->text&&!strcmp(item->typeData.textDef->text,"AIM ACCELERATION"))++accelLabels,assert(item->window.rect.y==130);
+  if(item->typeData.textDef->text&&!strcmp(item->typeData.textDef->text,"@MENU_AIM_ASSIST_CAPS"))++assistLabels,assert(item->window.rect.y==100);
+  if(item->typeData.textDef->text&&!strcmp(item->typeData.textDef->text,"@OPENBLOPS_AIM_ACCELERATION"))++accelLabels,assert(item->window.rect.y==130);
  }
  assert(assistLabels==1&&accelLabels==1&&assistIndex>=0&&accelIndex>assistIndex); // D-pad order: sensitivity, aim assist, acceleration
  UI_NX_AddAimAssistOption(&menu);assert(menu.itemCount==11);
