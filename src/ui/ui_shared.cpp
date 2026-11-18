@@ -13581,6 +13581,75 @@ static void UI_NX_ReplaceGamepadSidebar(menuDef_t *menu, const menuDef_t *root)
     UI_NX_LayoutSettingsRows(menu, categoryRect.x + categoryRect.w);
 }
 
+static itemDef_s *UI_NX_FindItemByText(menuDef_t *menu, const char *text)
+{
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        const textDef_s *def = item ? Item_GetTextDef(item) : nullptr;
+        if (def && def->text && !I_stricmp(def->text, text))
+            return item;
+    }
+    return nullptr;
+}
+
+static void UI_NX_PlaceSpeakerConfigText(menuDef_t *menu)
+{
+    if (!menu->window.name || I_stricmp(menu->window.name, "options_sound"))
+        return;
+    const itemDef_s *setup = nullptr;
+    for (int i = 0; i < menu->itemCount && !setup; ++i)
+    {
+        const itemDef_s *item = menu->items[i];
+        if (item && item->dvar && !I_stricmp(item->dvar, "snd_menu_speaker_setup") && item->type >= 8 && item->type <= 11
+            && item->typeData.textDef)
+            setup = item;
+    }
+    const itemDef_s *setupLabel = UI_NX_FindItemByText(menu, "@MENU_SPEAKER_SETUP_CAPS");
+    const itemDef_s *deviceLabel = UI_NX_FindItemByText(menu, "@PLATFORM_SOUND_DEVICE_CAPS");
+    if (!setup || !setupLabel || !deviceLabel)
+        return;
+    const float dy = deviceLabel->window.rect.y - setupLabel->window.rect.y;
+    const float dyClient = deviceLabel->window.rectClient.y - setupLabel->window.rectClient.y;
+    const textDef_s *value = setup->typeData.textDef;
+
+    static constexpr const char *configs[] = {
+        "@MENU_STEREO_SPEAKERS", "@MENU_FIVE_ONE_SPEAKERS", "@PLATFORM_SEVEN_ONE_SPEAKERS",
+    };
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        textDef_s *text = item && item != setup ? Item_GetTextDef(item) : nullptr;
+        if (!text || !text->text)
+            continue;
+        bool isConfig = false;
+        for (const char *config : configs)
+            isConfig = isConfig || !I_stricmp(text->text, config);
+        if (!isConfig)
+            continue;
+        item->window.rect = setup->window.rect;
+        item->window.rect.y += dy;
+        item->window.rectClient = setup->window.rectClient;
+        item->window.rectClient.y += dyClient;
+        text->alignment = value->alignment;
+        text->fontEnum = value->fontEnum;
+        text->textAlignMode = value->textAlignMode;
+        text->textalignx = value->textalignx;
+        text->textaligny = value->textaligny;
+        text->textscale = value->textscale;
+        text->textStyle = value->textStyle;
+        text->textRect[0].w = 0.0f;
+        if (UIAnimInfo *anim = item->animInfo)
+        {
+            for (int s = 0; s < anim->animStateCount; ++s)
+                if (anim->animStates && anim->animStates[s])
+                    anim->animStates[s]->rectClient = item->window.rectClient;
+            anim->currentAnimState.rectClient = item->window.rectClient;
+            anim->nextAnimState.rectClient = item->window.rectClient;
+        }
+    }
+}
+
 static void UI_NX_PrepareSettingsMenu(UiContext *dc, menuDef_t *menu)
 {
     if (!UI_NX_IsSettingsMenu(menu) || UI_NX_FindItem(menu, settingsControlsItem, nullptr))
@@ -13601,6 +13670,7 @@ static void UI_NX_PrepareSettingsMenu(UiContext *dc, menuDef_t *menu)
     UI_NX_AddFrameRateOption(menu);
     UI_NX_RemoveDisplayOptions(menu);
     UI_NX_AddControlsCategory(menu);
+    UI_NX_PlaceSpeakerConfigText(menu);
 }
 #endif
 
