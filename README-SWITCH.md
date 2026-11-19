@@ -98,6 +98,16 @@ In Create a Class, press down from Face Paint to reach the footer buttons.
 Press **A** on the faction to edit it with left and right, then **B** to keep
 the choice and return to the footer buttons.
 
+**Motion aim.** With **Options > Controls > Gamepad > MOTION AIM** set to a
+sensitivity, turning the controller aims while you aim down sights (ZL held,
+or toggled on). It adds to the right stick. The value is the number of
+in-game degrees per degree the controller turns, scaled down by the weapon's
+zoom. **DISABLED** turns it off, and it starts off. It works with the
+console in handheld mode, a Pro Controller or a Joy-Con pair (aiming with the
+right Joy-Con). The setting is `nx_gyroAim` (0 = off). If either axis turns
+the wrong way on your controller, flip it with `+set nx_gyroInvertYaw 1` or
+`+set nx_gyroInvertPitch 1`.
+
 ## Building
 
 Use devkitPro (devkitA64, libnx) under its MSYS2 shell. Run

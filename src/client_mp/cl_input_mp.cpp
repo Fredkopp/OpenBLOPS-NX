@@ -820,6 +820,48 @@ void __cdecl CL_DoubleTapButtonUpdate(int localClientNum, usercmd_s *cmd)
     }
 }
 
+#ifdef KISAK_NX
+// Motion aim: while the player aims down sights (the aim button held, or
+// toggled on), turning the controller turns the view on top of the right
+// stick. nx_gyroAim is the sensitivity, in-game degrees per degree the
+// controller turns before the weapon's zoom scales it like the mouse's; 0
+// turns motion aim off (the options menu's MOTION AIM row). The rates come
+// from the controller's six-axis sensor (NX_GyroRate, nx_xinput.cpp).
+extern "C" bool NX_GyroRate(unsigned userIndex, float *yawRate, float *pitchRate);
+const dvar_t *nx_gyroAim;
+const dvar_t *nx_gyroInvertYaw;
+const dvar_t *nx_gyroInvertPitch;
+
+static void CL_NX_GyroAim(int localClientNum, clientActive_t *client, bool aiming, float seconds)
+{
+    if ( !nx_gyroAim || nx_gyroAim->current.value <= 0.0f || !aiming || seconds <= 0.0f )
+        return;
+    float yawRate, pitchRate;
+    if ( !NX_GyroRate(Com_LocalClient_GetControllerIndex(localClientNum), &yawRate, &pitchRate) )
+        return;
+    const float scale = nx_gyroAim->current.value * client->cgameFOVSensitivityScale * seconds;
+    float yaw = yawRate * scale;
+    float pitch = pitchRate * scale;
+    if ( nx_gyroInvertYaw->current.enabled )
+        yaw = -yaw;
+    if ( nx_gyroInvertPitch->current.enabled )
+        pitch = -pitch;
+    // Turrets and vehicles cap the turn speed, as for the mouse.
+    if ( client->cgameMaxYawSpeed > 0.0f )
+    {
+        const float cap = client->cgameMaxYawSpeed * seconds;
+        yaw = yaw > cap ? cap : yaw < -cap ? -cap : yaw;
+    }
+    if ( client->cgameMaxPitchSpeed > 0.0f )
+    {
+        const float cap = client->cgameMaxPitchSpeed * seconds;
+        pitch = pitch > cap ? cap : pitch < -cap ? -cap : pitch;
+    }
+    client->viewangles[1] += yaw;
+    client->viewangles[0] -= pitch;   // view pitch grows looking down
+}
+#endif
+
 void __cdecl CL_GamepadMove(int localClientNum, usercmd_s *cmd)
 {
     float v2; // xmm0_4
@@ -937,6 +979,12 @@ void __cdecl CL_GamepadMove(int localClientNum, usercmd_s *cmd)
                     LocalClientGlobals->viewangles[1] = aimOutput.yaw;
                     cmd->meleeChargeYaw = aimOutput.meleeChargeYaw;
                     cmd->meleeChargeDist = aimOutput.meleeChargeDist;
+#ifdef KISAK_NX
+                    // Aiming down sights: the bit set above (the aim button
+                    // held, against the toggle-ADS state).
+                    CL_NX_GyroAim(localClientNum, LocalClientGlobals, kb[9].active != LocalClientGlobals->usingAds,
+                                  0.001f * timeMsec);
+#endif
                 }
             }
         }
@@ -1708,6 +1756,15 @@ void __cdecl CL_InitInput()
                                                                  1.0,
                                                                  0,
                                                                  "The threshold before firing");
+#ifdef KISAK_NX
+    // Archived, so the options menu's choices persist in config.cfg.
+    nx_gyroAim = _Dvar_RegisterFloat(
+        "nx_gyroAim", 0.0f, 0.0f, 10.0f, 0x1u,
+        "Motion aim while aiming down sights: in-game degrees per degree the controller turns, before "
+        "weapon zoom (0 = off)");
+    nx_gyroInvertYaw = _Dvar_RegisterBool("nx_gyroInvertYaw", 0, 0x1u, "Motion aim: invert left and right");
+    nx_gyroInvertPitch = _Dvar_RegisterBool("nx_gyroInvertPitch", 0, 0x1u, "Motion aim: invert up and down");
+#endif
     cl_stanceHoldTime = _Dvar_RegisterInt(
                                                 "cl_stanceHoldTime",
                                                 300,

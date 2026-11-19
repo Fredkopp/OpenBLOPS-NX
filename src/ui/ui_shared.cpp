@@ -13214,6 +13214,8 @@ bool UI_NX_IsHiddenAimAssistHighlight(int contextIndex, const itemDef_s *item)
         choice = "options_gamepad_nx_aimassist";
     else if ( !I_stricmp(item->window.name, "options_gamepad_nx_aimaccel_hl") )
         choice = "options_gamepad_nx_aimaccel";
+    else if ( !I_stricmp(item->window.name, "options_gamepad_nx_gyroaim_hl") )
+        choice = "options_gamepad_nx_gyroaim";
     else if ( !I_stricmp(item->window.name, "options_graphics_performance_hl") )
         choice = "options_graphics_performance";
     else if ( !I_stricmp(item->window.name, "options_graphics_frame_limit_hl") )
@@ -13713,6 +13715,52 @@ static void UI_NX_FitGamepadDiagram(menuDef_t *menu, float rowsBottom, int rowsV
             UI_NX_ScaleItem(menu->items[i], cx, maxY, scale);
 }
 
+#ifdef KISAK_NX
+// MOTION AIM (nx_gyroAim, cl_input_mp.cpp), one row below AIM ACCELERATION: a
+// copy of the look inversion row whose choice lists DISABLED (0, the source
+// row's own localized string) and the sensitivities. One row holds both, as
+// the controller diagram has room for just one more (UI_NX_FitGamepadDiagram).
+// The values are exact in binary, as the menu matches the dvar by equality.
+static bool UI_NX_AddMotionAimRow(menuDef_t *menu, const itemDef_s *invert, const itemDef_s *label, float dy,
+                                  itemDef_s **added, int &addedCount, int capacity)
+{
+    const textDef_s *invertText = Item_IsTextDefType(invert) ? invert->typeData.textDef : nullptr;
+    const focusItemDef_s *invertFocus = invertText ? invertText->textTypeData.focusItemDef : nullptr;
+    const multiDef_s *invertValues = invertFocus ? invertFocus->focusTypeData.multi : nullptr;
+    if ( !invertValues )
+        return false;
+    const char *disabled = nullptr;
+    for ( int i = 0; i < invertValues->count && !disabled; ++i )
+        if ( invertValues->dvarValue[i] == 0.0f )
+            disabled = invertValues->dvarList[i];
+    static multiDef_s values = {
+        { nullptr, "0.5", "0.75", "1", "1.25", "1.5", "1.75", "2", "2.5", "3", "4", "5" },
+        {}, { 0.0f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f, 4.0f, 5.0f }, 12, 0, 0
+    };
+    values.dvarList[0] = disabled ? disabled : "DISABLED";
+
+    const int first = addedCount;
+    addedCount += UI_NX_CloneInvertRow(menu, invert, label, dy, "options_gamepad_nx_gyroaim",
+        "options_gamepad_nx_gyroaim_hl", "options_gamepad_nx_gyroaim_row", "nx_gyroAim", "MOTION AIM",
+        added + addedCount, capacity - addedCount);
+    for ( int i = first; i < addedCount; ++i )
+    {
+        itemDef_s *choice = added[i];
+        if ( !UI_NX_ItemNamed(choice, "options_gamepad_nx_gyroaim") || !choice->typeData.textDef )
+            continue;
+        // The copied textDef still shares the inversion row's focus data.
+        focusItemDef_s *focus = (focusItemDef_s *)malloc(sizeof(focusItemDef_s));
+        if ( !focus )
+            return false;
+        memcpy(focus, invertFocus, sizeof(*focus));
+        focus->focusTypeData.multi = &values;
+        choice->typeData.textDef->textTypeData.focusItemDef = focus;
+        return true;
+    }
+    return false;
+}
+#endif
+
 static void UI_NX_AddAimAssistOption(menuDef_t *menu)
 {
     if ( !menu || !menu->window.name || I_stricmp(menu->window.name, "options_gamepad") )
@@ -13742,6 +13790,7 @@ static void UI_NX_AddAimAssistOption(menuDef_t *menu)
             lastIndex = i;
     if ( lastIndex < 0 )
         return;
+    float lastRow = 1.0f;   // rows added below AIM ASSIST
     // invert's row -> one and two rows below sensitivity, at the spacing of the rows above
     const float rowStep = sensitivity->window.rect.y - buttons->window.rect.y;
     const float dy = sensitivity->window.rect.y + rowStep - invert->window.rect.y;
@@ -13753,6 +13802,11 @@ static void UI_NX_AddAimAssistOption(menuDef_t *menu)
     addedCount += UI_NX_CloneInvertRow(menu, invert, label, dy + rowStep, "options_gamepad_nx_aimaccel",
         "options_gamepad_nx_aimaccel_hl", "options_gamepad_nx_aimaccel_row", "nx_aimacceleration",
         "@OPENBLOPS_AIM_ACCELERATION", added + addedCount, (int)ARRAY_COUNT(added) - addedCount);
+#ifdef KISAK_NX
+    if ( UI_NX_AddMotionAimRow(menu, invert, label, dy + 2.0f * rowStep, added, addedCount,
+                               (int)ARRAY_COUNT(added)) )
+        lastRow = 2.0f;
+#endif
     if ( !addedCount )
         return;
 
@@ -13765,7 +13819,7 @@ static void UI_NX_AddAimAssistOption(menuDef_t *menu)
            (menu->itemCount - lastIndex - 1) * sizeof(itemDef_s *));
     menu->items = items;
     menu->itemCount += addedCount;
-    UI_NX_FitGamepadDiagram(menu, invert->window.rect.y + dy + rowStep + invert->window.rect.h,
+    UI_NX_FitGamepadDiagram(menu, invert->window.rect.y + dy + lastRow * rowStep + invert->window.rect.h,
                             invert->window.rect.vertAlign);
 }
 

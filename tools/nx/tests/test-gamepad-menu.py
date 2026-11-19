@@ -1,4 +1,4 @@
-"""Check the gamepad AIM ASSIST / AIM ACCELERATION rows and the controller diagram fit with real zone layouts."""
+"""Check the gamepad AIM ASSIST / AIM ACCELERATION / MOTION AIM rows and the controller diagram fit with real zone layouts."""
 from pathlib import Path
 import argparse, ast, json, os, struct, subprocess
 p=argparse.ArgumentParser(description=__doc__)
@@ -31,10 +31,15 @@ code=r'''
 #include <cstring>
 #include <cstdio>
 #define __cdecl
+#define KISAK_NX
 #define ARRAY_COUNT(x) (sizeof(x)/sizeof(x[0]))
 int I_stricmp(const char*a,const char*b){return strcmp(a,b);}
 struct rectDef_s{float x=0,y=0,w=0,h=0;int horzAlign=0,vertAlign=0;};
-struct textDef_s{rectDef_s textRect[1];float textalignx=0,textaligny=0,textscale=0;const char*text=nullptr;void*textExpData=nullptr;};
+struct multiDef_s{const char*dvarList[32];const char*dvarStr[32];float dvarValue[32];int count,actionOnEnterPressOnly,strDef;};
+struct focusItemDef_s{const char*mouseEnterText=nullptr,*mouseExitText=nullptr,*mouseEnter=nullptr,*mouseExit=nullptr;void*onKey=nullptr;
+ union{multiDef_s*multi;}focusTypeData{};};
+struct textDef_s{rectDef_s textRect[1];float textalignx=0,textaligny=0,textscale=0;const char*text=nullptr;void*textExpData=nullptr;
+ union{focusItemDef_s*focusItemDef;}textTypeData{};};
 struct GenericEventHandler{const char*name=nullptr;GenericEventHandler*next=nullptr;};
 struct AnimState{rectDef_s rectClient;};struct UIAnimInfo{int animStateCount=0;AnimState**animStates=nullptr;AnimState currentAnimState,nextAnimState;};
 struct menuDef_t;
@@ -53,7 +58,7 @@ code+=function('src/ui/ui_utils.cpp','int __cdecl Item_IsTextDefType(')+'\n'
 for sig in ['static itemDef_s *UI_NX_FindItem(', 'static bool UI_NX_ItemNamed(', 'static itemDef_s *UI_NX_FindItemByDvar(',
             'static void UI_NX_MoveItem(', 'static itemDef_s *UI_NX_CloneItem(', 'bool UI_NX_IsHiddenAimAssistHighlight(',
             'static int UI_NX_CloneInvertRow(', 'static void UI_NX_ScaleRectAbout(', 'static void UI_NX_ScaleItem(',
-            'static void UI_NX_FitGamepadDiagram(', 'static void UI_NX_AddAimAssistOption(']:
+            'static void UI_NX_FitGamepadDiagram(', 'static bool UI_NX_AddMotionAimRow(', 'static void UI_NX_AddAimAssistOption(']:
  code+=function('src/ui/ui_shared.cpp',sig)+'\n'
 code+='int main(){\n'
 for zone in ('code_post_gfx','ui_mp','common_mp'):
@@ -71,6 +76,7 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
            key=lambda r:r['rect'][2]*r['rect'][3])
  labels=[i for i,r in enumerate(rows) if r['rect'][5]==1 and r['text']]
  code+=f' {{ menuDef_t menu;itemDef_s native[{n}];textDef_s texts[{n}];itemDef_s*table[{n}];rectDef_s before[{n}];GenericEventHandler leave;leave.name="leavefocus";\n'
+ code+=' multiDef_s onOff{{"@MENU_DISABLED","@MENU_ENABLED"},{},{0,1},2,0,0};focusItemDef_s invertFocus;invertFocus.focusTypeData.multi=&onOff;\n'
  for i,row in enumerate(rows):
   code+=f' table[{i}]=&native[{i}];native[{i}].parent=&menu;native[{i}].type=native[{i}].dataType={row["type"]};native[{i}].visibleExp.numRpn={row["rpn"]};\n'
   for field,value in [('window.name',row['name']),('dvar',row['dvar'])]:
@@ -78,23 +84,34 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
   code+=f' native[{i}].window.rect=native[{i}].window.rectClient=before[{i}]='+'{'+','.join(map(str,row['rect']))+'};\n'
   code+=(f' if(Item_IsTextDefType(&native[{i}])){{native[{i}].typeData.textDef=&texts[{i}];texts[{i}].text={json.dumps(row["text"])};'
          f'texts[{i}].textalignx={row["tdef"][0]}f;texts[{i}].textaligny={row["tdef"][1]}f;texts[{i}].textscale={row["tdef"][2]}f;}}\n')
-  if row['dvar']=='input_invertpitch' and row['name']:code+=f' native[{i}].onEvent=&leave;\n'
+  if row['dvar']=='input_invertpitch' and row['name']:code+=f' native[{i}].onEvent=&leave;texts[{i}].textTypeData.focusItemDef=&invertFocus;\n'
  code+=f' menu.items=table;menu.itemCount={n};const Box old=diagram(menu);assert(old.count==113);\n'
  code+=f' const float labelScale={rows[labels[0]]["tdef"][2]}f,labelWidth={rows[labels[0]]["rect"][2]}f;\n'
  code+=r'''
  UI_NX_AddAimAssistOption(&menu);
  auto*assist=UI_NX_FindItem(&menu,"options_gamepad_nx_aimassist",nullptr);auto*accel=UI_NX_FindItem(&menu,"options_gamepad_nx_aimaccel",nullptr);
  assert(assist&&accel&&!strcmp(assist->dvar,"nx_aimassist")&&!strcmp(accel->dvar,"nx_aimacceleration"));
+ auto*gyro=UI_NX_FindItem(&menu,"options_gamepad_nx_gyroaim",nullptr);
+ assert(gyro&&!strcmp(gyro->dvar,"nx_gyroAim"));
+ const multiDef_s*gyroValues=gyro->typeData.textDef->textTypeData.focusItemDef->focusTypeData.multi;
+ assert(gyroValues!=&onOff&&gyroValues->count==12&&!strcmp(gyroValues->dvarList[0],"@MENU_DISABLED")&&gyroValues->dvarValue[0]==0
+        &&!strcmp(gyroValues->dvarList[5],"1.5")&&gyroValues->dvarValue[5]==1.5f&&!gyroValues->strDef);
+ assert(onOff.count==2&&invertFocus.focusTypeData.multi==&onOff);   // the inversion row keeps its own choices
+ int gyroLabels=0;
+ for(int i=0;i<menu.itemCount;++i){const auto*it=menu.items[i];
+  if(it->window.name&&!strcmp(it->window.name,"options_gamepad_nx_gyroaim_row")&&it->typeData.textDef&&!strcmp(it->typeData.textDef->text,"MOTION AIM"))++gyroLabels;}
+ assert(gyroLabels>=1);
 '''
- code+=f' assert(near(assist->window.rect.y,{sens["rect"][1]+step}f)&&near(accel->window.rect.y,{sens["rect"][1]+2*step}f));\n'
- code+=f' const float rowsBottom=240+{sens["rect"][1]+2*step+invert["rect"][3]}f;   // rows are centre-aligned; the diagram is top-aligned\n'
+ code+=f' assert(near(assist->window.rect.y,{sens["rect"][1]+step}f)&&near(accel->window.rect.y,{sens["rect"][1]+2*step}f)'
+ code+=f'&&near(gyro->window.rect.y,{sens["rect"][1]+3*step}f));\n'
+ code+=f' const float rowsBottom=240+{sens["rect"][1]+3*step+invert["rect"][3]}f;   // rows are centre-aligned; the diagram is top-aligned\n'
  code+=f' const float panelBottom=240+{panel["rect"][1]+panel["rect"][3]}f,panelLeft={panel["rect"][0]}f,panelRight={panel["rect"][0]+panel["rect"][2]}f;\n'
  code+=r'''
  const Box fit=diagram(menu);const float scale=(old.y1-fit.y0)/(old.y1-old.y0);
  assert(fit.count==113&&old.y0<rowsBottom);                          // the stock diagram did start under the new rows
  assert(fit.y0>=rowsBottom+4-.01f&&fit.y0<=rowsBottom+4.5f);          // now it starts just below them
  assert(near(fit.y1,old.y1)&&fit.y1<=panelBottom&&fit.x0>=panelLeft&&fit.x1<=panelRight);
- assert(scale>.7f&&scale<.8f&&near((fit.x0+fit.x1)/2,(old.x0+old.x1)/2));
+ assert(scale>.6f&&scale<.7f&&near((fit.x0+fit.x1)/2,(old.x0+old.x1)/2));
  int scaledLabels=0;
  for(int i=0;i<int(ARRAY_COUNT(native));++i){
   const auto&r=native[i].window.rect;
@@ -110,7 +127,7 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
  printf("  %s: diagram y %.1f..%.1f -> %.1f..%.1f (scale %.3f), rows end at %.1f\n",
 '''
  code+=f'  "{zone}",old.y0,old.y1,fit.y0,fit.y1,scale,rowsBottom);\n }}\n'
-code+=' puts("PASS: real SP, MP frontend and MP in-game gamepad menus: both rows placed, controller diagram scaled clear of them inside the panel, labels scaled, other items untouched, reopening");}\n'
+code+=' puts("PASS: real SP, MP frontend and MP in-game gamepad menus: all three rows placed, MOTION AIM lists its sensitivities, controller diagram scaled clear of them inside the panel, labels scaled, other items untouched, reopening");}\n'
 cpp=out/'gamepad.cpp';exe=cpp.with_suffix('.exe');cpp.write_text(code)
 subprocess.run([a.compiler,'-std=c++17','-w',str(cpp),'-o',str(exe)],check=True,env=env)
 subprocess.run([str(exe)],check=True,env=env)
