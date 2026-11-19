@@ -193,6 +193,10 @@ void __cdecl UI_CloseMenuOnDvar(
                 const char *testValue);
 void __cdecl UI_Pause(int localClientNum, int b);
 void __cdecl UI_MouseEvent(int localClientNum, int x, int y);
+#ifdef KISAK_NX2
+bool UI_NX_CursorVisible(int localClientNum);
+void UI_NX_HideCursor(int localClientNum);
+#endif
 uiMenuCommand_t __cdecl UI_GetActiveMenu(int localClientNum);
 const char *__cdecl UI_GetTopActiveMenuName(int localClientNum);
 int __cdecl UI_IsFullscreen(int localClientNum);

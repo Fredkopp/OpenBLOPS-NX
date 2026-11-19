@@ -99,7 +99,7 @@ bool __cdecl IN_IsTalkKeyHeld()
 
 int __cdecl CL_MouseEvent(int x, int y, int dx, int dy)
 {
-#ifdef KISAK_NX
+#if defined(KISAK_NX) && !defined(KISAK_NX2)
     return 0;
 #else
     clientActive_t *LocalClientGlobals; // [esp+0h] [ebp-8h]
@@ -532,7 +532,7 @@ usercmd_s *__cdecl CL_CreateCmd(usercmd_s *result, int localClientNum)
     {
         CL_CmdButtons(localClientNum, &cmd);
         CL_KeyMove(localClientNum, &cmd);
-#ifndef KISAK_NX
+#if !defined(KISAK_NX) || defined(KISAK_NX2)
         CL_MouseMove(localClientNum, &cmd);
 #endif
         ControllerIndex = Com_LocalClient_GetControllerIndex(localClientNum);

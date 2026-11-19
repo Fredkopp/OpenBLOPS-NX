@@ -3,6 +3,9 @@
 #include <XInput.h>
 #include <switch.h>
 #include <math.h>
+#ifdef KISAK_NX2
+#include "nx_joycon_mouse.h"
+#endif
 
 #define NX_ERROR_DEVICE_NOT_CONNECTED 1167
 
@@ -14,6 +17,11 @@ static constexpr unsigned NX_PAD_COUNT = 1;
 static PadState s_pads[NX_PAD_COUNT];
 static bool s_padInit;
 static u32 s_packet[NX_PAD_COUNT];
+#ifdef KISAK_NX2
+// Slot zero's buttons the Joy-Con mouse claims (NX_JoyConMouse), and the
+// claimed ones still held, which stay off the gamepad until released.
+static u64 s_mouseClaim, s_mouseClaimHeld;
+#endif
 
 // Slot zero accepts the handheld controls or controller one. Slot one reads
 // controller two independently; never merge its buttons into the host pad.
@@ -49,6 +57,12 @@ DWORD XInputGetState(DWORD userIndex, XINPUT_STATE *state)
     memset(state, 0, sizeof(*state));
     XINPUT_GAMEPAD *gp = &state->Gamepad;
     u64 keys = padGetButtons(&s_pads[userIndex]);
+#ifdef KISAK_NX2
+    if (!userIndex) {
+        s_mouseClaimHeld = (s_mouseClaim | s_mouseClaimHeld) & keys;
+        keys &= ~s_mouseClaimHeld;
+    }
+#endif
 
     // Face buttons are mapped by POSITION, not by label. The game is written
     // for an Xbox pad, where A (bottom) confirms and B (right) cancels, and
@@ -265,8 +279,50 @@ extern "C" bool NX_GyroRate(unsigned userIndex, float *yawRate, float *pitchRate
     return true;
 }
 
+#ifdef KISAK_NX2
+// libounce's PadPointer follows the Joy-Con of controller one that last moved
+// or changed a button as a mouse (HID Nmouse). By default its L/ZL or R/ZR
+// give the left button.
+static PadPointer s_pointer;
+static bool s_pointerTried, s_pointerOpen;
+
+bool NX_JoyConMouse(NxJoyConMouse *mouse)
+{
+    if (!nxPadPoll(0))
+        return false;
+    if (!s_pointerTried) {
+        s_pointerTried = true;
+        s_pointerOpen = R_SUCCEEDED(padPointerInitialize(&s_pointer, NX_JOYCON_MOUSE_WIDTH, NX_JOYCON_MOUSE_HEIGHT));
+    }
+    if (!s_pointerOpen)
+        return false;
+    padPointerUpdate(&s_pointer, &s_pads[0]);
+    if (!s_pointer.active)
+        return false;
+    mouse->x = s_pointer.x;
+    mouse->y = s_pointer.y;
+    mouse->dx = s_pointer.delta_x;
+    mouse->dy = s_pointer.delta_y;
+    mouse->wheel = s_pointer.wheel_delta_y;
+    mouse->buttons = padPointerGetButtons(&s_pointer);
+    return true;
+}
+
+void NX_JoyConMouseClaimClicks(bool claim)
+{
+    s_mouseClaim = 0;
+    if (!claim || !s_pointerOpen || !s_pointer.active)
+        return;
+    if (s_pointer.side == PadPointerSide_Left)
+        s_mouseClaim = HidNpadButton_L | HidNpadButton_ZL;
+    else if (s_pointer.side == PadPointerSide_Right)
+        s_mouseClaim = HidNpadButton_R | HidNpadButton_ZR;
+}
+#endif
+
 // Before exit: the next program runs in this process, so the six-axis sensors
-// stop, which HID would keep updating.
+// stop and the Joy-Con mouse gives its memory back, which HID would keep
+// writing to.
 extern "C" void NX_InputExit(void)
 {
     for (DWORD userIndex = 0; userIndex < NX_PAD_COUNT; ++userIndex) {
@@ -280,4 +336,9 @@ extern "C" void NX_InputExit(void)
         hidStopSixAxisSensor(g.dual[1]);
         g.started = false;
     }
+#ifdef KISAK_NX2
+    if (s_pointerOpen)
+        padPointerExit(&s_pointer);
+    s_pointerOpen = false;
+#endif
 }

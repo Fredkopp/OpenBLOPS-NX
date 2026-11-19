@@ -865,7 +865,7 @@ void __cdecl UI_Refresh(int localClientNum)
         UI_BuildFindPlayerList();
         if ( UI_ShouldDrawBuildNumber(localClientNum) )
             UI_DrawBuildNumber(contextIndex);
-#ifndef KISAK_NX
+#if !defined(KISAK_NX) || defined(KISAK_NX2)
         // Retail SP UI_Refresh (0x004AFFF8) gates the ui_cursor blit on 0x0069AA20, not on
         // the function this MP reconstruction has here. CG_IsShowingZombieMap() is a
         // hardcoded `return 0` stub (cg_compass.cpp:4029) that the matcher applied to 39
@@ -1796,7 +1796,7 @@ void __cdecl UI_Pause(int localClientNum, int b)
 
 void __cdecl UI_MouseEvent(int localClientNum, int x, int y)
 {
-#ifndef KISAK_NX
+#if !defined(KISAK_NX) || defined(KISAK_NX2)
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
     if (CL_SplitGuestOwnsMenu())
         return;
@@ -1824,6 +1824,19 @@ void __cdecl UI_MouseEvent(int localClientNum, int x, int y)
     }
 #endif
 }
+
+#ifdef KISAK_NX2
+// The Joy-Con mouse's cursor (win_input.cpp): UI_MouseEvent shows it.
+bool UI_NX_CursorVisible(int localClientNum)
+{
+    return UI_GetInfo(localClientNum)->uiDC.isCursorVisible != 0;
+}
+
+void UI_NX_HideCursor(int localClientNum)
+{
+    UI_GetInfo(localClientNum)->uiDC.isCursorVisible = 0;
+}
+#endif
 
 uiMenuCommand_t __cdecl UI_GetActiveMenu(int localClientNum)
 {
@@ -3852,8 +3865,17 @@ void __cdecl UI_KeyEvent(int localClientNum, int key, int down)
     const int inputKey = key;
     const bool controller = IsGamepadKey(key);
 #ifdef KISAK_NX
+#ifdef KISAK_NX2
+    // The Joy-Con mouse's clicks and wheel (win_input.cpp) work the menus as on
+    // PC; the controller hides its cursor.
+    if (controller && down)
+        uiInfo->uiDC.isCursorVisible = 0;
+    if (!controller && (key < K_MOUSE1 || key > K_MWHEELUP))
+        return;
+#else
     if (!controller)
         return;
+#endif
     key = NX_UI_GamepadDirectionToArrow(key);
 #ifdef KISAK_SP
     if ( down )

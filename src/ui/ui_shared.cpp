@@ -4464,7 +4464,9 @@ int __cdecl Item_SetFocus(int localClientNum, UiContext *dc, itemDef_s *item, fl
     if ( !item || (item->window.staticFlags & 0x100000) != 0 || !Window_IsVisible(dc->contextIndex, &item->window) )
         return 0;
 #ifdef KISAK_NX
-    if (UI_NX_IsPointerOnly(item))
+    // Items made for a pointer take focus only from the Joy-Con mouse's cursor
+    // (Switch 2). Back prompts are not drawn.
+    if (UI_NX_IsPointerOnly(item) && (!dc->isCursorVisible || UI_NX_IsBackPrompt(item)))
         return 0;
 #endif
     focusPtr = Item_GetFocusItemDef(item);
@@ -6179,7 +6181,8 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                         && controllerKey && controllerKey != key
                         && Menu_CheckOnKey(localClientNum, dc, menu, controllerKey))
                         return;
-                    if (item && !UI_NX_CanFocus(localClientNum, dc, item))
+                    // The Joy-Con mouse's clicks and wheel act on the item under its cursor.
+                    if (item && (key < K_MOUSE1 || key > K_MWHEELUP) && !UI_NX_CanFocus(localClientNum, dc, item))
                     {
                         Item_LoseFocus(localClientNum, dc, item);
                         item = nullptr;
@@ -6509,7 +6512,10 @@ int __cdecl Item_ListBox_HandleKey(int localClientNum, UiContext *dc, itemDef_s 
         return 0;
     rect = Window_GetRect(&item->window);
 #ifdef KISAK_NX
-    v20 = true;
+    // The controller works the focused list; the Joy-Con mouse's clicks and
+    // wheel work the list under its cursor.
+    v20 = key < K_MOUSE1 || key > K_MWHEELUP || Item_IsModal(item)
+        || Rect_ContainsPoint(dc->contextIndex, rect, dc->cursor.x, dc->cursor.y);
 #else
     v20 = Item_IsModal(item) || Rect_ContainsPoint(dc->contextIndex, rect, dc->cursor.x, dc->cursor.y);
 #endif
@@ -9069,7 +9075,7 @@ int __cdecl Menus_AnyFullScreenVisible(UiContext *dc)
 
 int __cdecl Menu_HandleMouseMove(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
-#ifdef KISAK_NX
+#if defined(KISAK_NX) && !defined(KISAK_NX2)
     return 0;
 #else
     const rectDef_s *Rect; // eax
@@ -13253,6 +13259,8 @@ bool UI_NX_IsHiddenAimAssistHighlight(int contextIndex, const itemDef_s *item)
         choice = "options_gamepad_nx_aimaccel";
     else if ( !I_stricmp(item->window.name, "options_gamepad_nx_gyroaim_hl") )
         choice = "options_gamepad_nx_gyroaim";
+    else if ( !I_stricmp(item->window.name, "options_gamepad_nx_joyconmouse_hl") )
+        choice = "options_gamepad_nx_joyconmouse";
     else if ( !I_stricmp(item->window.name, "options_graphics_performance_hl") )
         choice = "options_graphics_performance";
     else if ( !I_stricmp(item->window.name, "options_graphics_frame_limit_hl") )
@@ -13376,7 +13384,8 @@ static void UI_NX_ResizeSettingsRow(itemDef_s *item, float y, float scale)
     }
 }
 
-static void UI_NX_LayoutSettingsRows(menuDef_t *menu, float sidebarRight)
+// Returns the bottom of the laid out rows.
+static float UI_NX_LayoutSettingsRows(menuDef_t *menu, float sidebarRight)
 {
     constexpr float firstRowY = -115.0f;
     constexpr float rowPitch = 19.0f;
@@ -13404,7 +13413,7 @@ static void UI_NX_LayoutSettingsRows(menuDef_t *menu, float sidebarRight)
             footerHeight = std::max(footerHeight, rect.h);
     }
     if (rowPositions.empty())
-        return;
+        return firstRowY;
     std::sort(rowPositions.begin(), rowPositions.end());
     rowPositions.erase(std::unique(rowPositions.begin(), rowPositions.end()), rowPositions.end());
 
@@ -13420,7 +13429,7 @@ static void UI_NX_LayoutSettingsRows(menuDef_t *menu, float sidebarRight)
     }
     const float rowsBottom = footerHeight > 0.0f ? panelBottom - footerHeight - footerGap : panelBottom;
     if (rowsHeight <= 0.0f || rowsBottom <= firstRowY)
-        return;
+        return firstRowY;
     const float scale = std::min(1.0f, (rowsBottom - firstRowY) / rowsHeight);
     for (int i = 0; i < menu->itemCount; ++i)
     {
@@ -13441,6 +13450,7 @@ static void UI_NX_LayoutSettingsRows(menuDef_t *menu, float sidebarRight)
         else if (footerHeight > 0.0f && label && label->text && !I_stricmp(label->text, "@MENU_APPLY"))
             UI_NX_MoveItem(item, panelBottom - rect.h - rect.y);
     }
+    return firstRowY + rowsHeight * scale;
 }
 
 static bool UI_NX_UsesSettingsColumn(const rectDef_s &row, const rectDef_s &category)
@@ -13564,6 +13574,8 @@ static bool UI_NX_AddControlsCategory(menuDef_t *menu)
     return true;
 }
 
+static void UI_NX_FitGamepadDiagram(menuDef_t *menu, float rowsBottom, int rowsVertAlign);
+
 static void UI_NX_ReplaceGamepadSidebar(menuDef_t *menu, const menuDef_t *root)
 {
     int firstSetting = 0;
@@ -13617,7 +13629,10 @@ static void UI_NX_ReplaceGamepadSidebar(menuDef_t *menu, const menuDef_t *root)
     }
     const itemDef_s *controlsCategory = UI_NX_FindItem(menu, settingsControlsItem, nullptr);
     const rectDef_s &categoryRect = controlsCategory->window.rectClient;
-    UI_NX_LayoutSettingsRows(menu, categoryRect.x + categoryRect.w);
+    // The rows now start at the top of the panel, centre-aligned like the
+    // sidebar; the controller diagram fits just below them.
+    UI_NX_FitGamepadDiagram(menu, UI_NX_LayoutSettingsRows(menu, categoryRect.x + categoryRect.w),
+                            categoryRect.vertAlign);
 }
 
 static itemDef_s *UI_NX_FindItemByText(menuDef_t *menu, const char *text)
@@ -13832,7 +13847,7 @@ static void UI_NX_AddAimAssistOption(menuDef_t *menu)
     const float rowStep = sensitivity->window.rect.y - buttons->window.rect.y;
     const float dy = sensitivity->window.rect.y + rowStep - invert->window.rect.y;
 
-    itemDef_s *added[16] = {};
+    itemDef_s *added[24] = {};
     int addedCount = UI_NX_CloneInvertRow(menu, invert, label, dy, "options_gamepad_nx_aimassist",
         "options_gamepad_nx_aimassist_hl", "options_gamepad_nx_aimassist_row", "nx_aimassist", "@MENU_AIM_ASSIST_CAPS",
         added, (int)ARRAY_COUNT(added));
@@ -13843,6 +13858,18 @@ static void UI_NX_AddAimAssistOption(menuDef_t *menu)
     if ( UI_NX_AddMotionAimRow(menu, invert, label, dy + 2.0f * rowStep, added, addedCount,
                                (int)ARRAY_COUNT(added)) )
         lastRow = 2.0f;
+#endif
+#ifdef KISAK_NX2
+    // JOY-CON MOUSE (nx_joyconMouse, win_input.cpp) keeps the look inversion
+    // row's Disabled / Enabled choices.
+    if ( const int count = UI_NX_CloneInvertRow(menu, invert, label, dy + (lastRow + 1.0f) * rowStep,
+             "options_gamepad_nx_joyconmouse", "options_gamepad_nx_joyconmouse_hl",
+             "options_gamepad_nx_joyconmouse_row", "nx_joyconMouse", "@OPENBLOPS_JOYCON_MOUSE",
+             added + addedCount, (int)ARRAY_COUNT(added) - addedCount) )
+    {
+        addedCount += count;
+        lastRow += 1.0f;
+    }
 #endif
     if ( !addedCount )
         return;

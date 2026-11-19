@@ -15,6 +15,14 @@
 #include <gfx_d3d/rb_backend.h>
 #include "win_shared.h"
 #include <client_mp/cl_input_mp.h>
+#ifdef KISAK_NX2
+#include <cgame_mp/cg_newDraw_mp.h>
+#include <client/cl_keys.h>
+#include <client_mp/cl_cgame_mp.h>
+#include <nx/nx_joycon_mouse.h>
+#include <ui/keycodes.h>
+#include <ui/ui_main.h>
+#endif
 
 GamePadButton buttonList[32] =
 {
@@ -60,6 +68,9 @@ int window_center_y;
 WinMouseVars_t s_wmv;
 
 const dvar_t *in_mouse;
+#ifdef KISAK_NX2
+static const dvar_t *nx_joyconMouse;
+#endif
 //const dvar_s *gpad_present;
 int in_appactive;
 
@@ -211,6 +222,10 @@ void __cdecl IN_Init()
 #ifndef KISAK_NX
     in_mouse = _Dvar_RegisterBool("in_mouse", 1, 0x21u, "Initialize the mouse drivers");
 #endif
+#ifdef KISAK_NX2
+    // Archived, so the options menu's JOY-CON MOUSE choice persists in config.cfg.
+    nx_joyconMouse = _Dvar_RegisterBool("nx_joyconMouse", 1, 0x1u, "Use a Joy-Con slid on a surface as the mouse");
+#endif
     IN_Startup();
 }
 
@@ -223,11 +238,78 @@ void __cdecl IN_Activate(int active)
         IN_DeactivateMouse();
 }
 
+#ifdef KISAK_NX2
+// The Joy-Con mouse (nx_xinput.cpp). Over a menu it is the menu's cursor, as
+// on PC: it focuses what it points at, its click activates and its stick
+// scrolls. The cursor shows once the Joy-Con moves and hides when the
+// controller is used (UI_KeyEvent) or no menu has the keys. In game it turns
+// the view through the mouse look (CL_MouseMove, the sensitivity dvar), and
+// its buttons stay the controller's. nx_joyconMouse turns it off.
+static void IN_JoyConMouseMove()
+{
+    static unsigned s_held, s_clicks;
+    static int s_wheelTime, s_wheelDir;
+
+    const clientUIActive_t *ui = CL_GetLocalClientUIGlobals(0);
+    const bool menu = ui && (ui->keyCatchers & 0x10) && !UI_KeysBypassMenu(0);
+    const bool enabled = nx_joyconMouse->current.enabled;
+    if (!menu || !enabled)
+        UI_NX_HideCursor(0);
+
+    NxJoyConMouse mouse = {};
+    const bool present = enabled && NX_JoyConMouse(&mouse);
+    if (present && (mouse.dx || mouse.dy))
+    {
+        int width, height;
+        float aspect;
+        CL_GetScreenDimensions(&width, &height, &aspect);
+        CL_MouseEvent(mouse.x * width / NX_JOYCON_MOUSE_WIDTH, mouse.y * height / NX_JOYCON_MOUSE_HEIGHT, mouse.dx,
+                      mouse.dy);
+    }
+    const bool cursor = present && menu && UI_NX_CursorVisible(0);
+    NX_JoyConMouseClaimClicks(cursor);
+
+    const int time = Sys_Milliseconds();
+    const unsigned pressed = cursor ? mouse.buttons & ~s_held : 0;
+    s_held = mouse.buttons;
+    for (int i = 0; i < 5; ++i)
+    {
+        const unsigned bit = 1u << i;
+        if (pressed & bit)
+        {
+            s_clicks |= bit;
+            CL_KeyEvent(0, K_MOUSE1 + i, 1, time);
+        }
+        else if ((s_clicks & bit) && !(mouse.buttons & bit))
+        {
+            s_clicks &= ~bit;
+            CL_KeyEvent(0, K_MOUSE1 + i, 0, time);
+        }
+    }
+
+    // One notch at most every 100 ms in the same direction.
+    const int dir = cursor ? (mouse.wheel > 0) - (mouse.wheel < 0) : 0;
+    if (dir && (dir != s_wheelDir || time - s_wheelTime >= 100))
+    {
+        const int key = dir > 0 ? K_MWHEELUP : K_MWHEELDOWN;
+        CL_KeyEvent(0, key, 1, time);
+        CL_KeyEvent(0, key, 0, time);
+        s_wheelTime = time;
+        s_wheelDir = dir;
+    }
+}
+#endif
+
 void __cdecl IN_Frame()
 {
 #ifdef KISAK_NX
     if (in_appactive && IN_IsForegroundWindow())
+    {
+#ifdef KISAK_NX2
+        IN_JoyConMouseMove();
+#endif
         IN_GamepadsMove();
+    }
 #else
     if ( Dvar_GetBool("ClickToContinue") )
         PostMessageA(g_wv.hWnd, 0x201u, 1u, 0);

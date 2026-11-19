@@ -1873,7 +1873,12 @@ void __cdecl CL_InitKeyCommands()
 void __cdecl CL_KeyEvent(int localClientNum, int key, int down, unsigned int time)
 {
 #ifdef KISAK_NX
-    if (!IsGamepadKey(key))
+    // Switch 2 also takes the Joy-Con mouse's clicks and wheel (win_input.cpp).
+    if (!IsGamepadKey(key)
+#ifdef KISAK_NX2
+        && (key < K_MOUSE1 || key > K_MWHEELUP)
+#endif
+        )
         return;
 #endif
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
