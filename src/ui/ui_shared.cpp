@@ -13997,8 +13997,12 @@ static void UI_NX_RemoveDisplayOptions(menuDef_t *menu)
 #endif
 }
 
+// Switch 1 only: on Switch 2 the screen refresh rate is the frame rate cap.
 static void UI_NX_AddFrameRateOption(menuDef_t *menu)
 {
+#ifdef KISAK_NX2
+    (void)menu;
+#else
     if ( !menu || !menu->window.name || I_stricmp(menu->window.name, "options_graphics")
         || UI_NX_FindItem(menu, "options_graphics_frame_limit", nullptr) )
         return;
@@ -14036,6 +14040,7 @@ static void UI_NX_AddFrameRateOption(menuDef_t *menu)
             if ( rect.x >= filter->window.rect.x && rect.y >= firstY && rect.y <= lastY )
                 UI_NX_MoveItem(item, shift);
         }
+#endif
 }
 #endif
 

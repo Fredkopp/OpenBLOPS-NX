@@ -165,15 +165,17 @@ const dvar_t *com_first_time_pc;
 const dvar_t *dedicated;
 const dvar_t *com_maxfps;
 #ifdef KISAK_NX
+#ifndef KISAK_NX2
 static const dvar_t *nx_fpsLimit;
+#endif
 
 int Com_GetFrameRateLimit()
 {
-    const int limit = nx_fpsLimit->current.integer;
 #ifdef KISAK_NX2
-    // Switch 2: with no limit chosen, the display's refresh rate (60 or 120 Hz).
-    return limit < 0 ? NX_DisplayRefreshRate() : limit;
+    // Switch 2: the screen refresh rate, 60 or 120 Hz.
+    return NX_DisplayRefreshRate();
 #else
+    const int limit = nx_fpsLimit->current.integer;
     return limit < 0 ? com_maxfps->current.integer : limit;
 #endif
 }
@@ -2651,10 +2653,7 @@ void Com_InitDvars()
     com_maxfps = _Dvar_RegisterInt("com_maxfps", 85, 0, 1000, 1u, "Cap frames per second");
 #endif
 #ifdef KISAK_NX
-#ifdef KISAK_NX2
-    // Switch 2: -1 follows the screen refresh rate (src/nx/nx_display.cpp).
-    nx_fpsLimit = _Dvar_RegisterInt("nx_fpsLimit", -1, -1, 1000, 1u, "Switch frame rate limit (-1 follows the refresh rate, 0 is unlimited)");
-#else
+#ifndef KISAK_NX2
     nx_fpsLimit = _Dvar_RegisterInt("nx_fpsLimit", 60, -1, 1000, 1u, "Switch frame rate limit (-1 uses com_maxfps, 0 is unlimited)");
 #endif
     nx_splog = _Dvar_RegisterBool("nx_splog", 0, 0, "Log the SP bring-up traces (lines starting \"SP \")");

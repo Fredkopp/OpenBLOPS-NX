@@ -4,9 +4,9 @@
 //
 // Switch 2: the window is 1920x1080 handheld and the TV's resolution docked,
 // up to 2160 lines. Screen Refresh Rate (r_displayRefresh) is kept per mode,
-// 120 Hz handheld and 60 Hz docked by default. 120 Hz uses nwindowSetFrameRates
-// with VRR and caps the docked window at 1440 lines, and the frame rate cap
-// follows the refresh rate unless a limit was chosen.
+// 120 Hz handheld and 60 Hz docked by default, and is the frame rate cap.
+// 120 Hz uses nwindowSetFrameRates with VRR and caps the docked window at 1440
+// lines.
 // The renderer draws at an internal size that DXVK scales to the window:
 // docked 1440 lines (1080 at 120 Hz), handheld 1080 (720 at 120 Hz). A change
 // of mode or refresh rate restarts the renderer at the new size.
@@ -65,7 +65,7 @@ void setRefreshSetting(int hz)
 }
 
 // The current mode's refresh rate. A rate chosen in the options becomes that
-// mode's setting and resets the frame rate cap to follow it.
+// mode's setting.
 int syncRefresh()
 {
     if (!s_handheldHz)
@@ -80,10 +80,7 @@ int syncRefresh()
     if (!hz)
         return 60;
     if (s_modeKnown && docked == s_docked && hz != s_syncedHz)
-    {
         Dvar_SetInt((dvar_s *)setting, hz);
-        Dvar_SetIntByName("nx_fpsLimit", -1);
-    }
     else if (hz != setting->current.integer)
     {
         setRefreshSetting(setting->current.integer);
