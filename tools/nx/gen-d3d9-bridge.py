@@ -72,9 +72,12 @@ for cls, body in classes:
             else:
                 assert base in {'UINT','DWORD','BOOL','INT','HWND','HANDLE','RECT','POINT','float','void','D3DCOLOR'}, param
                 native_args += [name]
+        # The device presents to the NWindow. A reset naming the game's window
+        # would make DXVK create a second presenter, which the WSI refuses.
+        if method in ('CreateDevice', 'Reset'):
+            pre += ['if (pp) { pp->hDeviceWindow = reinterpret_cast<HWND>(nwindowGetDefault()); pp->Windowed = TRUE; }']
         if method == 'CreateDevice':
-            pre += ['if (pp) { pp->hDeviceWindow = reinterpret_cast<HWND>(nwindowGetDefault()); pp->Windowed = TRUE; }',
-                    'focusWindow = reinterpret_cast<HWND>(nwindowGetDefault());',
+            pre += ['focusWindow = reinterpret_cast<HWND>(nwindowGetDefault());',
                     '// Game streaming and rendering touch resources on different threads.',
                     'behaviorFlags |= D3DCREATE_MULTITHREADED;']
         if method == 'Reset':

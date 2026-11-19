@@ -250,4 +250,55 @@ replace('src/dxvk/dxvk_context.cpp',
 
     if (!useFb) {
       this->copyImageHw(''')
+# Switch 2: a new swapchain takes the window over from the old one through
+# oldSwapchain. Destroying the old one first makes the Horizon WSI give the
+# window up, because it still holds the image acquired after its last present.
+replace('src/vulkan/vulkan_presenter.cpp',
+    '''  VkResult Presenter::recreateSwapChain(const PresenterDesc& desc) {
+    if (m_swapchain)
+      destroySwapchain();
+''',
+    '''  VkResult Presenter::recreateSwapChain(const PresenterDesc& desc) {
+#ifdef KISAK_NX2
+    struct RetiredSwapchain {
+      Rc<DeviceFn>   vkd;
+      VkSwapchainKHR handle;
+      void destroy() {
+        if (handle)
+          vkd->vkDestroySwapchainKHR(vkd->device(), std::exchange(handle, VK_NULL_HANDLE), nullptr);
+      }
+      ~RetiredSwapchain() { destroy(); }
+    } retired = { m_vkd, std::exchange(m_swapchain, VK_NULL_HANDLE) };
+
+    for (const auto& img : m_images)
+      m_vkd->vkDestroyImageView(m_vkd->device(), img.view, nullptr);
+
+    for (const auto& sem : m_semaphores) {
+      m_vkd->vkDestroySemaphore(m_vkd->device(), sem.acquire, nullptr);
+      m_vkd->vkDestroySemaphore(m_vkd->device(), sem.present, nullptr);
+    }
+
+    m_images.clear();
+    m_semaphores.clear();
+#else
+    if (m_swapchain)
+      destroySwapchain();
+#endif
+''')
+replace('src/vulkan/vulkan_presenter.cpp',
+    '''        // Recreate the surface and try again.
+        if (m_surface)''',
+    '''        // Recreate the surface and try again.
+#ifdef KISAK_NX2
+        retired.destroy();
+#endif
+        if (m_surface)''')
+replace('src/vulkan/vulkan_presenter.cpp',
+    '    swapInfo.oldSwapchain           = VK_NULL_HANDLE;\n',
+    '''#ifdef KISAK_NX2
+    swapInfo.oldSwapchain           = retired.handle;
+#else
+    swapInfo.oldSwapchain           = VK_NULL_HANDLE;
+#endif
+''')
 print('DXVK Sarek Horizon patches ready')

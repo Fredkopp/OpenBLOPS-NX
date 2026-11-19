@@ -2,15 +2,18 @@
 //
 // Switch 1: 1280x720, presented every swap interval.
 //
-// Switch 2: 1920x1080 handheld and the TV's resolution docked, up to 2160
-// lines. Screen Refresh Rate (r_displayRefresh) is kept per mode, 120 Hz
-// handheld and 60 Hz docked by default. 120 Hz uses nwindowSetFrameRates with
-// VRR, caps docked at 1440 lines, and the frame rate cap follows the refresh
-// rate unless a limit was chosen. The renderer draws at the window's size at
-// start; DXVK scales its frames after a change.
+// Switch 2: the window is 1920x1080 handheld and the TV's resolution docked,
+// up to 2160 lines. Screen Refresh Rate (r_displayRefresh) is kept per mode,
+// 120 Hz handheld and 60 Hz docked by default. 120 Hz uses nwindowSetFrameRates
+// with VRR and caps the docked window at 1440 lines, and the frame rate cap
+// follows the refresh rate unless a limit was chosen.
+// The renderer draws at an internal size that DXVK scales to the window:
+// docked 1440 lines (1080 at 120 Hz), handheld 1080 (720 at 120 Hz). A change
+// of mode or refresh rate restarts the renderer at the new size.
 #include "nx_display.h"
 #include "nx_install.h"
 
+#include <qcommon/cmd.h>
 #include <universal/dvar.h>
 
 #include <switch.h>
@@ -34,9 +37,11 @@ Event s_tvEvent;
 s32 s_tvWidth = 3840, s_tvHeight = 2160;
 u32 s_dockedWidth, s_dockedHeight;
 
+int s_renderWidth, s_renderHeight;
+bool s_restartQueued;
+
 // r_displayRefresh in Hz, 0 before the renderer registers it. A new rate
-// applies at once: left latched it would reset the device, which crashes on
-// Switch.
+// applies at once rather than at the next renderer restart.
 int refreshSetting()
 {
     static const dvar_s *refresh;
@@ -67,7 +72,7 @@ int syncRefresh()
     {
         s_handheldHz = _Dvar_RegisterInt("nx_refreshHandheld", 120, 60, 120, 1u, "Handheld screen refresh rate (Hz)");
         s_dockedHz = _Dvar_RegisterInt("nx_refreshDocked", 60, 60, 120, 1u,
-            "Docked screen refresh rate (Hz); 120 draws at most 1440 lines");
+            "Docked screen refresh rate (Hz); 120 renders at most 1080 lines");
     }
     const bool docked = appletGetOperationMode() == AppletOperationMode_Console;
     const dvar_s *setting = docked ? s_dockedHz : s_handheldHz;
@@ -129,6 +134,21 @@ void applyWindowSize(bool high)
         s_dockedHeight = height;
     }
 }
+
+// The internal size for the current mode, with the window's aspect ratio and
+// never taller than the window.
+void renderSize(bool high, int *width, int *height)
+{
+    applyWindowSize(high);
+    u32 w = NX_SCREEN_WIDTH, h = NX_SCREEN_HEIGHT;
+    nwindowGetDimensions(nwindowGetDefault(), &w, &h);
+    const bool docked = appletGetOperationMode() == AppletOperationMode_Console;
+    u32 lines = docked ? (high ? 1080 : 1440) : (high ? 720 : 1080);
+    if (lines > h)
+        lines = h;
+    *width = (int)((((u64)w * lines / h) + 1) & ~1ull);
+    *height = (int)lines;
+}
 #endif
 }
 
@@ -142,15 +162,28 @@ void NX_DisplayInit()
 void NX_DisplayRenderSize(int *width, int *height)
 {
 #ifdef KISAK_NX2
-    applyWindowSize(syncRefresh() > 60);
-    u32 w = NX_SCREEN_WIDTH, h = NX_SCREEN_HEIGHT;
-    nwindowGetDimensions(nwindowGetDefault(), &w, &h);
+    renderSize(syncRefresh() > 60, width, height);
+    s_renderWidth = *width;
+    s_renderHeight = *height;
+    s_restartQueued = false;
     s_rendererUp = true;
-    *width = (int)w;
-    *height = (int)h;
 #else
     *width = NX_SCREEN_WIDTH;
     *height = NX_SCREEN_HEIGHT;
+#endif
+}
+
+bool NX_DisplayRenderSizeChanged(int width, int height)
+{
+#ifdef KISAK_NX2
+    s_restartQueued = false;
+    int w, h;
+    renderSize(syncRefresh() > 60, &w, &h);
+    return w != width || h != height;
+#else
+    (void)width;
+    (void)height;
+    return false;
 #endif
 }
 
@@ -166,8 +199,15 @@ int NX_DisplayRefreshRate()
 void NX_DisplayUpdate()
 {
 #ifdef KISAK_NX2
-    if (s_rendererUp)
-        applyWindowSize(syncRefresh() > 60);
+    if (!s_rendererUp)
+        return;
+    int width, height;
+    renderSize(syncRefresh() > 60, &width, &height);
+    if ((width != s_renderWidth || height != s_renderHeight) && !s_restartQueued)
+    {
+        s_restartQueued = true;
+        Cbuf_AddText(0, "vid_restart\n");
+    }
 #endif
 }
 

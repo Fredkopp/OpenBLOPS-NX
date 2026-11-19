@@ -567,9 +567,11 @@ void __cdecl R_CheckResizeWindow()
         || Dvar_HasLatchedValue(r_mode)
         || Dvar_HasLatchedValue(r_fullscreen)
         || Dvar_HasLatchedValue(r_aaSamples)
-#ifndef KISAK_NX2
-        // Switch 2 applies the refresh rate without a device reset
+#ifdef KISAK_NX2
+        // The internal size follows docking and the refresh rate
         // (src/nx/nx_display.cpp).
+        || NX_DisplayRenderSizeChanged(vidConfig.displayWidth, vidConfig.displayHeight)
+#else
         || Dvar_HasLatchedValue(r_displayRefresh)
 #endif
 #ifndef KISAK_NX
@@ -745,7 +747,8 @@ void __cdecl R_SetWndParms(GfxWindowParms *wndParms)
     const char *refreshRateString; // [esp+8h] [ebp-4h]
 
 #ifdef KISAK_NX2
-    // The window's size, which follows the display (src/nx/nx_display.cpp).
+    // The internal size, which follows docking and the refresh rate
+    // (src/nx/nx_display.cpp).
     wndParms->fullscreen = 0;
     NX_DisplayRenderSize(&wndParms->displayWidth, &wndParms->displayHeight);
 #else
