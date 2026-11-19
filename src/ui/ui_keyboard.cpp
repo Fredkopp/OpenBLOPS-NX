@@ -83,8 +83,11 @@ static int UI_NX_EncodeNativeChar(const UiNxTextRequest &request, unsigned int c
     if (!request.nativeText || (request.filter != UI_NX_TEXT_ANY && request.filter != UI_NX_TEXT_PLAIN
                                    && request.filter != UI_NX_TEXT_SAFE))
         return 0;
+    // A Shift-JIS second byte in the ASCII range belongs to its letter, as the
+    // renderer reads it; fields kept out of scripts refuse the ones they refuse
+    // on their own.
     const int count = SEH_EncodeGameChar(code, encoded);
-    if (count == 2 && strchr("@\\^{}", encoded[1]))
+    if (count == 2 && request.filter == UI_NX_TEXT_SAFE && encoded[1] && strchr("{}\\", encoded[1]))
         return 0;
     return count;
 }

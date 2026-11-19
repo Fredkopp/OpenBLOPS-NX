@@ -4399,7 +4399,7 @@ static bool UI_NX_IsPointerOnly(itemDef_s *item)
 #endif
 
 #ifdef KISAK_NX
-static bool UI_NX_SelectListBoxEdge(int localClientNum, UiContext *dc, itemDef_s *item, bool last, bool refresh = false)
+static bool UI_NX_SelectListBoxEdge(int localClientNum, UiContext *dc, itemDef_s *item, bool last)
 {
     listBoxDef_s *list = Item_GetListBoxDef(item);
     if (!list || list->notselectable)
@@ -4413,12 +4413,34 @@ static bool UI_NX_SelectListBoxEdge(int localClientNum, UiContext *dc, itemDef_s
     const int view = last ? std::max(1, Item_ListBox_Viewmax(localClientNum, context, item)) : 0;
     const int row = last ? count - 1 : 0;
     const int start = last ? std::max(0, count - view) : 0;
-    if (refresh || list->cursorPos[context] != row || list->startPos[context] != start)
+    if (list->cursorPos[context] != row || list->startPos[context] != start)
     {
         list->startPos[context] = start;
         Item_ListBox_SetCursorPos(localClientNum, context, item, count - 1, view, row, false);
     }
     return true;
+}
+
+// A list that takes focus keeps its selection (the current map, the equipped
+// item, ...), scrolled into view: selecting a row runs its feeder, which can
+// change a setting. A list without one starts at its first or last row.
+static void UI_NX_ShowListBoxSelection(int localClientNum, UiContext *dc, itemDef_s *item, bool last)
+{
+    listBoxDef_s *list = Item_GetListBoxDef(item);
+    if (!list || list->notselectable)
+        return;
+    const int context = dc->contextIndex;
+    const int row = list->cursorPos[context];
+    if (row < 0 || row >= UI_FeederCount(localClientNum, context, list->special, list))
+    {
+        UI_NX_SelectListBoxEdge(localClientNum, dc, item, last);
+        return;
+    }
+    const int view = std::max(1, Item_ListBox_Viewmax(localClientNum, context, item));
+    if (row < list->startPos[context])
+        list->startPos[context] = row;
+    else if (row >= list->startPos[context] + view)
+        list->startPos[context] = row - view + 1;
 }
 #endif
 
@@ -4518,14 +4540,14 @@ int __cdecl Item_SetFocus(int localClientNum, UiContext *dc, itemDef_s *item, fl
     }
     if ( item->type == 4 )
     {
-#ifdef KISAK_NX
-        if (Item_IsModal(item) && UI_NX_SelectListBoxEdge(localClientNum, dc, item, false, true))
-            return 1;
-#endif
         listPtr = Item_GetListBoxDef(item);
         if ( !listPtr && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\ui\\ui_shared.cpp", 4961, 0, "%s", "listPtr") )
             __debugbreak();
         UI_OverrideCursorPos(localClientNum, dc->contextIndex, item);
+#ifdef KISAK_NX
+        if (Item_IsModal(item))
+            UI_NX_ShowListBoxSelection(localClientNum, dc, item, false);
+#endif
         if ( listPtr && listPtr->cursorPos[dc->contextIndex] >= 0 )
         {
             if ( item->parent->window.name )
@@ -4819,7 +4841,8 @@ static void UI_NX_EditTextField(int localClientNum, UiContext *dc, itemDef_s *it
         for (char *ch = value; *ch; ++ch)
             *ch = static_cast<char>(toupper(static_cast<unsigned char>(*ch)));
     Dvar_SetFromStringByName(item->dvar, value);
-    Item_Action(localClientNum, dc, item);
+    // As Enter ends an edit on PC.
+    Item_RunEventScript(localClientNum, dc, item, "onAccept");
 }
 #endif
 
@@ -4989,7 +5012,7 @@ void __cdecl Menus_Open(int localClientNum, UiContext *dc, menuDef_t *menu)
             itemDef_s *selected = menu->items[cursor];
             if (selected->type == 4 && !Item_IsModal(selected)
                 && Window_HasFocus(dc->contextIndex, &selected->window))
-                UI_NX_SelectListBoxEdge(localClientNum, dc, selected, false);
+                UI_NX_ShowListBoxSelection(localClientNum, dc, selected, false);
         }
     }
 #endif
@@ -5496,7 +5519,7 @@ static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef
             && Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
         {
             if (hasCursor && index != cursor && item->type == 4 && !Item_IsModal(item))
-                UI_NX_SelectListBoxEdge(localClientNum, dc, item, step < 0);
+                UI_NX_ShowListBoxSelection(localClientNum, dc, item, step < 0);
             return item;
         }
     }
@@ -5910,8 +5933,10 @@ static bool UI_NX_HandleServerBrowserKey(int localClientNum, UiContext *dc, menu
 {
     if (!down || !UI_NX_IsServerBrowserMenu(menu))
         return false;
+    // The community directory is the browser's only list (Directory_BrowserMenu).
     if (key == K_BUTTON_LSHLDR || key == K_BUTTON_RSHLDR)
-        return Menu_CheckOnKey(localClientNum, dc, menu, key == K_BUTTON_LSHLDR ? K_LEFTARROW : K_RIGHTARROW);
+        return Directory_Source(0)
+            || Menu_CheckOnKey(localClientNum, dc, menu, key == K_BUTTON_LSHLDR ? K_LEFTARROW : K_RIGHTARROW);
     if (key != K_LEFTARROW && key != K_RIGHTARROW && key != K_UPARROW && key != K_DOWNARROW
         && key != K_BUTTON_A && key != K_BUTTON_X)
         return false;
@@ -6180,12 +6205,11 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                             return;
                         }
                     }
-                    if (!item && down && key == K_BUTTON_A)
-                    {
-                        item = UI_NX_MoveMenuFocus(localClientNum, dc, menu, 1);
-                        if (UI_NX_HandleClassMenuKey(localClientNum, dc, item, key))
-                            return;
-                    }
+                    // A with nothing focused only focuses: the item that had
+                    // focus may just have been disabled, and its neighbour must
+                    // not run in the same press.
+                    if (!item && down && key == K_BUTTON_A && UI_NX_MoveMenuFocus(localClientNum, dc, menu, 1))
+                        return;
                     if (down && key == K_BUTTON_Y && item && item->type == 4 && menu->window.name
                         && !I_stricmp(menu->window.name, "menu_cac_custom") && Item_DoesEventExist(item, "RightClick"))
                     {
@@ -6300,7 +6324,11 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                                         {
                                             if (Item_IsTextField(item))
                                             {
+#ifdef KISAK_NX
+                                                UI_NX_EditTextField(localClientNum, dc, item);
+#else
                                                 Item_TextField_BeginEdit(localClientNum, dc->contextIndex, item);
+#endif
                                             }
                                             else
                                             {
@@ -8734,11 +8762,20 @@ int __cdecl UI_GetKeyBindingLocalizedString(int localClientNum, const char *comm
         if ( !bindCount && !bindNum )
             bindCount = CL_GetKeyBinding(localClientNum, consoleCmd, bindings, 1);
     }
+    // The Switch's button names ("[L]", "[ZR]": Key_KeynumToString) are not
+    // localization keys, and looking one up waits for the zones being loaded.
+    auto translate = [](char *binding) -> const char * {
+#ifdef KISAK_NX
+        if (*binding == '[')
+            return binding;
+#endif
+        return SEH_StringEd_GetString(binding);
+    };
     if ( bindCount )
     {
         if ( bindCount == 1 )
         {
-            translation = SEH_StringEd_GetString(bindings[0]);
+            translation = translate(bindings[0]);
             if ( translation )
                 I_strncpyz(keys, translation, 256);
             else
@@ -8757,8 +8794,8 @@ int __cdecl UI_GetKeyBindingLocalizedString(int localClientNum, const char *comm
             {
                 __debugbreak();
             }
-            translationa = SEH_StringEd_GetString(bindings[0]);
-            translation_4 = SEH_StringEd_GetString(bindings[1]);
+            translationa = translate(bindings[0]);
+            translation_4 = translate(bindings[1]);
             conjunction = UI_SafeTranslateString("KEY_OR");
             if ( translation_4 )
                 v6 = translation_4;

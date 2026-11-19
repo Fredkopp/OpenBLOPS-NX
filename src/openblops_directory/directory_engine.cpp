@@ -468,14 +468,12 @@ const char *Directory_BrowserMenu(const char *name)
     // Out of date: the browser and the host menus open the update popup.
     name = Directory_UpdateGateMenu(name);
 #endif
-#if !defined(KISAK_NX) || !defined(KISAK_MP)
     if (!name || !Directory_Source(0))
         return name;
     for (const char *legacy : {"server_browser_ranked", "server_browser_wager", "server_browser_friends",
                                "server_browser_favorites", "server_browser_history"})
         if (!std::strcmp(name, legacy))
             return "server_browser_unranked";
-#endif
     return name;
 }
 bool Directory_PopulateServers(int localClientNum, int contextIndex)
@@ -500,12 +498,10 @@ bool Directory_PopulateServers(int localClientNum, int contextIndex)
         else
             UI_StartServerRefresh(localClientNum, contextIndex, 1);
     }
-#if !defined(KISAK_NX) || !defined(KISAK_MP)
     else if (source == 1 || source == 2)
         OpenBrowser(); // Explicitly move legacy defaults to Unranked.
     else
         Com_Printf(14, "Community directory discovery supports Unranked only.\n");
-#endif
     return true;
 }
 // Check session selection as well as guest admission: loading a local match
@@ -696,10 +692,6 @@ void Directory_Frame()
 }
 bool Directory_Refresh(int source)
 {
-#if defined(KISAK_NX) && defined(KISAK_MP)
-    if (source != 0)
-        return false;
-#endif
     Directory_Init();
     if (!client)
         Directory_Frame();

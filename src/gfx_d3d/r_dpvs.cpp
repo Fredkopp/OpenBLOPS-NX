@@ -1887,7 +1887,9 @@ void __cdecl R_DrawAllDynEnt(const GfxViewInfo *viewInfo)
             }
             sceneDynModel = &rgp.world->sceneDynModel[scene.sceneDynModelCount];
             model = DynEntCl_GetCurrentXModel(dynEntDef, dynEntClient);
-            if ( R_SkinXModel(
+            // The camera pass lights fewer than ARRAY_COUNT(lightingInfo) scene
+            // dyn models (R_AddAllSceneEntSurfacesCamera); the rest are dropped.
+            if ( scene.sceneDynModelCount + 1 < ARRAY_COUNT(lightingInfo) && R_SkinXModel(
                          &sceneDynModel->info,
                          model,
                          0,

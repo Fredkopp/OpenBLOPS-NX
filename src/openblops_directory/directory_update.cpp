@@ -57,6 +57,10 @@ char s_title[64], s_versionLine[160], s_releaseLine[160], s_status[200];
 char s_notes[5][96];
 char s_primary[32], s_secondary[32];
 const dvar_s *s_checkDvar;
+// The release text the popup converted last, in that language: converting
+// looks the game's encoding up character by character.
+std::string s_convertedTitle, s_convertedNotes;
+int s_convertedLanguage = -1;
 
 void Ungate(itemDef_s &item)
 {
@@ -237,8 +241,15 @@ void Refresh()
     NX_UpdateGetInfo(info);
     std::snprintf(s_versionLine, sizeof(s_versionLine), SEH_GetPortString("OPENBLOPS_UPDATE_VERSION"),
                   info.version[0] ? info.version : "?", info.current);
-    SEH_Utf8ToGameText(CleanGitHubText(info.title).c_str(), s_releaseLine, sizeof(s_releaseLine));
-    FillNotes(info.notes);
+    const int language = SEH_GetCurrentLanguage();
+    if (language != s_convertedLanguage || s_convertedTitle != info.title || s_convertedNotes != info.notes)
+    {
+        s_convertedLanguage = language;
+        s_convertedTitle = info.title;
+        s_convertedNotes = info.notes;
+        SEH_Utf8ToGameText(CleanGitHubText(info.title).c_str(), s_releaseLine, sizeof(s_releaseLine));
+        FillNotes(info.notes);
+    }
     const double mb = 1.0 / (1024.0 * 1024.0);
     s_secondary[0] = 0;
     switch (info.phase)

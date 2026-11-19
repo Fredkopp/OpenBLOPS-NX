@@ -1,6 +1,8 @@
 #include "win_main.h"
 #ifdef KISAK_NX
 #include <nx/nx_load_boost.h>
+// The heap growth log (nx_wincompat.cpp), which says why memory ran out.
+extern "C" void nx_sbrk_flush_log(void);
 #endif
 #include "win_net.h"
 #include <game_mp/g_main_mp.h>
@@ -177,6 +179,9 @@ void __cdecl    Sys_DirectXFatalError()
 
 void __cdecl    Sys_OutOfMemErrorInternal(const char *filename, int line)
 {
+#ifdef KISAK_NX
+    nx_sbrk_flush_log();
+#endif
     const char *v2; // eax
     HWND ActiveWindow; // eax
     char *v4; // [esp-Ch] [ebp-Ch]
@@ -227,6 +232,7 @@ void    Sys_Error(char *error, ...)
 {
 #ifdef KISAK_NX
     NX_LoadBoostExit();
+    nx_sbrk_flush_log();
 #endif
     char string[4100]; // [esp+20h] [ebp-1008h] BYREF
     va_list va; // [esp+1034h] [ebp+Ch] BYREF

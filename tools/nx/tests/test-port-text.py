@@ -188,7 +188,8 @@ int main()
     assert(check(UI_NX_TEXT_PLAIN, "\xeb\x98\xa0", true) == "Interdit : \xeb\x98\xa0");
     portLanguage = 8;
     assert(check(UI_NX_TEXT_PLAIN, "\xe6\x97\xa5", true).empty());
-    assert(check(UI_NX_TEXT_PLAIN, "\xe3\x82\xbd", true) == "Interdit : \xe3\x82\xbd");      // 0x83 0x5C
+    assert(check(UI_NX_TEXT_PLAIN, "\xe3\x82\xbd", true).empty());                          // 0x83 0x5C
+    assert(check(UI_NX_TEXT_SAFE, "\xe3\x82\xbd", true) == "Interdit : \xe3\x82\xbd");
     puts("port text tests passed");
 }
 '''
