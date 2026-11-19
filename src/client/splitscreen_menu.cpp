@@ -211,18 +211,29 @@ void CL_SplitGuestMenuFrame()
         if (Menus_FindByName(&UI_GetInfo(0)->uiDC, name) && UI_PopupScriptMenu(0, name, false))
             state.pending = -1;
     }
-    // Start always means Back, independent of Nintendo's A/B menu swap.
-    if (pressed & 4u) { SplitGuestMenuKey(K_ESCAPE); return; }
-    if (pressed & 2u) SplitGuestMenuKey(K_BUTTON_B);
-    else if (pressed & 1u) SplitGuestMenuKey(K_BUTTON_A);
-    int direction = (held & (1u << 3)) ? K_UPARROW : (held & (1u << 4)) ? K_DOWNARROW
-        : (held & (1u << 5)) ? K_LEFTARROW : (held & (1u << 6)) ? K_RIGHTARROW : 0;
+#ifdef KISAK_NX
+    constexpr int back = K_BUTTON_A;
+    constexpr int dpad[] = {K_DPAD_UP, K_DPAD_DOWN, K_DPAD_LEFT, K_DPAD_RIGHT};
+    constexpr int stick[] = {K_APAD_UP, K_APAD_DOWN, K_APAD_LEFT, K_APAD_RIGHT};
+#else
+    constexpr int back = K_ESCAPE;
+    constexpr int dpad[] = {K_UPARROW, K_DOWNARROW, K_LEFTARROW, K_RIGHTARROW};
+    constexpr int stick[] = {K_UPARROW, K_DOWNARROW, K_LEFTARROW, K_RIGHTARROW};
+#endif
+    if (pressed & 4u) { SplitGuestMenuKey(back); return; }
+    if (pressed & 3u)
+    {
+        SplitGuestMenuKey((pressed & 2u) ? K_BUTTON_B : K_BUTTON_A);
+        return;
+    }
+    int direction = (held & (1u << 3)) ? dpad[0] : (held & (1u << 4)) ? dpad[1]
+        : (held & (1u << 5)) ? dpad[2] : (held & (1u << 6)) ? dpad[3] : 0;
     if (!direction)
     {
         const float x = static_cast<float>(GPad_GetStick(port, GPAD_LX));
         const float y = static_cast<float>(GPad_GetStick(port, GPAD_LY));
-        direction = y > 0.55f ? K_UPARROW : y < -0.55f ? K_DOWNARROW
-            : x < -0.55f ? K_LEFTARROW : x > 0.55f ? K_RIGHTARROW : 0;
+        direction = y > 0.55f ? stick[0] : y < -0.55f ? stick[1]
+            : x < -0.55f ? stick[2] : x > 0.55f ? stick[3] : 0;
     }
     if (direction && (direction != state.direction || cls.realtime >= state.repeatTime))
     {

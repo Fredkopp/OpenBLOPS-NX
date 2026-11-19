@@ -13,6 +13,7 @@
 #include <universal/assertive.h>
 #include <stringed/stringed_hooks.h>
 #include <qcommon/common.h>
+#include <universal/com_shared.h>
 
 #include <string.h>
 #include <gfx_d3d/r_material.h>
@@ -39,10 +40,16 @@
 #include "ui_atoms.h"
 #include <client/cl_console.h>
 #include <iterator>
+#include <unordered_map>
+#include <vector>
 #include <client_mp/cl_input_mp.h>
 #include <sound/snd_public_async.h>
 #include <cgame/cg_sound.h>
-#ifdef KISAK_SP
+#ifdef KISAK_NX
+#include <algorithm>
+#include "ui_keyboard.h"
+#endif
+#if defined(KISAK_SP) || defined(KISAK_NX)
 #include <ui/ui_main.h>                 // ui_menuLvlNotify, for the "cmd mlvl" menu notifications
 #endif
 
@@ -82,6 +89,31 @@ scrollInfo_s scrollInfo;
 
 int g_editingField;
 itemDef_s *g_editItem;
+
+static std::unordered_map<const menuDef_t *, std::vector<void *>> s_menuPatchMemory;
+
+static void *UI_NX_MenuAlloc(const menuDef_t *menu, size_t size)
+{
+    void *memory = calloc(1, size);
+    if (memory)
+        s_menuPatchMemory[menu].push_back(memory);
+    return memory;
+}
+
+static void UI_NX_FreeMenuAllocations(const menuDef_t *menu)
+{
+    const auto patched = s_menuPatchMemory.find(menu);
+    if (patched == s_menuPatchMemory.end())
+        return;
+    for (void *memory : patched->second)
+        free(memory);
+    s_menuPatchMemory.erase(patched);
+}
+
+#ifdef KISAK_NX
+static const menuDef_t *s_nxClassFactionEditMenu;
+static void UI_NX_ForgetMenuKind(const menuDef_t *menu);
+#endif
 rectDef_s rect;
 
 void(__cdecl *captureFunc)(int, UiContext *, void *);
@@ -1275,6 +1307,10 @@ itemDef_s *__cdecl Menu_ClearFocus(int localClientNum, UiContext *dc, menuDef_t 
 
     if ( !menu )
         return 0;
+#ifdef KISAK_NX
+    if (s_nxClassFactionEditMenu == menu)
+        s_nxClassFactionEditMenu = nullptr;
+#endif
     ret = 0;
     for ( i = 0; i < menu->itemCount; ++i )
     {
@@ -1326,6 +1362,10 @@ int __cdecl Menus_RemoveFromStack(int localClientNum, UiContext *dc, menuDef_t *
     return 1;
 }
 
+#ifdef KISAK_NX
+static void UI_NX_EnsureMenuFocus(int localClientNum, UiContext *dc, menuDef_t *menu);
+#endif
+
 void __cdecl Menu_GainFocusDueToClose(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
     if ( !dc && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\ui\\ui_shared.cpp", 1674, 0, "%s", "dc") )
@@ -1344,6 +1384,9 @@ void __cdecl Menu_GainFocusDueToClose(int localClientNum, UiContext *dc, menuDef
     }
     Window_AddDynamicFlags(dc->contextIndex, &menu->window, 2);
     Menu_CallOnFocusDueToOpen(localClientNum, dc, menu);
+#ifdef KISAK_NX
+    UI_NX_EnsureMenuFocus(localClientNum, dc, menu);
+#endif
 }
 
 void __cdecl Menu_CallOnFocusDueToOpen(int localClientNum, UiContext *dc, menuDef_t *menu)
@@ -1461,6 +1504,12 @@ void __cdecl Menus_CloseImmediateByName(int localClientNum, UiContext *dc, const
 
 void __cdecl Menus_RemoveMenu(XAssetHeader header)
 {
+#ifdef KISAK_NX
+    if (s_nxClassFactionEditMenu == header.menu)
+        s_nxClassFactionEditMenu = nullptr;
+    UI_NX_ForgetMenuKind(header.menu);
+#endif
+    UI_NX_FreeMenuAllocations(header.menu);
     int i; // [esp+0h] [ebp-Ch]
     int localClientNum; // [esp+4h] [ebp-8h]
     uiInfo_s *uiInfo; // [esp+8h] [ebp-4h]
@@ -2148,6 +2197,11 @@ void __cdecl Script_FocusFirstInMenu(int localClientNum, UiContext *dc, itemDef_
 
 itemDef_s *__cdecl Menu_FocusFirstSelectableItem(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
+#ifdef KISAK_NX
+    Menu_ClearFocus(localClientNum, dc, menu);
+    Menu_SetCursorItem(dc->contextIndex, menu, -1);
+    return Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 0);
+#else
     unsigned int cursor; // [esp+8h] [ebp-4h]
     int cursora; // [esp+8h] [ebp-4h]
 
@@ -2180,6 +2234,7 @@ itemDef_s *__cdecl Menu_FocusFirstSelectableItem(int localClientNum, UiContext *
         Menu_SetCursorItem(dc->contextIndex, menu, 0);
         return 0;
     }
+#endif
 }
 
 int __cdecl Menu_GetCursorItem(int contextIndex, menuDef_t *menu)
@@ -3966,6 +4021,407 @@ void __cdecl UI_SetActiveMenu_f()
     }
 }
 
+#ifdef KISAK_NX
+static constexpr const char *settingsCategoryMenus[] = {
+    "options_graphics", "options_sound", "options_voice", "options_game", "options_multi", "options_gamepad",
+};
+static constexpr const char *settingsControlsItem = "nx_settings_controls";
+static const char *s_nxConfirmedSettingsCategory;
+
+static const char *UI_NX_SettingsCategoryMenu(const menuDef_t *menu)
+{
+    if (!menu || !menu->window.name)
+        return nullptr;
+    if (!I_stricmp(menu->window.name, "options_graphics_texture"))
+        return "options_graphics";
+
+    for (const char *page : settingsCategoryMenus)
+        if (!I_stricmp(menu->window.name, page))
+            return page;
+    return nullptr;
+}
+
+static bool UI_NX_IsSettingsRoot(const menuDef_t *menu)
+{
+    return menu && menu->window.name && !I_stricmp(menu->window.name, "options_new_pc");
+}
+
+static bool UI_NX_IsSettingsMenu(const menuDef_t *menu)
+{
+    return UI_NX_IsSettingsRoot(menu) || UI_NX_SettingsCategoryMenu(menu)
+        || (menu && menu->window.name && !I_stricmp(menu->window.name, "options_graphics_defaults"));
+}
+
+enum UiNxMenuKind : unsigned char
+{
+    UI_NX_MENU_OTHER,
+    UI_NX_MENU_CUSTOM_CLASS,
+    UI_NX_MENU_CLASS_LIST,
+    UI_NX_MENU_WEAPON,
+    UI_NX_MENU_GAMEPAD_OPTIONS,
+};
+static const menuDef_t *s_nxKindMenu;
+static UiNxMenuKind s_nxKind;
+
+static UiNxMenuKind UI_NX_MenuKind(const menuDef_t *menu)
+{
+    if (!menu || !menu->window.name)
+        return UI_NX_MENU_OTHER;
+    if (menu == s_nxKindMenu)
+        return s_nxKind;
+    static constexpr struct { const char *name; UiNxMenuKind kind; } kinds[] = {
+        {"menu_cac_custom", UI_NX_MENU_CUSTOM_CLASS},
+        {"cac_main", UI_NX_MENU_CLASS_LIST},
+        {"cac_weapon", UI_NX_MENU_WEAPON},
+        {"options_gamepad", UI_NX_MENU_GAMEPAD_OPTIONS},
+    };
+    UiNxMenuKind kind = UI_NX_MENU_OTHER;
+    for (const auto &entry : kinds)
+        if (!I_stricmp(menu->window.name, entry.name))
+            kind = entry.kind;
+    s_nxKindMenu = menu;
+    s_nxKind = kind;
+    return kind;
+}
+
+static void UI_NX_ForgetMenuKind(const menuDef_t *menu)
+{
+    if (s_nxKindMenu == menu)
+        s_nxKindMenu = nullptr;
+}
+
+bool UI_NX_IsGamepadOptionsMenu(const menuDef_t *menu)
+{
+    return UI_NX_MenuKind(menu) == UI_NX_MENU_GAMEPAD_OPTIONS;
+}
+
+static bool UI_NX_IsCustomClassMenu(const menuDef_t *menu)
+{
+    return UI_NX_MenuKind(menu) == UI_NX_MENU_CUSTOM_CLASS;
+}
+
+static bool UI_NX_IsClassListMenu(const menuDef_t *menu)
+{
+    return UI_NX_MenuKind(menu) == UI_NX_MENU_CLASS_LIST;
+}
+
+static bool UI_NX_IsWeaponMenu(const menuDef_t *menu)
+{
+    return UI_NX_MenuKind(menu) == UI_NX_MENU_WEAPON;
+}
+
+static bool UI_NX_IsClassEditorMenu(const menuDef_t *menu)
+{
+    return UI_NX_IsCustomClassMenu(menu) || UI_NX_IsWeaponMenu(menu);
+}
+
+bool UI_NX_IsClassRotationMenu(const menuDef_t *menu)
+{
+    return UI_NX_IsClassEditorMenu(menu) || UI_NX_IsClassListMenu(menu);
+}
+
+static itemDef_s *UI_NX_KillstreakList(menuDef_t *menu)
+{
+    if (!menu->window.name || I_stricmp(menu->window.name, "menu_xboxlive_killstreaks"))
+        return nullptr;
+    itemDef_s *list = Menu_FindItemByName(menu, "killstreaks");
+    return list && list->type == 4 ? list : nullptr;
+}
+
+static int UI_NX_ClassRotationButton(const itemDef_s *item)
+{
+    if (!UI_NX_IsClassRotationMenu(item->parent) || !item->window.name)
+        return 0;
+    if (!I_stricmp(item->window.name, "rotate_left_arrow"))
+        return K_BUTTON_LSHLDR;
+    if (!I_stricmp(item->window.name, "rotate_right_arrow"))
+        return K_BUTTON_RSHLDR;
+    return 0;
+}
+
+static bool UI_NX_IsClassFactionButton(const itemDef_s *item)
+{
+    return item && item->type == 10 && item->window.name && !I_stricmp(item->window.name, "cac_faction_button");
+}
+
+static bool UI_NX_IsClassListFaction(const itemDef_s *item)
+{
+    return UI_NX_IsClassFactionButton(item) && UI_NX_IsClassListMenu(item->parent);
+}
+
+static int UI_NX_ClassFooterSlot(itemDef_s *item)
+{
+    if (!UI_NX_IsCustomClassMenu(item->parent))
+        return -1;
+    if (UI_NX_IsClassFactionButton(item))
+        return 0;
+
+    const textDef_s *label = item->type == 3 ? Item_GetTextDef(item) : nullptr;
+    if (!label || !label->text)
+        return -1;
+    if (!I_stricmp(label->text, "@PLATFORM_RENAME"))
+        return 1;
+    if (!I_stricmp(label->text, "@PLATFORM_RESET_TO_DEFAULT"))
+        return 2;
+    if (!I_stricmp(label->text, "@PLATFORM_COPY_CLASS"))
+        return 3;
+    return -1;
+}
+
+bool UI_NX_IsHiddenClassFooter(int contextIndex, itemDef_s *item)
+{
+    const menuDef_t *menu = item->parent;
+    if (UI_NX_IsClassListFaction(item))
+        return !Window_HasFocus(contextIndex, &menu->window);
+    if (UI_NX_IsWeaponMenu(menu))
+    {
+        if (UI_NX_IsClassFactionButton(item))
+            return true;
+        const textDef_s *label = item->type == 3 ? Item_GetTextDef(item) : nullptr;
+        return label && label->text && !I_stricmp(label->text, "@PLATFORM_CLEAR_ATTACHMENTS");
+    }
+    if (UI_NX_ClassFooterSlot(item) < 0)
+        return false;
+    if (!Window_HasFocus(contextIndex, &menu->window))
+        return true;
+
+    const auto *dropdown = UILocalVar_Find(UI_UIContext_GetLocalVarsContext(contextIndex), "ui_inside_dropdown");
+    return dropdown && UILocalVar_GetBool(&dropdown->table[0]);
+}
+
+static void UI_NX_LayoutClassFooter(menuDef_t *menu)
+{
+    if (!UI_NX_IsCustomClassMenu(menu) || !menu->itemCount)
+        return;
+
+    const rectDef_s &frame = menu->items[0]->window.rectClient;
+    constexpr float margin = 16.0f;
+    constexpr float gap = 8.0f;
+    const float width = (frame.w - 2.0f * margin - 3.0f * gap) / 4.0f;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        const int slot = UI_NX_ClassFooterSlot(item);
+        if (slot < 0)
+            continue;
+
+        const float x = frame.x + margin + slot * (width + gap);
+        item->window.rect.x += x - item->window.rectClient.x;
+        item->window.rectClient.x = x;
+        item->window.rect.w = item->window.rectClient.w = width;
+        item->rectExpData = nullptr;
+        if (UIAnimInfo *animation = item->animInfo)
+        {
+            animation->currentAnimState.rectClient = item->window.rectClient;
+            animation->nextAnimState.rectClient = item->window.rectClient;
+            for (int state = 0; state < animation->animStateCount; ++state)
+                animation->animStates[state]->rectClient = item->window.rectClient;
+        }
+
+        textDef_s *label = Item_GetTextDef(item);
+        label->textAlignMode = (label->textAlignMode & ~3) | 1;
+        label->textalignx = 0.0f;
+        label->textRect[0].w = 0.0f;
+    }
+}
+
+static bool UI_NX_IsControlsCategory(const itemDef_s *item)
+{
+    return item->window.name && !I_stricmp(item->window.name, settingsControlsItem);
+}
+
+static void UI_NX_PrepareSettingsMenu(UiContext *dc, menuDef_t *menu);
+static bool UI_NX_FocusSettingsCategory(int localClientNum, UiContext *dc, menuDef_t *menu, const char *category);
+
+static bool UI_NX_IsSettingsCategoryItem(const itemDef_s *item)
+{
+    const rectDef_s &rect = item->window.rectClient;
+    return item->type == 3 && rect.horzAlign == 2 && rect.vertAlign == 2 && rect.x + rect.w < 0.0f;
+}
+
+static bool UI_NX_IsBackPromptText(const char *text)
+{
+    return text && (!I_stricmp(text, "@PLATFORM_BACK") || !I_stricmp(text, "@MENU_BACK"));
+}
+
+static bool UI_NX_IsBackPrompt(itemDef_s *item)
+{
+    const textDef_s *label = Item_GetTextDef(item);
+    return label && UI_NX_IsBackPromptText(label->text);
+}
+
+static bool UI_NX_IsFriendsShortcut(itemDef_s *item)
+{
+    const textDef_s *label = item->type == 3 ? Item_GetTextDef(item) : nullptr;
+    return label && label->text && !I_stricmp(label->text, "@PLATFORM_PARTY_INVITE");
+}
+
+static bool UI_NX_IsClearKillstreaksShortcut(itemDef_s *item)
+{
+    const textDef_s *label = item->type == 3 ? Item_GetTextDef(item) : nullptr;
+    return label && label->text && !I_stricmp(label->text, "@PLATFORM_CLEAR_KILLSTREAKS")
+        && item->parent && item->parent->window.name
+        && !I_stricmp(item->parent->window.name, "menu_xboxlive_killstreaks");
+}
+
+static bool UI_NX_IsFriendsMenu(const menuDef_t *menu)
+{
+    const char *name = menu ? menu->window.name : nullptr;
+    return name && (!I_stricmp(name, "menu_friends") || !I_stricmp(name, "menu_players")
+        || !I_stricmp(name, "menu_invites"));
+}
+
+static bool UI_NX_IsFriendsTab(itemDef_s *item)
+{
+    if (item->type != 3 || !UI_NX_IsFriendsMenu(item->parent))
+        return false;
+
+    const textDef_s *label = Item_GetTextDef(item);
+    if (!label)
+        return false;
+
+    const char *reference = label->text;
+    if (!reference && label->textExpData)
+    {
+        const auto &expression = label->textExpData->textExp;
+        for (int i = 0; expression.rpn && i < expression.numRpn; ++i)
+        {
+            const auto &part = expression.rpn[i];
+            if (part.type == 0 && part.data.constant.dataType == VAL_STRING)
+            {
+                reference = part.data.constant.internals.string;
+                break;
+            }
+        }
+    }
+    return reference && (!I_stricmp(reference, "@MENU_FRIENDS_CAPS")
+        || !I_stricmp(reference, "@MENU_TAB_PLAYERS_CAPS")
+        || !I_stricmp(reference, "@MENU_TAB_GAME_INVITES_CAPS"));
+}
+
+static bool UI_NX_IsTitlePrompt(itemDef_s *item)
+{
+    const textDef_s *label = Item_GetTextDef(item);
+    return label && label->text && (!I_stricmp(label->text, "@PLATFORM_PRESS_START_BUTTON")
+        || !I_stricmp(label->text, "@MENU_PRESS_START"));
+}
+
+static bool UI_NX_ItemHasActionCommand(const itemDef_s *item, const char *command)
+{
+    for (const GenericEventHandler *event = item->onEvent; event; event = event->next)
+    {
+        if (I_stricmp(event->name, "action"))
+            continue;
+        for (const GenericEventScript *script = event->eventScript; script; script = script->next)
+            if (script->action && strstr(script->action, command))
+                return true;
+    }
+    return false;
+}
+
+bool UI_NX_IsServerBrowserMenu(const menuDef_t *menu)
+{
+    const char *name = menu ? menu->window.name : nullptr;
+    if (!name)
+        return false;
+    for (const char *tab : {"server_browser_ranked", "server_browser_unranked", "server_browser_wager",
+             "server_browser_friends", "server_browser_favorites", "server_browser_history"})
+        if (!I_stricmp(name, tab))
+            return true;
+    return false;
+}
+
+static int UI_NX_ServerBrowserShortcut(const itemDef_s *item)
+{
+    if (item->type != 3 || !UI_NX_IsServerBrowserMenu(item->parent))
+        return 0;
+    const char *name = item->window.name;
+    if ((name && !I_stricmp(name, "directory_refresh"))
+        || UI_NX_ItemHasActionCommand(item, "uiScript RefreshServers"))
+        return K_BUTTON_X;
+    if ((name && !I_stricmp(name, "directory_join"))
+        || UI_NX_ItemHasActionCommand(item, "uiScript JoinServer"))
+        return K_BUTTON_A;
+    return 0;
+}
+
+static bool UI_NX_IsServerBrowserTab(const itemDef_s *item)
+{
+    return item->type == 3 && UI_NX_IsServerBrowserMenu(item->parent)
+        && UI_NX_ItemHasActionCommand(item, "openMenuImmediate ( server_browser_");
+}
+
+enum class ServerBrowserRegion { None, Columns, Servers, Footer };
+
+static ServerBrowserRegion UI_NX_ServerBrowserRegion(const itemDef_s *item)
+{
+    if (!item)
+        return ServerBrowserRegion::None;
+    if (item->type == 4 && item->window.name && !I_stricmp(item->window.name, "browser"))
+        return ServerBrowserRegion::Servers;
+    if (item->type == 3)
+    {
+        if (UI_NX_ItemHasActionCommand(item, "uiScript ServerSort "))
+            return ServerBrowserRegion::Columns;
+        if (UI_NX_ItemHasActionCommand(item, "open filter_window")
+            || UI_NX_ItemHasActionCommand(item, "open newframeserverinfo"))
+            return ServerBrowserRegion::Footer;
+    }
+    return ServerBrowserRegion::None;
+}
+
+static bool UI_NX_OpensSettingsCategory(const itemDef_s *item, const char *category)
+{
+    char command[64];
+    Com_sprintf(command, sizeof(command), "open %s ;", category);
+    return UI_NX_ItemHasActionCommand(item, command);
+}
+
+static const char *UI_NX_SettingsDestination(const itemDef_s *item)
+{
+    for (const char *category : settingsCategoryMenus)
+        if (UI_NX_OpensSettingsCategory(item, category))
+            return category;
+    return nullptr;
+}
+
+static bool UI_NX_IsPointerOnly(itemDef_s *item)
+{
+    if (UI_NX_IsBackPrompt(item) || UI_NX_IsFriendsShortcut(item) || UI_NX_IsClearKillstreaksShortcut(item)
+        || UI_NX_IsFriendsTab(item) || UI_NX_ClassRotationButton(item)
+        || UI_NX_IsClassListFaction(item) || UI_NX_ServerBrowserShortcut(item) || UI_NX_IsServerBrowserTab(item)
+        || (item->window.name && !I_stricmp(item->window.name, "ExitFlyoutButton")))
+        return true;
+
+    return item->type == 3 && UI_NX_IsSettingsMenu(item->parent)
+        && UI_NX_ItemHasActionCommand(item, "close options_new_pc ; close options_controls_new_pc ; open options_");
+}
+#endif
+
+#ifdef KISAK_NX
+static bool UI_NX_SelectListBoxEdge(int localClientNum, UiContext *dc, itemDef_s *item, bool last, bool refresh = false)
+{
+    listBoxDef_s *list = Item_GetListBoxDef(item);
+    if (!list || list->notselectable)
+        return false;
+
+    const int context = dc->contextIndex;
+    const int count = UI_FeederCount(localClientNum, context, list->special, list);
+    if (count <= 0)
+        return false;
+
+    const int view = last ? std::max(1, Item_ListBox_Viewmax(localClientNum, context, item)) : 0;
+    const int row = last ? count - 1 : 0;
+    const int start = last ? std::max(0, count - view) : 0;
+    if (refresh || list->cursorPos[context] != row || list->startPos[context] != start)
+    {
+        list->startPos[context] = start;
+        Item_ListBox_SetCursorPos(localClientNum, context, item, count - 1, view, row, false);
+    }
+    return true;
+}
+#endif
+
 int __cdecl Item_SetFocus(int localClientNum, UiContext *dc, itemDef_s *item, float x, float y)
 {
     const char *v6; // eax
@@ -3985,6 +4441,10 @@ int __cdecl Item_SetFocus(int localClientNum, UiContext *dc, itemDef_s *item, fl
         __debugbreak();
     if ( !item || (item->window.staticFlags & 0x100000) != 0 || !Window_IsVisible(dc->contextIndex, &item->window) )
         return 0;
+#ifdef KISAK_NX
+    if (UI_NX_IsPointerOnly(item))
+        return 0;
+#endif
     focusPtr = Item_GetFocusItemDef(item);
     if ( Window_HasFocus(dc->contextIndex, &item->window) && Item_IsVisible(localClientNum, dc->contextIndex, item) )
         return 1;
@@ -4011,6 +4471,7 @@ int __cdecl Item_SetFocus(int localClientNum, UiContext *dc, itemDef_s *item, fl
     if ( !Item_IsVisible(localClientNum, dc->contextIndex, item) )
         return 0;
     oldFocus = Menu_ClearFocus(localClientNum, dc, item->parent);
+#ifndef KISAK_NX
     if ( item->type == 1 )
     {
         textRect = (const rectDef_s *)Item_GetTextRect(dc->contextIndex, item);
@@ -4031,6 +4492,7 @@ int __cdecl Item_SetFocus(int localClientNum, UiContext *dc, itemDef_s *item, fl
         }
     }
     else
+#endif
     {
         Window_AddDynamicFlags(dc->contextIndex, &item->window, 2);
         if ( isFilterWindow )
@@ -4056,6 +4518,10 @@ int __cdecl Item_SetFocus(int localClientNum, UiContext *dc, itemDef_s *item, fl
     }
     if ( item->type == 4 )
     {
+#ifdef KISAK_NX
+        if (Item_IsModal(item) && UI_NX_SelectListBoxEdge(localClientNum, dc, item, false, true))
+            return 1;
+#endif
         listPtr = Item_GetListBoxDef(item);
         if ( !listPtr && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\ui\\ui_shared.cpp", 4961, 0, "%s", "listPtr") )
             __debugbreak();
@@ -4311,8 +4777,55 @@ bool __cdecl Item_IsTextField(const itemDef_s *item)
     return result;
 }
 
+#ifdef KISAK_NX
+static bool UI_NX_IsSharedText(const char *dvar)
+{
+    static constexpr const char *names[] = {"name", "ui_name", "sv_hostname", "ui_hostname"};
+    for (const char *name : names)
+        if (!I_stricmp(dvar, name))
+            return true;
+    char lower[64];
+    I_strncpyz(lower, dvar, sizeof(lower));
+    for (char *ch = lower; *ch; ++ch)
+        *ch = static_cast<char>(tolower(static_cast<unsigned char>(*ch)));
+    return strstr(lower, "password") || strstr(lower, "clan") || strstr(lower, "hostname")
+        || strstr(lower, "directory");
+}
+
+static void UI_NX_EditTextField(int localClientNum, UiContext *dc, itemDef_s *item)
+{
+    const editFieldDef_s *field = Item_GetEditFieldDef(item);
+    if (!field || !item->dvar)
+        return;
+
+    constexpr int numericField = 7, fileNameField = 13, upperCaseField = 14, alphaNumericField = 22,
+                  decimalField = 30;
+    UiNxTextRequest request;
+    if (const textDef_s *label = Item_GetTextDef(item); label && label->text && *label->text)
+        request.header = *label->text == '@' ? UI_SafeTranslateString(label->text + 1) : label->text;
+    request.initialText = Dvar_GetVariantString(item->dvar);
+    request.maxChars = field->maxChars > 0 ? field->maxChars : 255;
+    request.password = strstr(item->dvar, "password") != nullptr;
+    request.filter = item->type == numericField ? UI_NX_TEXT_DIGITS
+        : item->type == decimalField ? UI_NX_TEXT_DECIMAL
+        : item->type == fileNameField ? UI_NX_TEXT_FILENAME
+        : item->type == alphaNumericField ? UI_NX_TEXT_ALNUM
+        : UI_NX_TEXT_PLAIN;
+    request.nativeText = item->type != upperCaseField && !UI_NX_IsSharedText(item->dvar);
+    char value[256];
+    if (!UI_NX_EditText(request, value, sizeof(value)))
+        return;
+    if (item->type == upperCaseField)
+        for (char *ch = value; *ch; ++ch)
+            *ch = static_cast<char>(toupper(static_cast<unsigned char>(*ch)));
+    Dvar_SetFromStringByName(item->dvar, value);
+    Item_Action(localClientNum, dc, item);
+}
+#endif
+
 void __cdecl Item_TextField_BeginEdit(int localClientNum, int contextIndex, itemDef_s *item)
 {
+#ifndef KISAK_NX
     unsigned int v3; // [esp+0h] [ebp-20h]
     int i; // [esp+18h] [ebp-8h]
     editFieldDef_s *editPtr; // [esp+1Ch] [ebp-4h]
@@ -4338,6 +4851,7 @@ void __cdecl Item_TextField_BeginEdit(int localClientNum, int contextIndex, item
             return;
         }
     }
+#endif
 }
 
 static void UI_NX_AddAimAssistOption(menuDef_t *menu);
@@ -4394,6 +4908,8 @@ void __cdecl Menus_Open(int localClientNum, UiContext *dc, menuDef_t *menu)
 #ifdef KISAK_NX
     UI_NX_AddFrameRateOption(menu);
     UI_NX_RemoveDisplayOptions(menu);
+    UI_NX_PrepareSettingsMenu(dc, menu);
+    UI_NX_LayoutClassFooter(menu);
 #endif
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
     UI_SplitScreenMenuOpening(localClientNum, dc, menu);
@@ -4409,7 +4925,8 @@ void __cdecl Menus_Open(int localClientNum, UiContext *dc, menuDef_t *menu)
 #ifdef KISAK_MP
     if (UI_IsCustomBotMenu(menu))
     {
-        UI_PrepareCustomBotMenu();
+        if (!UI_PrepareCustomBotMenu(dc))
+            return;
         if (!Dvar_GetString("scr_bot_difficulty")[0])
             Dvar_SetStringByName("scr_bot_difficulty", "normal");
     }
@@ -4463,6 +4980,19 @@ void __cdecl Menus_Open(int localClientNum, UiContext *dc, menuDef_t *menu)
         }
     }
     Menus_SetupOpenMenu(localClientNum, dc, menu);
+#ifdef KISAK_NX
+    if (Menu_GetFocused(dc) == menu)
+    {
+        const int cursor = Menu_GetCursorItem(dc->contextIndex, menu);
+        if (cursor >= 0 && cursor < menu->itemCount)
+        {
+            itemDef_s *selected = menu->items[cursor];
+            if (selected->type == 4 && !Item_IsModal(selected)
+                && Window_HasFocus(dc->contextIndex, &selected->window))
+                UI_NX_SelectListBoxEdge(localClientNum, dc, selected, false);
+        }
+    }
+#endif
     if ( dc->openMenuCount > 0 && dc->Menus[2 * dc->openMenuCount + 599] != menu )
     {
         Menu_LoseFocusDueToOpen(localClientNum, dc, menu);
@@ -4536,6 +5066,10 @@ void __cdecl Menu_LoseFocusDueToOpen(int localClientNum, UiContext *dc, menuDef_
         __debugbreak();
     if ( Window_HasFocus(dc->contextIndex, &menu->window) )
     {
+#ifdef KISAK_NX
+        if (s_nxClassFactionEditMenu == menu)
+            s_nxClassFactionEditMenu = nullptr;
+#endif
         Menu_RunLeaveFocusScript(localClientNum, dc, menu);
         Window_RemoveDynamicFlags(dc->contextIndex, &menu->window, 2);
         anyFound = 0;
@@ -4555,8 +5089,27 @@ void __cdecl Menu_LoseFocusDueToOpen(int localClientNum, UiContext *dc, menuDef_
     }
 }
 
+#ifdef KISAK_NX
+static const char *UI_NX_ControllerMenu(const char *name)
+{
+    const char *const legacyMenus[] = {
+        "options_controls_new_pc", "options_look", "options_move", "options_shoot",
+        "options_invehicle", "options_misc", "controls_multi", "options_coop", "invert_axis_pc"
+    };
+    if (!name)
+        return name;
+    for (const char *legacy : legacyMenus)
+        if (!I_stricmp(name, legacy))
+            return "options_gamepad";
+    return name;
+}
+#endif
+
 int __cdecl Menus_OpenByName(int localClientNum, UiContext *dc, const char *p)
 {
+#ifdef KISAK_NX
+    p = UI_NX_ControllerMenu(p);
+#endif
     p = Directory_BrowserMenu(p);
     menuDef_t *pMenu; // [esp+0h] [ebp-4h]
 
@@ -4576,6 +5129,9 @@ int __cdecl Menus_OpenByName(int localClientNum, UiContext *dc, const char *p)
 
 int __cdecl Menus_OpenImmediateByName(int localClientNum, UiContext *dc, const char *p)
 {
+#ifdef KISAK_NX
+    p = UI_NX_ControllerMenu(p);
+#endif
     p = Directory_BrowserMenu(p);
     menuDef_t *pMenu; // [esp+0h] [ebp-4h]
 
@@ -4593,16 +5149,34 @@ int __cdecl Menus_OpenImmediateByName(int localClientNum, UiContext *dc, const c
     }
 }
 
+#ifdef KISAK_NX
+static void UI_NX_FocusServerBrowserStart(int localClientNum, UiContext *dc, menuDef_t *menu);
+#endif
+
 void    Menus_SetupOpenMenu(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
     itemDef_s item;
 
+#ifdef KISAK_NX
+    itemDef_s *killstreakList = UI_NX_KillstreakList(menu);
+    if (killstreakList)
+    {
+        Menu_ClearFocus(localClientNum, dc, menu);
+        Menu_SetCursorItem(dc->contextIndex, menu, -1);
+    }
+#endif
     Window_AddDynamicFlags(dc->contextIndex, &menu->window, 6);
     Menu_CallOnFocusDueToOpen(localClientNum, dc, menu);
 
-    if (Menu_GetCursorItem(dc->contextIndex, menu) == -1)
+#ifdef KISAK_NX
+    const bool settingsPage = UI_NX_SettingsCategoryMenu(menu) != nullptr;
+    const bool settingsRoot = UI_NX_IsSettingsRoot(menu);
+    const bool serverBrowser = UI_NX_IsServerBrowserMenu(menu);
+    if (!settingsPage && !settingsRoot && !killstreakList && !serverBrowser)
+#endif
     {
-        Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 0);
+        if (Menu_GetCursorItem(dc->contextIndex, menu) == -1)
+            Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 0);
     }
 
     if (menu->onEvent)
@@ -4611,6 +5185,28 @@ void    Menus_SetupOpenMenu(int localClientNum, UiContext *dc, menuDef_t *menu)
         item.onEvent = menu->onEvent;
         Item_RunEventScript(localClientNum, dc, &item, "onOpen");
     }
+
+#ifdef KISAK_NX
+    if (killstreakList && Menu_GetFocused(dc) == menu)
+    {
+        const rectDef_s &rect = killstreakList->window.rect;
+        Item_SetFocus(localClientNum, dc, killstreakList, rect.x, rect.y);
+    }
+    if (serverBrowser && Menu_GetFocused(dc) == menu)
+        UI_NX_FocusServerBrowserStart(localClientNum, dc, menu);
+    if ((settingsPage || settingsRoot) && Menu_GetFocused(dc) == menu)
+    {
+        Menu_ClearFocus(localClientNum, dc, menu);
+        Menu_SetCursorItem(dc->contextIndex, menu, -1);
+        const char *category = settingsRoot ? "options_graphics" : UI_NX_SettingsCategoryMenu(menu);
+        const bool confirmed = s_nxConfirmedSettingsCategory
+            && !I_stricmp(s_nxConfirmedSettingsCategory, menu->window.name);
+        if (confirmed || !UI_NX_FocusSettingsCategory(localClientNum, dc, menu, category))
+            Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 0);
+    }
+    if (!settingsPage && !settingsRoot)
+        UI_NX_EnsureMenuFocus(localClientNum, dc, menu);
+#endif
 
     if (dc->isCursorVisible)
     {
@@ -4628,6 +5224,517 @@ void    Menus_SetupOpenMenu(int localClientNum, UiContext *dc, menuDef_t *menu)
     }
 }
 
+#ifdef KISAK_NX
+static rectDef_s UI_NX_ScreenRect(UiContext *dc, const itemDef_s *item)
+{
+    rectDef_s rect = item->window.rect;
+    ScrPlace_ApplyRect(&scrPlaceView[dc->contextIndex], &rect.x, &rect.y,
+        &rect.w, &rect.h, rect.horzAlign, rect.vertAlign);
+    return rect;
+}
+
+static bool UI_NX_CanFocus(int localClientNum, UiContext *dc, itemDef_s *item)
+{
+    const rectDef_s &rect = item->window.rect;
+    if (rect.w <= 0.0f || rect.h <= 0.0f || (item->window.staticFlags & 0x100000) != 0
+        || UI_NX_IsPointerOnly(item)
+        || !Item_IsVisible(localClientNum, dc->contextIndex, item)
+        || ((item->dvarFlags & 3) != 0 && !Item_EnableShowViaDvar(item, 1)))
+        return false;
+
+    if (UI_NX_SettingsCategoryMenu(item->parent))
+    {
+        const ScreenPlacement &placement = scrPlaceView[dc->contextIndex];
+        const rectDef_s screen = UI_NX_ScreenRect(dc, item);
+        if (placement.realViewportSize[0] > 0.0f
+            && (screen.x >= placement.realViewportSize[0] || screen.x + screen.w <= 0.0f))
+            return false;
+    }
+
+    if (item->type == 4 || Item_IsTextField(item)
+        || (item->dvar && item->type >= 8 && item->type <= 11))
+        return true;
+
+    for (const GenericEventHandler *event = item->onEvent; event; event = event->next)
+        if (!I_stricmp(event->name, "action") || !I_stricmp(event->name, "onfocus"))
+            return true;
+    const focusItemDef_s *focus = Item_GetFocusItemDef(item);
+    return focus && focus->onKey;
+}
+
+static bool UI_NX_FocusServerBrowserControl(int localClientNum, UiContext *dc, menuDef_t *menu,
+    ServerBrowserRegion region, const itemDef_s *from = nullptr, int direction = 0)
+{
+    const rectDef_s fromRect = from ? UI_NX_ScreenRect(dc, from) : rectDef_s{};
+    const float origin = fromRect.x + fromRect.w * 0.5f;
+    itemDef_s *target = nullptr;
+    float nearest = FLT_MAX;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *candidate = menu->items[i];
+        if (UI_NX_ServerBrowserRegion(candidate) != region || !UI_NX_CanFocus(localClientNum, dc, candidate))
+            continue;
+
+        const rectDef_s bounds = UI_NX_ScreenRect(dc, candidate);
+        const float x = bounds.x + bounds.w * 0.5f;
+        const float delta = x - origin;
+        const float distance = direction ? delta * direction : from ? fabsf(delta) : x;
+        if ((direction && distance <= 1.0f) || distance >= nearest)
+            continue;
+        target = candidate;
+        nearest = distance;
+    }
+    return target && Item_SetFocus(localClientNum, dc, target, target->window.rect.x, target->window.rect.y);
+}
+
+static bool UI_NX_FocusServerBrowserColumns(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    const itemDef_s *server = Menu_FindItemByName(menu, "server");
+    if (!server)
+        server = Menu_FindItemByName(menu, "header_server");
+    return UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Columns, server);
+}
+
+static void UI_NX_FocusServerBrowserStart(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    if (!UI_NX_FocusServerBrowserColumns(localClientNum, dc, menu)
+        && !UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Servers))
+        UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Footer);
+}
+
+static void UI_NX_EnsureMenuFocus(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    if (Menu_GetFocused(dc) != menu)
+        return;
+
+    const int cursor = Menu_GetCursorItem(dc->contextIndex, menu);
+    if (cursor >= 0 && cursor < menu->itemCount)
+    {
+        itemDef_s *item = menu->items[cursor];
+        if (Window_HasFocus(dc->contextIndex, &item->window) && UI_NX_CanFocus(localClientNum, dc, item))
+            return;
+    }
+
+    Menu_ClearFocus(localClientNum, dc, menu);
+    Menu_SetCursorItem(dc->contextIndex, menu, -1);
+    if (UI_NX_IsServerBrowserMenu(menu))
+        UI_NX_FocusServerBrowserStart(localClientNum, dc, menu);
+    else
+        Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 0);
+}
+
+static bool UI_NX_IsMainMenu(const menuDef_t *menu)
+{
+    const char *name = menu->window.name;
+    return name && (!I_stricmp(name, "main") || !I_stricmp(name, "main_text") || !I_stricmp(name, "main_sp"));
+}
+
+static bool UI_NX_RunBackPrompt(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if (UI_NX_IsBackPrompt(item) && Item_IsVisible(localClientNum, dc->contextIndex, item)
+            && Item_DoesEventExist(item, "action"))
+        {
+            Item_Action(localClientNum, dc, item);
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool UI_NX_RunXShortcut(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if ((UI_NX_IsFriendsShortcut(item) || UI_NX_IsClearKillstreaksShortcut(item))
+            && Item_IsVisible(localClientNum, dc->contextIndex, item)
+            && ((item->dvarFlags & 3) == 0 || Item_EnableShowViaDvar(item, 1))
+            && Item_DoesEventExist(item, "action"))
+        {
+            Item_Action(localClientNum, dc, item);
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool UI_NX_IsClassMainOption(const itemDef_s *item)
+{
+    constexpr char prefix[] = "grid_button_";
+    return item->type == 3 && item->window.name && !I_strnicmp(item->window.name, prefix, sizeof(prefix) - 1);
+}
+
+static void UI_NX_FocusFirstClassFooterButton(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if (UI_NX_ClassFooterSlot(item) >= 0 && UI_NX_CanFocus(localClientNum, dc, item)
+            && Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
+            return;
+    }
+}
+
+static bool UI_NX_IsCustomGameEditor(const menuDef_t *menu)
+{
+    return menu->window.name && !I_stricmp(menu->window.name, "custom_game_create");
+}
+
+static bool UI_NX_IsCustomGameEditButton(itemDef_s *item)
+{
+    const textDef_s *text = item->type == 3 ? Item_GetTextDef(item) : nullptr;
+    return text && text->text && !I_stricmp(text->text, "@PLATFORM_EDIT");
+}
+
+static itemDef_s *UI_NX_MoveFocusInScreenOrder(int localClientNum, UiContext *dc, menuDef_t *menu, int step,
+    const itemDef_s *anchor = nullptr)
+{
+    struct Row
+    {
+        itemDef_s *item;
+        rectDef_s rect;
+    };
+    std::vector<Row> rows;
+    const bool gameEditor = UI_NX_IsCustomGameEditor(menu);
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if ((!gameEditor || !UI_NX_IsCustomGameEditButton(item)) && UI_NX_CanFocus(localClientNum, dc, item))
+            rows.push_back({item, UI_NX_ScreenRect(dc, item)});
+    }
+    std::stable_sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
+        return a.rect.y != b.rect.y ? a.rect.y < b.rect.y : a.rect.x < b.rect.x;
+    });
+
+    const auto focused = std::find_if(rows.begin(), rows.end(), [dc, anchor](const Row &row) {
+        return anchor ? row.item == anchor : Window_HasFocus(dc->contextIndex, &row.item->window);
+    });
+    const int count = static_cast<int>(rows.size());
+    int index = focused != rows.end() ? static_cast<int>(focused - rows.begin()) : (step > 0 ? -1 : count);
+    for (int visited = 0; visited < count; ++visited)
+    {
+        index = (index + step + count) % count;
+        itemDef_s *item = rows[index].item;
+        if (Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
+            return item;
+    }
+    return nullptr;
+}
+
+static bool UI_NX_IsCustomGameEditPair(const itemDef_s *row, const itemDef_s *edit)
+{
+    if (row->type != 10 || !row->dvar
+        || fabsf(row->window.rectClient.y - edit->window.rectClient.y) > 1.0f)
+        return false;
+
+    const char *action = nullptr;
+    if (!I_stricmp(row->dvar, "custom_class_mode"))
+        action = "open \"custom_classes\"";
+    else if (!I_stricmp(row->dvar, "custom_killstreak_mode"))
+        action = "open \"custom_killstreaks\"";
+    else if (!I_stricmp(row->dvar, "scr_game_perks"))
+        action = "open \"custom_specialty_editor\"";
+    return action && UI_NX_ItemHasActionCommand(edit, action);
+}
+
+static bool UI_NX_HandleCustomGameVerticalKey(int localClientNum, UiContext *dc, menuDef_t *menu,
+    itemDef_s *current, int key)
+{
+    if ((key != K_UPARROW && key != K_DOWNARROW) || !UI_NX_IsCustomGameEditor(menu))
+        return false;
+
+    const bool down = key == K_DOWNARROW;
+    const bool onEdit = current && UI_NX_IsCustomGameEditButton(current);
+    itemDef_s *anchor = nullptr;
+    if (current && (onEdit || down))
+    {
+        for (int i = 0; i < menu->itemCount; ++i)
+        {
+            itemDef_s *item = menu->items[i];
+            const bool paired = onEdit ? UI_NX_IsCustomGameEditPair(item, current)
+                : UI_NX_IsCustomGameEditButton(item) && UI_NX_IsCustomGameEditPair(current, item);
+            if (!paired || !UI_NX_CanFocus(localClientNum, dc, item))
+                continue;
+
+            if (onEdit && down)
+                anchor = item;
+            else if (Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
+                return true;
+            break;
+        }
+    }
+    UI_NX_MoveFocusInScreenOrder(localClientNum, dc, menu, down ? 1 : -1, anchor);
+    return true;
+}
+
+static itemDef_s *UI_NX_MoveMenuFocus(int localClientNum, UiContext *dc, menuDef_t *menu, int step)
+{
+    const int count = menu->itemCount;
+    if (!count)
+        return nullptr;
+    const int cursor = Menu_GetCursorItem(dc->contextIndex, menu);
+    const bool hasCursor = cursor >= 0 && cursor < count;
+    const bool settingsPage = UI_NX_SettingsCategoryMenu(menu) != nullptr;
+    const bool classEditor = UI_NX_IsCustomClassMenu(menu);
+    if ((!hasCursor && !settingsPage && !classEditor) || (menu->window.name
+        && (!I_stricmp(menu->window.name, "basictraining_settings") || !I_stricmp(menu->window.name, "server_settings"))))
+        return UI_NX_MoveFocusInScreenOrder(localClientNum, dc, menu, step);
+
+    const bool onCategories = settingsPage && hasCursor && UI_NX_IsSettingsCategoryItem(menu->items[cursor]);
+    int index = hasCursor ? cursor : (step > 0 ? -1 : count);
+    for (int visited = 0; visited < count; ++visited)
+    {
+        index = (index + step + count) % count;
+        itemDef_s *item = menu->items[index];
+        if ((settingsPage && UI_NX_IsSettingsCategoryItem(item) != onCategories)
+            || (classEditor && !UI_NX_IsClassMainOption(item)))
+            continue;
+        if (UI_NX_CanFocus(localClientNum, dc, item)
+            && Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y))
+        {
+            if (hasCursor && index != cursor && item->type == 4 && !Item_IsModal(item))
+                UI_NX_SelectListBoxEdge(localClientNum, dc, item, step < 0);
+            return item;
+        }
+    }
+    return nullptr;
+}
+
+static bool UI_NX_FocusSettingsCategory(int localClientNum, UiContext *dc, menuDef_t *menu, const char *category)
+{
+    itemDef_s *first = nullptr;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if (!UI_NX_IsSettingsCategoryItem(item) || !UI_NX_CanFocus(localClientNum, dc, item))
+            continue;
+        if (!first)
+            first = item;
+        if (UI_NX_OpensSettingsCategory(item, category))
+            return Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y);
+    }
+    return first && Item_SetFocus(localClientNum, dc, first, first->window.rect.x, first->window.rect.y);
+}
+
+static void UI_NX_SetPreviewDvar(const char *destination, const char *value)
+{
+    const dvar_s *preview = Dvar_FindVar(destination);
+    if (!preview || strcmp(Dvar_DisplayableValue(preview), value))
+        Dvar_SetCommand(destination, const_cast<char *>(value));
+}
+
+static void UI_NX_CopyPreviewDvar(const char *destination, const char *source)
+{
+    if (const dvar_s *current = Dvar_FindVar(source))
+        UI_NX_SetPreviewDvar(destination, Dvar_DisplayableValue(current));
+}
+
+static void UI_NX_SyncSettingsPreview(const char *category)
+{
+    const bool graphics = !I_stricmp(category, "options_graphics");
+    if (graphics || !I_stricmp(category, "options_graphics_texture"))
+    {
+        static constexpr const char *settings[] = {
+            "r_mode", "r_fullscreen", "r_aasamples", "r_aspectRatio", "r_displayRefresh", "r_vsync",
+            "r_picmip_bump", "r_picmip_spec", "r_picmip_manual",
+        };
+        for (const char *source : settings)
+        {
+            char destination[32];
+            Com_sprintf(destination, sizeof(destination), "ui_%s", source);
+            UI_NX_CopyPreviewDvar(destination, source);
+        }
+        const dvar_s *manual = Dvar_FindVar("r_picmip_manual");
+        if (graphics && manual && !manual->current.enabled)
+            UI_NX_SetPreviewDvar("ui_r_picmip", "-1");
+        else
+            UI_NX_CopyPreviewDvar("ui_r_picmip", "r_picmip");
+    }
+    else if (!I_stricmp(category, "options_sound"))
+        UI_NX_CopyPreviewDvar("ui_sd_xa2_device_name", "sd_xa2_device_name");
+    else if (!I_stricmp(category, "options_multi"))
+        UI_NX_CopyPreviewDvar("ui_name", "name");
+    else if (!I_stricmp(category, "options_game"))
+        UI_NX_CopyPreviewDvar("ui_language", "loc_language");
+}
+
+static menuDef_t *UI_NX_SettingsPreview(UiContext *dc, menuDef_t *menu, int &nativeItemCount)
+{
+    const bool isRoot = UI_NX_IsSettingsRoot(menu);
+    if (!isRoot && !UI_NX_SettingsCategoryMenu(menu))
+        return nullptr;
+
+    const int cursor = Menu_GetCursorItem(dc->contextIndex, menu);
+    if (cursor < 0 || cursor >= menu->itemCount || !UI_NX_IsSettingsCategoryItem(menu->items[cursor]))
+        return nullptr;
+
+    menuDef_t *root = isRoot ? menu : Menus_FindByName(dc, "options_new_pc");
+    if (!root)
+        return nullptr;
+    UI_NX_PrepareSettingsMenu(dc, root);
+
+    const char *category = UI_NX_SettingsDestination(menu->items[cursor]);
+    if (!category)
+    {
+        nativeItemCount = std::min(menu->itemCount, root->itemCount);
+        return nullptr;
+    }
+    menuDef_t *preview = Menus_FindByName(dc, category);
+    if (preview == menu)
+        return nullptr;
+    if (!preview)
+        return nullptr;
+    UI_NX_PrepareSettingsMenu(dc, preview);
+    UI_NX_SyncSettingsPreview(preview->window.name);
+    nativeItemCount = std::min(menu->itemCount, root->itemCount);
+    return preview->itemCount > nativeItemCount ? preview : nullptr;
+}
+
+static void UI_NX_MoveHorizontalFocus(int localClientNum, UiContext *dc, menuDef_t *menu,
+    itemDef_s *current, int direction)
+{
+    if (!current)
+    {
+        UI_NX_MoveMenuFocus(localClientNum, dc, menu, 1);
+        return;
+    }
+
+    const rectDef_s from = UI_NX_ScreenRect(dc, current);
+    const bool classFooter = UI_NX_ClassFooterSlot(current) >= 0;
+    const bool gameEditor = UI_NX_IsCustomGameEditor(menu);
+    itemDef_s *closest = nullptr;
+    float bestDistance = FLT_MAX;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *candidate = menu->items[i];
+        if (candidate == current || (classFooter && UI_NX_ClassFooterSlot(candidate) < 0)
+            || (gameEditor && UI_NX_IsCustomGameEditButton(candidate))
+            || !UI_NX_CanFocus(localClientNum, dc, candidate))
+            continue;
+        const rectDef_s to = UI_NX_ScreenRect(dc, candidate);
+        const float dx = (to.x + to.w * 0.5f) - (from.x + from.w * 0.5f);
+        const float dy = (to.y + to.h * 0.5f) - (from.y + from.h * 0.5f);
+        if (dx * direction <= 1.0f)
+            continue;
+        const float distance = dx * dx + 4.0f * dy * dy;
+        if (distance < bestDistance)
+        {
+            closest = candidate;
+            bestDistance = distance;
+        }
+    }
+    if (closest)
+        Item_SetFocus(localClientNum, dc, closest, closest->window.rect.x, closest->window.rect.y);
+}
+
+static bool Item_Multi_CycleValue(itemDef_s *item, const multiDef_s *multi, int key);
+
+static bool UI_NX_HandleClassListFactionKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key)
+{
+    if ((key != K_LEFTARROW && key != K_RIGHTARROW) || !UI_NX_IsClassListMenu(menu))
+        return false;
+
+    itemDef_s *faction = Menu_FindItemByName(menu, "cac_faction_button");
+    if (!UI_NX_IsClassFactionButton(faction) || !faction->dvar)
+        return false;
+
+    if (Item_IsVisible(localClientNum, dc->contextIndex, faction)
+        && ((faction->dvarFlags & 3) == 0 || Item_EnableShowViaDvar(faction, 1))
+        && Item_Multi_CycleValue(faction, Item_GetMultiDef(faction), key) && !Dvar_GetInt("ui_choice_noaction"))
+        Item_Action(localClientNum, dc, faction);
+    return true;
+}
+
+static bool UI_NX_HandleClassMenuKey(int localClientNum, UiContext *dc, itemDef_s *item, int key)
+{
+    if (!item || !UI_NX_IsCustomClassMenu(item->parent) || !UI_NX_CanFocus(localClientNum, dc, item))
+        return false;
+
+    const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
+    const bool vertical = key == K_UPARROW || key == K_DOWNARROW;
+    const bool footer = UI_NX_ClassFooterSlot(item) >= 0;
+    if (vertical && (footer || UI_NX_IsClassMainOption(item)))
+    {
+        UI_NX_MoveMenuFocus(localClientNum, dc, item->parent, key == K_DOWNARROW ? 1 : -1);
+        return true;
+    }
+
+    if (UI_NX_IsClassFactionButton(item))
+    {
+        if (s_nxClassFactionEditMenu == item->parent)
+        {
+            if (key == K_BUTTON_A || key == K_BUTTON_B)
+                s_nxClassFactionEditMenu = nullptr;
+            else if (horizontal && Item_HandleKey(localClientNum, dc, item, key, 1)
+                && !Dvar_GetInt("ui_choice_noaction"))
+                Item_Action(localClientNum, dc, item);
+            return true;
+        }
+        if (key == K_BUTTON_A)
+        {
+            s_nxClassFactionEditMenu = item->parent;
+            return true;
+        }
+    }
+
+    if (!horizontal)
+        return false;
+    if (footer)
+        UI_NX_MoveHorizontalFocus(localClientNum, dc, item->parent, item, key == K_LEFTARROW ? -1 : 1);
+    else if (UI_NX_IsClassMainOption(item))
+        UI_NX_FocusFirstClassFooterButton(localClientNum, dc, item->parent);
+    else
+        return false;
+    return true;
+}
+
+static bool UI_NX_IsWeaponStatsToggle(const itemDef_s *item)
+{
+    return item->type == 3 && UI_NX_IsWeaponMenu(item->parent)
+        && UI_NX_ItemHasActionCommand(item, "setDvar ui_cac_gun_attributes_vis ");
+}
+
+static void UI_NX_FocusWeaponStats(int localClientNum, UiContext *dc, menuDef_t *menu)
+{
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *candidate = menu->items[i];
+        if (UI_NX_IsWeaponStatsToggle(candidate) && UI_NX_CanFocus(localClientNum, dc, candidate)
+            && Item_SetFocus(localClientNum, dc, candidate, candidate->window.rect.x, candidate->window.rect.y))
+            return;
+    }
+}
+
+static bool UI_NX_HandleClassSubmenuRight(int localClientNum, UiContext *dc, menuDef_t *menu,
+    itemDef_s *item, int key)
+{
+    if (key != K_RIGHTARROW)
+        return false;
+    if (UI_NX_IsWeaponMenu(menu))
+    {
+        UI_NX_FocusWeaponStats(localClientNum, dc, menu);
+        return true;
+    }
+    return UI_NX_IsCustomClassMenu(menu) && item && item->type == 4 && Item_IsModal(item);
+}
+
+static bool UI_NX_HandleKillstreakListKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key)
+{
+    if (key != K_UPARROW && key != K_DOWNARROW)
+        return false;
+    itemDef_s *list = UI_NX_KillstreakList(menu);
+    if (!list || !UI_NX_CanFocus(localClientNum, dc, list))
+        return false;
+
+    const rectDef_s &rect = list->window.rect;
+    return Item_SetFocus(localClientNum, dc, list, rect.x, rect.y)
+        && Item_ListBox_HandleKey(localClientNum, dc, list, key, 1, 0);
+}
+#endif
+
 itemDef_s *__cdecl Menu_SetNextCursorItem(
                 int localClientNum,
                 UiContext *dc,
@@ -4635,6 +5742,9 @@ itemDef_s *__cdecl Menu_SetNextCursorItem(
                 int usedTab,
                 int usedKeyboard)
 {
+#ifdef KISAK_NX
+    return UI_NX_MoveMenuFocus(localClientNum, dc, menu, 1);
+#else
     int cursorItema; // [esp+8h] [ebp-14h]
     int cursorItem; // [esp+8h] [ebp-14h]
     editFieldDef_s *editPtr; // [esp+Ch] [ebp-10h]
@@ -4724,6 +5834,7 @@ itemDef_s *__cdecl Menu_SetNextCursorItem(
     }
     Menu_SetCursorItem(dc->contextIndex, menu, oldCursor);
     return 0;
+#endif
 }
 
 int __cdecl Item_HasFocusEvent(int localClientNum, UiContext *dc, itemDef_s *item)
@@ -4794,7 +5905,136 @@ int    Menu_CheckOnKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
     return 0;
 }
 
-void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down)
+#ifdef KISAK_NX
+static bool UI_NX_HandleServerBrowserKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down)
+{
+    if (!down || !UI_NX_IsServerBrowserMenu(menu))
+        return false;
+    if (key == K_BUTTON_LSHLDR || key == K_BUTTON_RSHLDR)
+        return Menu_CheckOnKey(localClientNum, dc, menu, key == K_BUTTON_LSHLDR ? K_LEFTARROW : K_RIGHTARROW);
+    if (key != K_LEFTARROW && key != K_RIGHTARROW && key != K_UPARROW && key != K_DOWNARROW
+        && key != K_BUTTON_A && key != K_BUTTON_X)
+        return false;
+
+    const int context = dc->contextIndex;
+    const int cursor = Menu_GetCursorItem(context, menu);
+    itemDef_s *current = cursor >= 0 && cursor < menu->itemCount ? menu->items[cursor] : nullptr;
+    if (current && !UI_NX_CanFocus(localClientNum, dc, current))
+        current = nullptr;
+    const ServerBrowserRegion region = UI_NX_ServerBrowserRegion(current);
+
+    if (key == K_LEFTARROW || key == K_RIGHTARROW)
+    {
+        if (region == ServerBrowserRegion::Columns || region == ServerBrowserRegion::Footer)
+            UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, region, current, key == K_LEFTARROW ? -1 : 1);
+        return true;
+    }
+
+    if (key == K_UPARROW || key == K_DOWNARROW)
+    {
+        const bool up = key == K_UPARROW;
+        itemDef_s *browser = Menu_FindItemByName(menu, "browser");
+        listBoxDef_s *list = browser && UI_NX_ServerBrowserRegion(browser) == ServerBrowserRegion::Servers
+            && UI_NX_CanFocus(localClientNum, dc, browser) ? Item_GetListBoxDef(browser) : nullptr;
+        const int count = list ? UI_FeederCount(localClientNum, context, list->special, list) : 0;
+        if (region == ServerBrowserRegion::Servers)
+        {
+            if (count > 0 && (up ? list->cursorPos[context] > 0 : list->cursorPos[context] < count - 1))
+                Item_ListBox_HandleKey(localClientNum, dc, browser, key, 1, 1);
+            else if (up)
+                UI_NX_FocusServerBrowserColumns(localClientNum, dc, menu);
+            else
+                UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Footer);
+        }
+        else if ((region == ServerBrowserRegion::Columns && !up) || (region == ServerBrowserRegion::Footer && up))
+        {
+            if (count > 0 && Item_SetFocus(localClientNum, dc, browser, browser->window.rect.x, browser->window.rect.y))
+                UI_NX_SelectListBoxEdge(localClientNum, dc, browser, up);
+            else if (up)
+                UI_NX_FocusServerBrowserColumns(localClientNum, dc, menu);
+            else
+                UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, ServerBrowserRegion::Footer);
+        }
+        else if (region == ServerBrowserRegion::None)
+            UI_NX_FocusServerBrowserStart(localClientNum, dc, menu);
+        return true;
+    }
+
+    if (key == K_BUTTON_A)
+    {
+        if (region == ServerBrowserRegion::Columns || region == ServerBrowserRegion::Footer)
+        {
+            Item_Action(localClientNum, dc, current);
+            if (region == ServerBrowserRegion::Columns && !UI_NX_CanFocus(localClientNum, dc, current))
+                UI_NX_FocusServerBrowserControl(localClientNum, dc, menu, region, current);
+            return true;
+        }
+        if (region != ServerBrowserRegion::Servers)
+            return true;
+        listBoxDef_s *list = Item_GetListBoxDef(current);
+        if (!list)
+            return true;
+        const int row = list->cursorPos[context];
+        const int count = UI_FeederCount(localClientNum, context, list->special, list);
+        if (row < 0 || row >= count)
+            return true;
+        UI_FeederSelection(localClientNum, context, list->special, row);
+    }
+
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if (UI_NX_ServerBrowserShortcut(item) == key && Item_IsVisible(localClientNum, dc->contextIndex, item)
+            && ((item->dvarFlags & 3) == 0 || Item_EnableShowViaDvar(item, 1)))
+        {
+            Item_Action(localClientNum, dc, item);
+            break;
+        }
+    }
+    return true;
+}
+
+static bool UI_NX_HandleFriendsTabKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down)
+{
+    if (!down || !UI_NX_IsFriendsMenu(menu))
+        return false;
+
+    switch (key)
+    {
+    case K_LEFTARROW:
+    case K_BUTTON_LSHLDR:
+        return Menu_CheckOnKey(localClientNum, dc, menu, K_LEFTARROW);
+    case K_RIGHTARROW:
+    case K_BUTTON_RSHLDR:
+        return Menu_CheckOnKey(localClientNum, dc, menu, K_RIGHTARROW);
+    default:
+        return false;
+    }
+}
+
+static bool UI_NX_HandleTitleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down)
+{
+    if (!menu->window.name || I_stricmp(menu->window.name, "main_lockout"))
+        return false;
+    if (!down || key != K_BUTTON_A)
+        return true;
+    if (Menu_CheckOnKey(localClientNum, dc, menu, key) || Menu_CheckOnKey(localClientNum, dc, menu, K_ENTER))
+        return true;
+
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *prompt = menu->items[i];
+        if (UI_NX_IsTitlePrompt(prompt) && Item_IsVisible(localClientNum, dc->contextIndex, prompt))
+        {
+            Item_Action(localClientNum, dc, prompt);
+            break;
+        }
+    }
+    return true;
+}
+#endif
+
+void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down, int controllerKey)
 {
     int ControllerIndex; // eax
     const rectDef_s *v7; // eax
@@ -4825,6 +6065,16 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
     {
         return;
     }
+#ifdef KISAK_NX
+    if (UI_NX_HandleTitleKey(localClientNum, dc, menu, key, down)
+        || UI_NX_HandleFriendsTabKey(localClientNum, dc, menu, key, down)
+        || UI_NX_HandleServerBrowserKey(localClientNum, dc, menu, key, down))
+        return;
+    if ((key == K_BUTTON_LSHLDR || key == K_BUTTON_RSHLDR) && UI_NX_IsClassRotationMenu(menu))
+        return;
+    if (down && key == K_BUTTON_Y && UI_NX_RunXShortcut(localClientNum, dc, menu))
+        return;
+#endif
     inHandler = 1;
     if (g_waitingForKey && down)
     {
@@ -4872,6 +6122,77 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                                 item = menu->items[i];
                         }
                     }
+#ifdef KISAK_NX
+                    const bool settingsMenu = UI_NX_IsSettingsMenu(menu);
+                    const char *settingsCategory = UI_NX_SettingsCategoryMenu(menu);
+                    const bool horizontal = key == K_LEFTARROW || key == K_RIGHTARROW;
+                    if (down && (UI_NX_HandleClassListFactionKey(localClientNum, dc, menu, key)
+                        || UI_NX_HandleClassMenuKey(localClientNum, dc, item, key)
+                        || UI_NX_HandleClassSubmenuRight(localClientNum, dc, menu, item, key)
+                        || UI_NX_HandleCustomGameVerticalKey(localClientNum, dc, menu, item, key)
+                        || UI_NX_HandleKillstreakListKey(localClientNum, dc, menu, key)))
+                        return;
+                    if (down && settingsMenu)
+                    {
+                        if (key == K_BUTTON_LSHLDR || key == K_BUTTON_RSHLDR)
+                            return;
+                        if (key == K_BUTTON_B && settingsCategory)
+                        {
+                            if (settingsCategory && (!item || !UI_NX_IsSettingsCategoryItem(item))
+                                && UI_NX_FocusSettingsCategory(localClientNum, dc, menu, settingsCategory))
+                                return;
+                            if (!UI_NX_RunBackPrompt(localClientNum, dc, menu))
+                            {
+                                Menus_CloseByName(localClientNum, dc, "blackout_3d_tv");
+                                Menus_Close(localClientNum, dc, menu);
+                            }
+                            return;
+                        }
+                    }
+                    if (down && (key == K_UPARROW || key == K_DOWNARROW || key == K_LEFTARROW || key == K_RIGHTARROW)
+                        && !(horizontal && settingsMenu)
+                        && controllerKey && controllerKey != key
+                        && Menu_CheckOnKey(localClientNum, dc, menu, controllerKey))
+                        return;
+                    if (item && !UI_NX_CanFocus(localClientNum, dc, item))
+                    {
+                        Item_LoseFocus(localClientNum, dc, item);
+                        item = nullptr;
+                    }
+                    if (down && key == K_BUTTON_A && settingsMenu && item && UI_NX_IsSettingsCategoryItem(item))
+                    {
+                        if (const char *target = UI_NX_SettingsDestination(item))
+                        {
+                            if (!I_stricmp(target, menu->window.name))
+                            {
+                                Menu_ClearFocus(localClientNum, dc, menu);
+                                Menu_SetCursorItem(dc->contextIndex, menu, -1);
+                                if (!UI_NX_MoveMenuFocus(localClientNum, dc, menu, 1))
+                                    Item_SetFocus(localClientNum, dc, item, item->window.rect.x, item->window.rect.y);
+                            }
+                            else
+                            {
+                                const char *previous = s_nxConfirmedSettingsCategory;
+                                s_nxConfirmedSettingsCategory = target;
+                                Item_Action(localClientNum, dc, item);
+                                s_nxConfirmedSettingsCategory = previous;
+                            }
+                            return;
+                        }
+                    }
+                    if (!item && down && key == K_BUTTON_A)
+                    {
+                        item = UI_NX_MoveMenuFocus(localClientNum, dc, menu, 1);
+                        if (UI_NX_HandleClassMenuKey(localClientNum, dc, item, key))
+                            return;
+                    }
+                    if (down && key == K_BUTTON_Y && item && item->type == 4 && menu->window.name
+                        && !I_stricmp(menu->window.name, "menu_cac_custom") && Item_DoesEventExist(item, "RightClick"))
+                    {
+                        Item_RunEventScript(localClientNum, dc, item, "RightClick");
+                        return;
+                    }
+#endif
                     if (item && Item_HandleKey(localClientNum, dc, item, key, down) && !Dvar_GetInt("ui_choice_noaction"))
                     {
                         Item_Action(localClientNum, dc, item);
@@ -4879,7 +6200,15 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                     }
                     else if (down)
                     {
+#ifdef KISAK_NX
+                        if (horizontal && settingsMenu)
+                            return;
+#endif
                         if ((key <= 0 || key > 255 || !Menu_CheckOnKey(localClientNum, dc, menu, key))
+#ifdef KISAK_NX
+                            && (key != K_BUTTON_A || !Menu_CheckOnKey(localClientNum, dc, menu, K_ENTER))
+                            && (key != K_BUTTON_B || !Menu_CheckOnKey(localClientNum, dc, menu, K_ESCAPE))
+#endif
                             && (key != 205 && key != 206 || item && item->type == 4))
                         {
                             v19 = key - 1;
@@ -4894,15 +6223,30 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                                 {
                                     if (!Item_IsTextField(item))
                                         goto LABEL_109;
+#ifdef KISAK_NX
+                                    UI_NX_EditTextField(localClientNum, dc, item);
+#else
                                     item->typeData.textDef->textTypeData.focusItemDef->focusTypeData.listBox->cursorPos[dc->contextIndex] = 0;
                                     g_editingField = 1;
                                     g_editItem = item;
                                     Key_SetOverstrikeMode(localClientNum, 1);
+#endif
                                 }
                                 break;
                             case 2:
                             case 15:
                             case 27:
+#ifdef KISAK_NX
+                                if (key == K_BUTTON_B && !Menus_DoesEventExist(menu, "onESC"))
+                                {
+                                    if (UI_NX_RunBackPrompt(localClientNum, dc, menu))
+                                        return;
+                                    if (!UI_NX_IsMainMenu(menu)
+                                        && (dc->openMenuCount > 1 || (!menu->fullScreen && !Com_IsMenuLevel(localClientNum))))
+                                        Menus_Close(localClientNum, dc, menu);
+                                    break;
+                                }
+#endif
                                 if (!g_waitingForKey && menu->onEvent)
                                 {
                                     v18.parent = menu;
@@ -4920,6 +6264,13 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                             case 205:
                                 Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 1);
                                 break;
+#ifdef KISAK_NX
+                            case K_LEFTARROW:
+                            case K_RIGHTARROW:
+                                UI_NX_MoveHorizontalFocus(localClientNum, dc, menu, item,
+                                    key == K_LEFTARROW ? -1 : 1);
+                                break;
+#endif
                             case 177:
                                 if (Dvar_GetInt("developer"))
                                     g_debugMode ^= 1u;
@@ -5066,6 +6417,10 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
 
 itemDef_s *__cdecl Item_LoseFocus(int localClientNum, UiContext *dc, itemDef_s *item)
 {
+#ifdef KISAK_NX
+    if (s_nxClassFactionEditMenu == item->parent)
+        s_nxClassFactionEditMenu = nullptr;
+#endif
     Window_RemoveDynamicFlags(dc->contextIndex, &item->window, 2);
     if ( Item_IsFocusDefType(item) )
         Item_RunEventScript(localClientNum, dc, item, "leaveFocus");
@@ -5125,7 +6480,11 @@ int __cdecl Item_ListBox_HandleKey(int localClientNum, UiContext *dc, itemDef_s 
     if ( !listPtr )
         return 0;
     rect = Window_GetRect(&item->window);
+#ifdef KISAK_NX
+    v20 = true;
+#else
     v20 = Item_IsModal(item) || Rect_ContainsPoint(dc->contextIndex, rect, dc->cursor.x, dc->cursor.y);
+#endif
     validMousePosition = v20;
     count = (int)UI_FeederCount(localClientNum, dc->contextIndex, listPtr->special, listPtr);
     if ( count - 1 > 0 )
@@ -5139,6 +6498,38 @@ int __cdecl Item_ListBox_HandleKey(int localClientNum, UiContext *dc, itemDef_s 
     UI_OverrideCursorPos(localClientNum, dc->contextIndex, item);
     max = (int)Item_ListBox_MaxScroll(localClientNum, dc->contextIndex, item);
     viewmax = Item_ListBox_Viewmax(localClientNum, dc->contextIndex, item);
+#ifdef KISAK_NX
+    if (!force)
+    {
+        const bool horizontal = Window_IsHorizontal(&item->window);
+        const bool previous = key == (horizontal ? K_LEFTARROW : K_UPARROW);
+        const bool next = key == (horizontal ? K_RIGHTARROW : K_DOWNARROW);
+        const int cursor = listPtr->notselectable ? listPtr->startPos[dc->contextIndex]
+            : listPtr->cursorPos[dc->contextIndex];
+        const int end = listPtr->notselectable ? max : lastIndex;
+        if ((previous && cursor <= 0) || (next && cursor >= end))
+        {
+            const bool modal = Item_IsModal(item);
+            if (!modal)
+            {
+                const menuDef_t *menu = item->parent;
+                const bool otherControl = std::any_of(menu->items, menu->items + menu->itemCount, [&](itemDef_s *other) {
+                    return other != item && UI_NX_CanFocus(localClientNum, dc, other);
+                });
+                if (listPtr->notselectable || otherControl)
+                    return 0;
+            }
+            if (!listPtr->notselectable)
+            {
+                if (!horizontal && UI_OverrideKeyPress(localClientNum, dc->contextIndex, item, key))
+                    return 1;
+                if (lastIndex > 0)
+                    UI_NX_SelectListBoxEdge(localClientNum, dc, item, previous);
+                return 1;
+            }
+        }
+    }
+#endif
     if ( Window_IsHorizontal(&item->window) )
     {
         if ( key == 30 || key == 22 || key == 156 || key == 185 )
@@ -5808,6 +7199,10 @@ int __cdecl Item_HandleKey(int localClientNum, UiContext *dc, itemDef_s *item, i
     }
     if ( !down )
         return 0;
+#ifdef KISAK_NX
+    if (key == K_BUTTON_A && (item->type == 9 || item->type == 10 || item->type == 11))
+        key = K_ENTER;
+#endif
     switch ( item->type )
     {
         case 3:
@@ -5923,14 +7318,26 @@ bool __cdecl Item_ContainsMouse(UiContext *dc, itemDef_s *item)
     return v6;
 }
 
+static bool Item_Multi_CycleValue(itemDef_s *item, const multiDef_s *multi, int key)
+{
+    if (!multi || multi->actionOnEnterPressOnly)
+        return false;
+
+    const int current = Item_Multi_FindDvarByValue(item);
+    int next = Item_List_NextEntryForKey(key, current, multi->count);
+    if (next == current)
+        return false;
+    while (!multi->dvarList[next] || !*multi->dvarList[next])
+        next = Item_List_NextEntryForKey(key, next, multi->count);
+    if (multi->strDef)
+        Dvar_SetFromStringByName(item->dvar, (char *)multi->dvarStr[next]);
+    else
+        Dvar_SetFromStringByName(item->dvar, va("%g", multi->dvarValue[next]));
+    return true;
+}
+
 int __cdecl Item_Multi_HandleKey(UiContext *dc, itemDef_s *item, int key)
 {
-    char *v4; // eax
-    multiDef_s *multiPtr; // [esp+8h] [ebp-10h]
-    int next; // [esp+Ch] [ebp-Ch]
-    int count; // [esp+10h] [ebp-8h]
-    int current; // [esp+14h] [ebp-4h]
-
     if ( !dc && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\ui\\ui_shared.cpp", 6392, 0, "%s", "dc") )
         __debugbreak();
     if ( !item && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\ui\\ui_shared.cpp", 6393, 0, "%s", "item") )
@@ -5940,30 +7347,8 @@ int __cdecl Item_Multi_HandleKey(UiContext *dc, itemDef_s *item, int key)
     {
         __debugbreak();
     }
-    multiPtr = Item_GetMultiDef(item);
-    if ( !multiPtr )
-        return 0;
-    if ( !Item_ShouldHandleKey(dc, item, key) )
-        return 0;
-    current = Item_Multi_FindDvarByValue(item);
-    count = Item_Multi_CountSettings(item);
-    next = Item_List_NextEntryForKey(key, current, count);
-    if ( next == current )
-        return 0;
-    if ( multiPtr->actionOnEnterPressOnly )
-        return 0;
-    while ( !multiPtr->dvarList[next] || !*multiPtr->dvarList[next] )
-        next = Item_List_NextEntryForKey(key, next, count);
-    if ( multiPtr->strDef )
-    {
-        Dvar_SetFromStringByName(item->dvar, (char *)multiPtr->dvarStr[next]);
-    }
-    else
-    {
-        v4 = va("%g", multiPtr->dvarValue[next]);
-        Dvar_SetFromStringByName(item->dvar, v4);
-    }
-    return 1;
+    const multiDef_s *multi = Item_GetMultiDef(item);
+    return multi && Item_ShouldHandleKey(dc, item, key) && Item_Multi_CycleValue(item, multi, key);
 }
 
 int __cdecl Item_Multi_CountSettings(itemDef_s *item)
@@ -6640,6 +8025,18 @@ int __cdecl Item_Slider_HandleKey(UiContext *dc, itemDef_s *item, int key)
     }
 }
 
+#ifdef KISAK_NX
+static void UI_NX_RestoreWeaponStatsFocus(int localClientNum, UiContext *dc, itemDef_s *item)
+{
+    menuDef_t *menu = item->parent;
+    const int context = dc->contextIndex;
+    if (!UI_NX_IsWeaponStatsToggle(item) || Menu_GetFocused(dc) != menu
+        || !Window_HasFocus(context, &item->window) || Item_IsVisible(localClientNum, context, item))
+        return;
+    UI_NX_FocusWeaponStats(localClientNum, dc, menu);
+}
+#endif
+
 void __cdecl Item_Action(int localClientNum, UiContext *dc, itemDef_s *item)
 {
 #ifdef KISAK_NX
@@ -6653,12 +8050,20 @@ void __cdecl Item_Action(int localClientNum, UiContext *dc, itemDef_s *item)
     if ( dc->openMenuCount )
     {
         if ( item )
+        {
             Item_RunEventScript(localClientNum, dc, item, "action");
+#ifdef KISAK_NX
+            UI_NX_RestoreWeaponStatsFocus(localClientNum, dc, item);
+#endif
+        }
     }
 }
 
 itemDef_s *__cdecl Menu_SetPrevCursorItem(int localClientNum, UiContext *dc, menuDef_t *menu, int usedKeyboard)
 {
+#ifdef KISAK_NX
+    return UI_NX_MoveMenuFocus(localClientNum, dc, menu, -1);
+#else
     int CursorItem; // eax
     int v5; // eax
     int v6; // eax
@@ -6699,6 +8104,7 @@ itemDef_s *__cdecl Menu_SetPrevCursorItem(int localClientNum, UiContext *dc, men
     }
     Menu_SetCursorItem(dc->contextIndex, menu, oldCursor);
     return 0;
+#endif
 }
 
 void __cdecl Menus_HandleOOBClick(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down)
@@ -7205,7 +8611,10 @@ char __cdecl UI_GetSticksTranslatedString(int localClientNum, const char *comman
                 && I_stricmp(command, "+back")
                 && I_stricmp(command, "+moveleft")
                 && I_stricmp(command, "+moveright")
-                || !Dvar_GetBool("gpad_enabled") )
+#ifndef KISAK_NX
+                || !Dvar_GetBool("gpad_enabled")
+#endif
+                )
             {
                 return 0;
             }
@@ -7228,7 +8637,9 @@ char __cdecl UI_GetSticksTranslatedString(int localClientNum, const char *comman
         }
         else
         {
+#ifndef KISAK_NX
             if ( Dvar_GetBool("gpad_enabled") )
+#endif
             {
                 v9 = Dvar_GetString("gpad_sticksConfig");
                 if ( I_strcmp(v9, "thumbstick_default")
@@ -7243,17 +8654,21 @@ char __cdecl UI_GetSticksTranslatedString(int localClientNum, const char *comman
                     I_strncpyz(keys, v11, 256);
                 }
             }
+#ifndef KISAK_NX
             else
             {
                 v13 = UI_SafeTranslateString("MENU_MOUSE_LOOK");
                 I_strncpyz(keys, v13, 256);
             }
+#endif
             return 1;
         }
     }
     else
     {
+#ifndef KISAK_NX
         if ( Dvar_GetBool("gpad_enabled") )
+#endif
         {
             ProfileSettings = GamerProfile_GetProfileSettings(localClientNum);
             if ( I_strcmp(ProfileSettings->gpadSticksConfig, "thumbstick_default")
@@ -7268,6 +8683,7 @@ char __cdecl UI_GetSticksTranslatedString(int localClientNum, const char *comman
                 I_strncpyz(keys, v5, 256);
             }
         }
+#ifndef KISAK_NX
         else
         {
             UI_GetKeyBindingLocalizedString(localClientNum, "+forward", binding0, 0);
@@ -7277,6 +8693,7 @@ char __cdecl UI_GetSticksTranslatedString(int localClientNum, const char *comman
             v7 = va("%s,%s,%s,%s", binding0, binding1, binding2, binding3);
             I_strncpyz(keys, v7, 256);
         }
+#endif
         return 1;
     }
 }
@@ -7615,6 +9032,9 @@ int __cdecl Menus_AnyFullScreenVisible(UiContext *dc)
 
 int __cdecl Menu_HandleMouseMove(int localClientNum, UiContext *dc, menuDef_t *menu)
 {
+#ifdef KISAK_NX
+    return 0;
+#else
     const rectDef_s *Rect; // eax
     const rectDef_s *v5; // eax
     char DynamicFlags; // al
@@ -7721,6 +9141,7 @@ int __cdecl Menu_HandleMouseMove(int localClientNum, UiContext *dc, menuDef_t *m
             return 0;
         }
     }
+#endif
 }
 
 void __cdecl Item_MouseEnter(int localClientNum, UiContext *dc, itemDef_s *item, float x, float y)
@@ -8462,24 +9883,60 @@ char    Menu_Paint(
     {
         v7 = va("Item_Paint (%d)", menu->itemCount);
         PROF_SCOPED_RUNTIME_NAME(v7);
-        for (ib = 0; ib < menu->itemCount; ++ib)
+        int nativeItemCount = menu->itemCount;
+        int paintItemCount = nativeItemCount;
+#ifdef KISAK_NX
+        menuDef_t *preview = UI_NX_SettingsPreview(dc, menu, nativeItemCount);
+        paintItemCount = preview ? preview->itemCount : nativeItemCount;
+        rectDef_s previewRect{};
+        if (preview)
         {
-            if ((Window_GetDynamicFlags(dc->contextIndex, &menu->window) & 0x82000) != 0 || menu->fadeTimeCounter == -3)
+            previewRect = preview->window.rect;
+            preview->window.rect.x = menu->window.rect.x;
+            preview->window.rect.y = menu->window.rect.y;
+        }
+#endif
+        for (ib = 0; ib < paintItemCount; ++ib)
+        {
+            if (menu->fadeTimeCounter == -3)
+                break;
+            itemDef_s *item;
+#ifdef KISAK_NX
+            if (ib >= nativeItemCount)
             {
-                if (menu->fadeTimeCounter == -3)
-                    break;
-                alpha = menu->items[ib]->window.foreColor[3];
-                menu->items[ib]->window.foreColor[3] = alpha * menu->window.foreColor[3];
-                menu->items[ib]->window.borderColor[3] = menu->items[ib]->window.borderColor[3] * menu->window.foreColor[3];
-                menu->items[ib]->window.backColor[3] = menu->items[ib]->window.backColor[3] * menu->window.foreColor[3];
-                Item_Paint(localClientNum, dc, menu->items[ib]);
-                menu->items[ib]->window.foreColor[3] = alpha;
+                item = preview->items[ib];
+                const textDef_s *label = Item_GetTextDef(item);
+                if (label && label->text && !I_stricmp(label->text, "@MENU_APPLY"))
+                    continue;
+                const rectDef_s &rect = preview->window.rect;
+                const float border = preview->window.border ? preview->window.borderSize : 0.0f;
+                Item_SetScreenCoords(dc->contextIndex, item, rect.x + border, rect.y + border,
+                    rect.horzAlign, rect.vertAlign);
             }
             else
+#endif
+                item = menu->items[ib];
+
+            if ((Window_GetDynamicFlags(dc->contextIndex, &menu->window) & 0x82000) != 0)
             {
-                Item_Paint(localClientNum, dc, menu->items[ib]);
+                alpha = item->window.foreColor[3];
+                item->window.foreColor[3] = alpha * menu->window.foreColor[3];
+                const float borderAlpha = item->window.borderColor[3];
+                const float backgroundAlpha = item->window.backColor[3];
+                item->window.borderColor[3] = borderAlpha * menu->window.foreColor[3];
+                item->window.backColor[3] = backgroundAlpha * menu->window.foreColor[3];
+                Item_Paint(localClientNum, dc, item);
+                item->window.foreColor[3] = alpha;
+                item->window.borderColor[3] = borderAlpha;
+                item->window.backColor[3] = backgroundAlpha;
             }
+            else
+                Item_Paint(localClientNum, dc, item);
         }
+#ifdef KISAK_NX
+        if (preview)
+            preview->window.rect = previewRect;
+#endif
     }
     
     menu->window.rect.x = menu->initialRectInfo.x;
@@ -8996,6 +10453,10 @@ void __cdecl Window_Paint(
 
 void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
 {
+#ifdef KISAK_NX
+    if (UI_NX_IsBackPrompt(item))
+        return;
+#endif
     menuDef_t *v3; // esi
     menuDef_t *v4; // esi
     const char *String; // eax
@@ -9094,6 +10555,22 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     I_strlwr(lowerCaseName);
                     item->window.background = Material_RegisterHandle(lowerCaseName, item->imageTrack);
                 }
+#ifdef KISAK_NX
+                if (UI_NX_IsControlsCategory(item))
+                {
+                    const rectDef_s &bounds = item->window.rect;
+                    const float alpha = item->window.foreColor[3];
+                    const bool selected = Window_HasFocus(dc->contextIndex, &item->window);
+                    const float fill[4] = {selected ? 1.0f : 0.0f, selected ? 1.0f : 0.0f,
+                        selected ? 1.0f : 0.0f, alpha * (selected ? 1.0f : 0.38f)};
+                    UI_FillRect(&scrPlaceView[dc->contextIndex], bounds.x, bounds.y, bounds.w, bounds.h,
+                        bounds.horzAlign, bounds.vertAlign, fill);
+                }
+#endif
+#ifdef KISAK_NX
+                if (!UI_NX_IsFriendsShortcut(item) && !UI_NX_ServerBrowserShortcut(item)
+                    && !UI_NX_IsClearKillstreaksShortcut(item))
+#endif
                 Window_Paint(
                     localClientNum,
                     dc,
@@ -9104,6 +10581,19 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     (float)parent->fadeCycle,
                     item->type,
                     item);
+#ifdef KISAK_NX
+
+                if (Window_HasFocus(dc->contextIndex, &parent->window)
+                    && Window_HasFocus(dc->contextIndex, &item->window)
+                    && UI_NX_CanFocus(localClientNum, dc, item)
+                    && item->type != 4 && !UI_NX_IsTitlePrompt(item) && !Item_HasFocusEvent(localClientNum, dc, item))
+                {
+                    const rectDef_s &bounds = item->window.rect;
+                    const float outline[4] = {0.98f, 0.64f, 0.25f, 0.90f};
+                    UI_DrawRect(&scrPlaceView[dc->contextIndex], bounds.x, bounds.y, bounds.w,
+                        bounds.h, bounds.horzAlign, bounds.vertAlign, 1.0f, outline);
+                }
+#endif
                 if ( g_debugMode )
                 {
                     r = Item_CorrectedTextRect(dc->contextIndex, item);
@@ -9181,6 +10671,125 @@ void __cdecl Item_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
 
 float MY_SUBTITLE_GLOWCOLOR[4] = { 0.0, 0.30000001, 0.0, 1.0 };
 
+#ifdef KISAK_NX
+bool UI_NX_ReplaceControlPrompt(const char *label, const char *binding, char *buffer, int size,
+    const char *expected)
+{
+    const char *start = expected ? strstr(label, expected) : strstr(label, "^3");
+    if (!start)
+        return false;
+    const char *end = expected ? start + strlen(expected) : strstr(start + 2, "^7");
+    if (!end)
+        return false;
+    if (!expected)
+        end += 2;
+    Com_sprintf(buffer, size, "%.*s%s%s", static_cast<int>(start - label), label, binding, end);
+    return true;
+}
+
+static bool UI_NX_ReplacePromptButton(const char *label, char button, char *buffer, int size,
+    const char *expected = nullptr)
+{
+    const char binding[] = {button, '\0'};
+    const char *input = button == K_BUTTON_LSHLDR || button == K_BUTTON_RSHLDR
+        ? Key_KeynumToString(button, 1) : binding;
+    return UI_NX_ReplaceControlPrompt(label, input, buffer, size, expected);
+}
+
+static bool UI_NX_FormatControlPrompt(const char *reference, char *buffer, int size)
+{
+    static constexpr struct { const char *reference; const char *label; char button; } buttonPrompts[] = {
+        {"PLATFORM_SKIP", "PLATFORM_SKIP", K_BUTTON_B},
+        {"PLATFORM_PRESS_TO_SKIP", "PLATFORM_SKIP", K_BUTTON_B},
+        {"MENU_PRESS_START_TO_SKIP", "PLATFORM_SKIP", K_BUTTON_B},
+        {"PLATFORM_DEMO_FOLLOWNEXTPLAYER", "PLATFORM_DEMO_FOLLOWNEXTPLAYER", K_BUTTON_LSHLDR},
+        {"PLATFORM_DEMO_FOLLOWPREVIOUSPLAYER", "PLATFORM_DEMO_FOLLOWPREVIOUSPLAYER", K_BUTTON_RSHLDR},
+        {"PLATFORM_CHECK_PRO_STATUS", "PLATFORM_CHECK_PRO_STATUS", K_BUTTON_Y},
+        {"PLATFORM_UPGRADE_TO_PRO", "PLATFORM_UPGRADE_TO_PRO", K_BUTTON_Y},
+        {"PLATFORM_PERKS_BUTTON_TOGGLE_PRO", "PLATFORM_PERKS_BUTTON_TOGGLE_PRO", K_BUTTON_Y},
+        {"PLATFORM_SQUAD_BACK", "PLATFORM_SQUAD_BACK", K_BUTTON_A},
+    };
+    for (const auto &prompt : buttonPrompts)
+    {
+        if (I_stricmp(reference, prompt.reference))
+            continue;
+        if (UI_NX_ReplacePromptButton(UI_SafeTranslateString(prompt.label), prompt.button, buffer, size))
+            return true;
+        if (prompt.button != K_BUTTON_B)
+            return false;
+        Com_sprintf(buffer, size, "%c %s", prompt.button, UI_SafeTranslateString("OPENBLOPS_SKIP"));
+        return true;
+    }
+
+    static constexpr struct { const char *reference; const char *label; char button; } prompts[] = {
+        {"PLATFORM_CONTINUE", "MENU_CONTINUE", K_BUTTON_B},
+        {"PLATFORM_PARTY_INVITE", "PLATFORM_PARTY_INVITE", K_BUTTON_Y},
+        {"PLATFORM_CLEAR_KILLSTREAKS", "PLATFORM_CLEAR_KILLSTREAKS", K_BUTTON_Y},
+        {"OPENBLOPS_ZOMBIE_REFRESH", "MENU_REFRESH", K_BUTTON_X},
+        {"OPENBLOPS_ZOMBIE_JOIN", "MENU_JOIN_SERVER_CAPS", K_BUTTON_B},
+        {"PLATFORM_UI_SELECTBUTTON", nullptr, K_BUTTON_B},
+        {"PLATFORM_PRESS_ESCAPE_TO_EXIT", "MENU_QUIT", K_BUTTON_A},
+        {"PLATFORM_PRESS_START_BUTTON", "PLATFORM_PRESS_START_BUTTON", K_BUTTON_B},
+        {"MENU_PRESS_START", "PLATFORM_PRESS_START_BUTTON", K_BUTTON_B},
+        {"MENU_PRESS_START_TO_CONTINUE", "MENU_CONTINUE", K_BUTTON_B},
+        {"MENU_CLICK_TO_START_THE_MISSION", "MENU_CONTINUE_MISSION", K_BUTTON_B},
+        {"MENU_CLICK_TO_CONTINUE", "MENU_CONTINUE", K_BUTTON_B},
+        {"MPUI_CLICK_TO_CONTINUE", "MENU_CONTINUE", K_BUTTON_B},
+        {"MPUI_PRESS_A_TO_CONTINUE", "MENU_CONTINUE", K_BUTTON_B}
+    };
+    for (const auto &prompt : prompts)
+    {
+        if (I_stricmp(reference, prompt.reference))
+            continue;
+        if (prompt.label)
+            Com_sprintf(buffer, size, "%c %s", prompt.button, UI_SafeTranslateString(prompt.label));
+        else
+            Com_sprintf(buffer, size, "%c", prompt.button);
+        return true;
+    }
+    return false;
+}
+
+static float UI_NX_SettingTextOffset(const itemDef_s *item, const char *text, float distance)
+{
+    struct ScrollState
+    {
+        const itemDef_s *item;
+        int textHash;
+        unsigned int start;
+        unsigned int seen;
+    };
+    static ScrollState states[24]{};
+    const unsigned int now = Sys_Milliseconds();
+    ScrollState *state = &states[0];
+    for (ScrollState &candidate : states)
+    {
+        if (candidate.item == item)
+        {
+            state = &candidate;
+            break;
+        }
+        if (!candidate.item || (state->item && now - candidate.seen > now - state->seen))
+            state = &candidate;
+    }
+    const int hash = Com_HashKey(text, 1024);
+    if (state->item != item || state->textHash != hash || now - state->seen > 500u)
+        *state = {item, hash, now, now};
+    state->seen = now;
+
+    constexpr float pause = 600.0f;
+    const float travel = std::max(650.0f, distance * (1000.0f / 38.0f));
+    const float halfCycle = pause + travel;
+    float phase = fmodf(static_cast<float>(now - state->start), 2.0f * halfCycle);
+    const bool reverse = phase >= halfCycle;
+    if (reverse)
+        phase -= halfCycle;
+    const float progress = std::clamp((phase - pause) / travel, 0.0f, 1.0f);
+    const float eased = progress * progress * (3.0f - 2.0f * progress);
+    return distance * (reverse ? 1.0f - eased : eased);
+}
+#endif
+
 void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
 {
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
@@ -9234,12 +10843,85 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
         textPtr = text;
     }
     if ( *textPtr == 64 )
+#ifdef KISAK_NX
+    {
+        if (UI_NX_IsBackPromptText(textPtr))
+            return;
+        if (UI_NX_FormatControlPrompt(textPtr + 1, text, sizeof(text)))
+            textPtr = text;
+        else
+            textPtr = UI_SafeTranslateString(textPtr + 1);
+    }
+    else if (textPtr != text && item->window.name && !I_stricmp(item->window.name, "x_button_prompt")
+        && item->parent && item->parent->window.name && !I_stricmp(item->parent->window.name, "menu_cac_custom"))
+    {
+        const char *localized = UI_SafeTranslateString("PLATFORM_PERKS_BUTTON_TOGGLE_PRO");
+        const char *start = strstr(localized, "^3");
+        if (start)
+        {
+            const char *end = strstr(start + 2, "^7");
+            if (end)
+            {
+                char mousePrompt[64];
+                Com_sprintf(mousePrompt, sizeof(mousePrompt), "%.*s", static_cast<int>(end + 2 - start), start);
+                if (UI_NX_ReplacePromptButton(textPtr, K_BUTTON_Y, text, sizeof(text), mousePrompt))
+                    textPtr = text;
+            }
+        }
+    }
+#else
         textPtr = UI_SafeTranslateString(textPtr + 1);
+#endif
     if ( *textPtr )
     {
         if ( SEH_ReplaceDirectiveInStringWithBinding(localClientNum, textPtr, textWithBinding) )
             textPtr = textWithBinding;
         Item_TextColor(dc, item, (float (*)[4])color);
+#ifdef KISAK_MP
+        const bool botChoice = item->type == 10 && UI_IsCustomBotMenu(item->parent);
+        if (botChoice && Window_HasFocus(dc->contextIndex, &item->window))
+            color[0] = color[1] = color[2] = 0.0f;
+#endif
+#ifdef KISAK_NX
+        const float originalScale = textDefPtr->textscale;
+        const int classFooterSlot = UI_NX_ClassFooterSlot(item);
+        const bool fitSettingsLabel = (item->type == 1 || item->type == 3) && UI_NX_IsSettingsMenu(item->parent);
+        const bool fitPortLabel = textDefPtr->text && !strncmp(textDefPtr->text, "@OPENBLOPS_", 11);
+        const bool fitBotLabel =
+#ifdef KISAK_MP
+            botChoice || (item->type == 1 && UI_IsCustomBotMenu(item->parent));
+#else
+            false;
+#endif
+        if ((fitSettingsLabel || fitPortLabel || fitBotLabel || classFooterSlot >= 0)
+            && !(item->window.staticFlags & 0x800000) && item->window.rect.w >= 32.0f)
+        {
+            Font_s *labelFont = Item_GetFont(dc->contextIndex, item);
+            float padding = fabsf(textDefPtr->textalignx) + 3.0f;
+#ifdef KISAK_MP
+            if (botChoice)
+                padding += UI_TextHeight(labelFont, originalScale) + 3.0f;
+#endif
+            if (classFooterSlot >= 0)
+            {
+                padding = 12.0f;
+                if (classFooterSlot == 0)
+                    padding += 2.0f * UI_TextHeight(labelFont, originalScale);
+            }
+            const float available = item->window.rect.w - padding;
+            const int width = UI_TextWidth(textPtr, 0, labelFont, originalScale);
+            if (available > 0.0f && width > available)
+            {
+                textDefPtr->textscale *= available / width;
+                const int fitted = UI_TextWidth(textPtr, 0, labelFont, textDefPtr->textscale);
+                if (fitted > available)
+                    textDefPtr->textscale *= available / fitted;
+                textDefPtr->textRect[0].w = 0.0f;
+            }
+        }
+        if (UI_NX_IsControlsCategory(item) && Window_HasFocus(dc->contextIndex, &item->window))
+            color[0] = color[1] = color[2] = 0.0f;
+#endif
         Item_SetTextExtents(dc->contextIndex, item, textPtr);
         if ( (0x800000 & item->window.staticFlags) != 0 )
         {
@@ -9262,12 +10944,43 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
             {
                 drawArrows = 1;
             }
+            float textX = textRect->x;
+#ifdef KISAK_NX
+            if (classFooterSlot == 0 && s_nxClassFactionEditMenu != item->parent)
+                drawArrows = false;
+            if (UI_NX_IsClassListFaction(item))
+                drawArrows = true;
+            if (UI_NX_IsFriendsShortcut(item))
+                textX = std::min(textX, rect->x + rect->w - textRect->w);
+            float clippedWidth = 0.0f;
+            if (item->dvar && item->type >= 9 && item->type <= 11 && UI_NX_SettingsCategoryMenu(item->parent)
+                && item->parent->itemCount > 0)
+            {
+                const rectDef_s &frame = item->parent->items[0]->window.rectClient;
+                if (rect->horzAlign == frame.horzAlign && rect->vertAlign == frame.vertAlign)
+                {
+                    const float right = frame.x + frame.w + item->parent->window.rect.x
+                        - 12.0f - (drawArrows ? textRect->h : 0.0f);
+                    const float available = right - textRect->x;
+                    const float width = textRect->w;
+                    if (available > 0.0f && width > available)
+                    {
+                        clippedWidth = available;
+                        textX -= UI_NX_SettingTextOffset(item, textPtr, width - available);
+                    }
+                }
+            }
+#endif
             if ( drawArrows )
             {
                 arrowSize = textRect->h;
                 leftArrowX = textRect->x - arrowSize;
                 v4 = UI_TextWidth(textPtr, 64, font, textDefPtr->textscale);
                 rightArrowX = (float)v4 + textRect->x;
+#ifdef KISAK_NX
+                if (clippedWidth > 0.0f)
+                    rightArrowX = textRect->x + clippedWidth;
+#endif
                 UI_DrawHandlePic(
                     &scrPlaceView[dc->contextIndex],
                     leftArrowX,
@@ -9289,6 +11002,17 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     color,
                     sharedUiInfo.assets.dvarlistArrowRight);
             }
+#ifdef KISAK_NX
+            if (clippedWidth > 0.0f)
+            {
+                rectDef_s viewport = {textRect->x, textRect->y - textRect->h - 2.0f,
+                    clippedWidth, textRect->h + 4.0f, rect->horzAlign, rect->vertAlign};
+                ScrPlace_ApplyRect(&scrPlaceView[dc->contextIndex], &viewport.x, &viewport.y,
+                    &viewport.w, &viewport.h, viewport.horzAlign, viewport.vertAlign);
+                R_AddCmdSetScissorValues(true, static_cast<int>(viewport.x), static_cast<int>(viewport.y),
+                    static_cast<int>(viewport.w), static_cast<int>(viewport.h));
+            }
+#endif
             if ( subtitle )
             {
                 UI_DrawTextWithGlow(
@@ -9296,7 +11020,7 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     textPtr,
                     0x7FFFFFFF,
                     font,
-                    textRect->x,
+                    textX,
                     textRect->y,
                     rect->horzAlign,
                     rect->vertAlign,
@@ -9315,7 +11039,7 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                         textPtr,
                         0x7FFFFFFF,
                         font,
-                        textRect->x,
+                        textX,
                         textRect->y,
                         rect->horzAlign,
                         rect->vertAlign,
@@ -9328,7 +11052,7 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                         textPtr,
                         0x7FFFFFFF,
                         font,
-                        textRect->x,
+                        textX,
                         textRect->y,
                         rect->horzAlign,
                         rect->vertAlign,
@@ -9344,7 +11068,7 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     textPtr,
                     0x7FFFFFFF,
                     font,
-                    textRect->x,
+                    textX,
                     textRect->y,
                     rect->horzAlign,
                     rect->vertAlign,
@@ -9355,7 +11079,14 @@ void __cdecl Item_Text_Paint(int localClientNum, UiContext *dc, itemDef_s *item)
                     0,
                     cinematic);
             }
+#ifdef KISAK_NX
+            if (clippedWidth > 0.0f)
+                R_AddCmdSetScissorValues(false, 0, 0, 0, 0);
+#endif
         }
+#ifdef KISAK_NX
+        textDefPtr->textscale = originalScale;
+#endif
     }
 }
 
@@ -9719,9 +11450,11 @@ const char *__cdecl Item_DvarEnum_Setting(itemDef_s *item)
     {
         __debugbreak();
     }
-    if ( !enumDvarPtr->enumDvarName )
+    if ( !enumDvarPtr || !enumDvarPtr->enumDvarName )
         return "<dvarEnumList not set>";
     enumDvar = Dvar_FindVar(enumDvarPtr->enumDvarName);
+    if ( !enumDvar )
+        return "";
     if ( enumDvar->type != DVAR_TYPE_ENUM )
         return "<not an enum dvar>";
     if ( !enumDvar->domain.enumeration.stringCount )
@@ -11434,18 +13167,15 @@ static void UI_NX_MoveItem(itemDef_s *item, float dy)
 static itemDef_s *UI_NX_CloneItem(menuDef_t *menu, const itemDef_s *src, const char *name, float dy,
                                   bool focusable)
 {
-    itemDef_s *item = (itemDef_s *)malloc(sizeof(itemDef_s));
+    itemDef_s *item = (itemDef_s *)UI_NX_MenuAlloc(menu, sizeof(itemDef_s));
     if ( !item )
         return nullptr;
     memcpy(item, src, sizeof(*item));
     if ( Item_IsTextDefType(src) && src->typeData.textDef )
     {
-        textDef_s *text = (textDef_s *)malloc(sizeof(textDef_s));
+        textDef_s *text = (textDef_s *)UI_NX_MenuAlloc(menu, sizeof(textDef_s));
         if ( !text )
-        {
-            free(item);
             return nullptr;
-        }
         memcpy(text, src->typeData.textDef, sizeof(*text));
         item->typeData.textDef = text;
     }
@@ -11458,7 +13188,7 @@ static itemDef_s *UI_NX_CloneItem(menuDef_t *menu, const itemDef_s *src, const c
     {
         if ( handler->name && !I_stricmp(handler->name, "leavefocus") )
         {
-            if ( GenericEventHandler *leave = (GenericEventHandler *)malloc(sizeof(GenericEventHandler)) )
+            if ( GenericEventHandler *leave = (GenericEventHandler *)UI_NX_MenuAlloc(menu, sizeof(GenericEventHandler)) )
             {
                 *leave = *handler;
                 leave->next = nullptr;
@@ -11578,6 +13308,372 @@ static void UI_NX_ScaleItem(itemDef_s *item, float cx, float cy, float scale)
     }
 }
 
+#ifdef KISAK_NX
+static void UI_NX_ResizeSettingsRow(itemDef_s *item, float y, float scale)
+{
+    UI_NX_MoveItem(item, y - item->window.rectClient.y);
+    if (scale >= 1.0f)
+        return;
+
+    item->window.rect.h *= scale;
+    item->window.rectClient.h *= scale;
+    if (textDef_s *text = Item_GetTextDef(item))
+    {
+        text->textaligny *= scale;
+        text->textscale *= scale;
+        text->textRect[0].w = 0.0f;
+    }
+    if (UIAnimInfo *anim = item->animInfo)
+    {
+        const auto scaleState = [y, scale](rectDef_s &bounds) {
+            bounds.y = y + (bounds.y - y) * scale;
+            bounds.h *= scale;
+        };
+        for (int state = 0; anim->animStates && state < anim->animStateCount; ++state)
+            if (anim->animStates[state])
+                scaleState(anim->animStates[state]->rectClient);
+        scaleState(anim->currentAnimState.rectClient);
+        scaleState(anim->nextAnimState.rectClient);
+    }
+}
+
+static void UI_NX_LayoutSettingsRows(menuDef_t *menu, float sidebarRight)
+{
+    constexpr float firstRowY = -115.0f;
+    constexpr float rowPitch = 19.0f;
+    constexpr float footerGap = 5.0f;
+    const rectDef_s &frame = menu->items[0]->window.rectClient;
+    const float panelRight = frame.x + frame.w;
+    const float panelBottom = frame.y + frame.h - 8.0f;
+    const auto inSettingsColumn = [sidebarRight, panelRight](const rectDef_s &rect) {
+        return rect.horzAlign == 2 && rect.vertAlign == 2 && rect.x >= sidebarRight
+            && rect.x < panelRight && rect.w > 0.0f && rect.h > 0.0f;
+    };
+
+    std::vector<float> rowPositions;
+    float footerHeight = 0.0f;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        const rectDef_s &rect = item->window.rectClient;
+        if (!inSettingsColumn(rect))
+            continue;
+        if (item->dvar && ((item->type >= 8 && item->type <= 11) || Item_IsTextField(item)))
+            rowPositions.push_back(rect.y);
+        else if (const textDef_s *label = Item_GetTextDef(item);
+                 label && label->text && !I_stricmp(label->text, "@MENU_APPLY"))
+            footerHeight = std::max(footerHeight, rect.h);
+    }
+    if (rowPositions.empty())
+        return;
+    std::sort(rowPositions.begin(), rowPositions.end());
+    rowPositions.erase(std::unique(rowPositions.begin(), rowPositions.end()), rowPositions.end());
+
+    float rowsHeight = 0.0f;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        const rectDef_s &rect = menu->items[i]->window.rectClient;
+        if (!inSettingsColumn(rect))
+            continue;
+        const auto row = std::lower_bound(rowPositions.begin(), rowPositions.end(), rect.y);
+        if (row != rowPositions.end() && *row == rect.y)
+            rowsHeight = std::max(rowsHeight, (row - rowPositions.begin()) * rowPitch + rect.h);
+    }
+    const float rowsBottom = footerHeight > 0.0f ? panelBottom - footerHeight - footerGap : panelBottom;
+    if (rowsHeight <= 0.0f || rowsBottom <= firstRowY)
+        return;
+    const float scale = std::min(1.0f, (rowsBottom - firstRowY) / rowsHeight);
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        const rectDef_s &rect = item->window.rectClient;
+        const textDef_s *label = Item_GetTextDef(item);
+        rectDef_s valueRect = rect;
+        if (label)
+            valueRect.x += label->textalignx;
+        const bool offsetValue = rect.x >= panelRight && label && inSettingsColumn(valueRect);
+        if (!offsetValue && !inSettingsColumn(rect))
+            continue;
+        const float tolerance = offsetValue ? 1.0f : 0.0f;
+        const auto row = std::lower_bound(rowPositions.begin(), rowPositions.end(), rect.y - tolerance);
+        if (row != rowPositions.end() && fabsf(*row - rect.y) <= tolerance)
+            UI_NX_ResizeSettingsRow(item,
+                firstRowY + ((row - rowPositions.begin()) * rowPitch + rect.y - *row) * scale, scale);
+        else if (footerHeight > 0.0f && label && label->text && !I_stricmp(label->text, "@MENU_APPLY"))
+            UI_NX_MoveItem(item, panelBottom - rect.h - rect.y);
+    }
+}
+
+static bool UI_NX_UsesSettingsColumn(const rectDef_s &row, const rectDef_s &category)
+{
+    return row.horzAlign == category.horzAlign && row.vertAlign == category.vertAlign
+        && row.x == category.x && row.w == category.w;
+}
+
+static void UI_NX_RemoveConsoleOptions(menuDef_t *menu)
+{
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        const itemDef_s *item = menu->items[i];
+        if (!item->dvar || I_stricmp(item->dvar, "monkeytoy"))
+            continue;
+
+        const rectDef_s &bounds = item->window.rectClient;
+        int first = i;
+        while (first > 0)
+        {
+            const itemDef_s *layer = menu->items[first - 1];
+            const rectDef_s &rect = layer->window.rectClient;
+            if (layer->type > 1 || layer->dvar || rect.x != bounds.x || rect.y != bounds.y
+                || rect.horzAlign != bounds.horzAlign || rect.vertAlign != bounds.vertAlign)
+                break;
+            --first;
+        }
+        std::copy(menu->items + i + 1, menu->items + menu->itemCount, menu->items + first);
+        menu->itemCount -= i - first + 1;
+        i = first - 1;
+    }
+}
+
+static bool UI_NX_AddControlsCategory(menuDef_t *menu)
+{
+    int tabsStart = -1;
+    int graphics = -1;
+    int multiplayer = -1;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        if (tabsStart < 0 && UI_NX_IsBackPrompt(item))
+            tabsStart = i + 1;
+        if (!UI_NX_IsSettingsCategoryItem(item))
+            continue;
+        if (graphics < 0 && UI_NX_OpensSettingsCategory(item, "options_graphics"))
+            graphics = i;
+        if (multiplayer < 0 && UI_NX_OpensSettingsCategory(item, "options_multi"))
+            multiplayer = i;
+    }
+    if (tabsStart < 0 || graphics < tabsStart || multiplayer <= graphics)
+        return false;
+
+    itemDef_s *source = menu->items[graphics];
+    const rectDef_s category = source->window.rectClient;
+    int tabsEnd = graphics;
+    while (tabsEnd > tabsStart)
+    {
+        const rectDef_s &row = menu->items[tabsEnd - 1]->window.rectClient;
+        if (!UI_NX_UsesSettingsColumn(row, category) || row.y != category.y)
+            break;
+        --tabsEnd;
+    }
+
+    const float step = category.h + 2.0f;
+    const float controlsY = menu->items[multiplayer]->window.rectClient.y + step;
+    int insertAt = multiplayer + 1;
+    for (; insertAt < menu->itemCount; ++insertAt)
+    {
+        const rectDef_s &row = menu->items[insertAt]->window.rectClient;
+        if (UI_NX_UsesSettingsColumn(row, category) && row.y >= controlsY)
+            break;
+    }
+
+    const int count = menu->itemCount - (tabsEnd - tabsStart) + 1;
+    itemDef_s **items = static_cast<itemDef_s **>(UI_NX_MenuAlloc(menu, count * sizeof(*items)));
+    if (!items)
+        return false;
+    itemDef_s *controls = UI_NX_CloneItem(menu, source, settingsControlsItem, controlsY - category.y, false);
+    if (!controls)
+        return false;
+
+    static GenericEventScript open{.action = "play uin_navigation_click ; close self ; open options_gamepad ;"};
+    static GenericEventScript focus{.action = "play uin_navigation_over ; setLocalVarInt ui_highlight 0 ; setLocalVarString ui_choicegroup \"\" ;"};
+    static GenericEventHandler onFocus{"onFocus", &focus, nullptr};
+    static GenericEventHandler action{"action", &open, &onFocus};
+    controls->onEvent = &action;
+    controls->typeData.textDef->text = "@MENU_CONTROLS_CAPS";
+    controls->typeData.textDef->textExpData = nullptr;
+    controls->visibleExp = {};
+    controls->forecolorAExp = {};
+    controls->showBits = 0;
+    controls->hideBits = ~0ULL;
+    controls->dvarFlags = 0;
+    controls->window.style = 0;
+    controls->window.border = 0;
+    controls->window.background = nullptr;
+    controls->window.dynamicFlags[0] = 4;
+
+    int output = 0;
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        if (i == insertAt)
+            items[output++] = controls;
+        if (i >= tabsStart && i < tabsEnd)
+            continue;
+        itemDef_s *item = menu->items[i];
+        const rectDef_s &row = item->window.rectClient;
+        if (UI_NX_UsesSettingsColumn(row, category) && row.y >= controlsY)
+            UI_NX_MoveItem(item, step);
+        items[output++] = item;
+    }
+    if (insertAt == menu->itemCount)
+        items[output++] = controls;
+    menu->items = items;
+    menu->itemCount = output;
+    if (!I_stricmp(menu->window.name, "options_game"))
+        UI_NX_RemoveConsoleOptions(menu);
+    if (UI_NX_SettingsCategoryMenu(menu))
+        UI_NX_LayoutSettingsRows(menu, category.x + category.w);
+    return true;
+}
+
+static void UI_NX_ReplaceGamepadSidebar(menuDef_t *menu, const menuDef_t *root)
+{
+    int firstSetting = 0;
+    for (; firstSetting < menu->itemCount; ++firstSetting)
+    {
+        const itemDef_s *item = menu->items[firstSetting];
+        const rectDef_s &rect = item->window.rectClient;
+        if (item->type == 1 && rect.horzAlign == 2 && rect.vertAlign == 2
+            && rect.w > 0.0f && rect.x > -100.0f && rect.x < 0.0f && rect.y < -120.0f)
+            break;
+    }
+    if (firstSetting == menu->itemCount)
+        return;
+
+    const int count = root->itemCount + menu->itemCount - firstSetting;
+    itemDef_s **items = static_cast<itemDef_s **>(UI_NX_MenuAlloc(menu, count * sizeof(*items)));
+    if (!items)
+        return;
+    for (int i = 0; i < root->itemCount; ++i)
+    {
+        const itemDef_s *source = root->items[i];
+        itemDef_s *item = UI_NX_CloneItem(menu, source, source->window.name, 0.0f, false);
+        if (!item)
+            return;
+        item->onEvent = source->onEvent;
+        item->rectExpData = source->rectExpData;
+        item->window.dynamicFlags[0] &= ~2;
+        items[i] = item;
+    }
+    const itemDef_s *enable = UI_NX_FindItemByDvar(menu, "gpad_enabled");
+    int output = root->itemCount;
+    for (int i = firstSetting; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        const rectDef_s &rect = item->window.rectClient;
+        if (enable)
+        {
+            const rectDef_s &enableRect = enable->window.rectClient;
+            if (rect.x == enableRect.x && rect.y == enableRect.y
+                && rect.horzAlign == enableRect.horzAlign && rect.vertAlign == enableRect.vertAlign)
+                continue;
+        }
+        items[output++] = item;
+    }
+    menu->items = items;
+    menu->itemCount = output;
+    if (textDef_s *heading = Item_GetTextDef(items[root->itemCount]))
+    {
+        heading->text = "@MENU_CONTROLS_CAPS";
+        heading->textExpData = nullptr;
+    }
+    const itemDef_s *controlsCategory = UI_NX_FindItem(menu, settingsControlsItem, nullptr);
+    const rectDef_s &categoryRect = controlsCategory->window.rectClient;
+    UI_NX_LayoutSettingsRows(menu, categoryRect.x + categoryRect.w);
+}
+
+static itemDef_s *UI_NX_FindItemByText(menuDef_t *menu, const char *text)
+{
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        const textDef_s *def = item ? Item_GetTextDef(item) : nullptr;
+        if (def && def->text && !I_stricmp(def->text, text))
+            return item;
+    }
+    return nullptr;
+}
+
+static void UI_NX_PlaceSpeakerConfigText(menuDef_t *menu)
+{
+    if (!menu->window.name || I_stricmp(menu->window.name, "options_sound"))
+        return;
+    const itemDef_s *setup = nullptr;
+    for (int i = 0; i < menu->itemCount && !setup; ++i)
+    {
+        const itemDef_s *item = menu->items[i];
+        if (item && item->dvar && !I_stricmp(item->dvar, "snd_menu_speaker_setup") && item->type >= 8 && item->type <= 11
+            && item->typeData.textDef)
+            setup = item;
+    }
+    const itemDef_s *setupLabel = UI_NX_FindItemByText(menu, "@MENU_SPEAKER_SETUP_CAPS");
+    const itemDef_s *deviceLabel = UI_NX_FindItemByText(menu, "@PLATFORM_SOUND_DEVICE_CAPS");
+    if (!setup || !setupLabel || !deviceLabel)
+        return;
+    const float dy = deviceLabel->window.rect.y - setupLabel->window.rect.y;
+    const float dyClient = deviceLabel->window.rectClient.y - setupLabel->window.rectClient.y;
+    const textDef_s *value = setup->typeData.textDef;
+
+    static constexpr const char *configs[] = {
+        "@MENU_STEREO_SPEAKERS", "@MENU_FIVE_ONE_SPEAKERS", "@PLATFORM_SEVEN_ONE_SPEAKERS",
+    };
+    for (int i = 0; i < menu->itemCount; ++i)
+    {
+        itemDef_s *item = menu->items[i];
+        textDef_s *text = item && item != setup ? Item_GetTextDef(item) : nullptr;
+        if (!text || !text->text)
+            continue;
+        bool isConfig = false;
+        for (const char *config : configs)
+            isConfig = isConfig || !I_stricmp(text->text, config);
+        if (!isConfig)
+            continue;
+        item->window.rect = setup->window.rect;
+        item->window.rect.y += dy;
+        item->window.rectClient = setup->window.rectClient;
+        item->window.rectClient.y += dyClient;
+        text->alignment = value->alignment;
+        text->fontEnum = value->fontEnum;
+        text->textAlignMode = value->textAlignMode;
+        text->textalignx = value->textalignx;
+        text->textaligny = value->textaligny;
+        text->textscale = value->textscale;
+        text->textStyle = value->textStyle;
+        text->textRect[0].w = 0.0f;
+        if (UIAnimInfo *anim = item->animInfo)
+        {
+            for (int s = 0; s < anim->animStateCount; ++s)
+                if (anim->animStates && anim->animStates[s])
+                    anim->animStates[s]->rectClient = item->window.rectClient;
+            anim->currentAnimState.rectClient = item->window.rectClient;
+            anim->nextAnimState.rectClient = item->window.rectClient;
+        }
+    }
+}
+
+static void UI_NX_PrepareSettingsMenu(UiContext *dc, menuDef_t *menu)
+{
+    if (!UI_NX_IsSettingsMenu(menu) || UI_NX_FindItem(menu, settingsControlsItem, nullptr))
+        return;
+    if (!I_stricmp(menu->window.name, "options_gamepad"))
+    {
+        menuDef_t *root = Menus_FindByName(dc, "options_new_pc");
+        if (!root)
+            return;
+        UI_NX_PrepareSettingsMenu(dc, root);
+        if (UI_NX_FindItem(root, settingsControlsItem, nullptr))
+        {
+            UI_NX_AddAimAssistOption(menu);
+            UI_NX_ReplaceGamepadSidebar(menu, root);
+        }
+        return;
+    }
+    UI_NX_AddFrameRateOption(menu);
+    UI_NX_RemoveDisplayOptions(menu);
+    UI_NX_AddControlsCategory(menu);
+    UI_NX_PlaceSpeakerConfigText(menu);
+}
+#endif
+
 // The controller diagram (every top-aligned item of the gamepad menu: the
 // picture, its leader lines and layout labels) is placed from the top of the
 // 480-unit virtual screen and the rows from its centre, so the added rows
@@ -11652,22 +13748,22 @@ static void UI_NX_AddAimAssistOption(menuDef_t *menu)
 
     itemDef_s *added[16] = {};
     int addedCount = UI_NX_CloneInvertRow(menu, invert, label, dy, "options_gamepad_nx_aimassist",
-        "options_gamepad_nx_aimassist_hl", "options_gamepad_nx_aimassist_row", "nx_aimassist", "AIM ASSIST",
+        "options_gamepad_nx_aimassist_hl", "options_gamepad_nx_aimassist_row", "nx_aimassist", "@MENU_AIM_ASSIST_CAPS",
         added, (int)ARRAY_COUNT(added));
     addedCount += UI_NX_CloneInvertRow(menu, invert, label, dy + rowStep, "options_gamepad_nx_aimaccel",
         "options_gamepad_nx_aimaccel_hl", "options_gamepad_nx_aimaccel_row", "nx_aimacceleration",
-        "AIM ACCELERATION", added + addedCount, (int)ARRAY_COUNT(added) - addedCount);
+        "@OPENBLOPS_AIM_ACCELERATION", added + addedCount, (int)ARRAY_COUNT(added) - addedCount);
     if ( !addedCount )
         return;
 
-    itemDef_s **items = (itemDef_s **)malloc((menu->itemCount + addedCount) * sizeof(itemDef_s *));
+    itemDef_s **items = (itemDef_s **)UI_NX_MenuAlloc(menu, (menu->itemCount + addedCount) * sizeof(itemDef_s *));
     if ( !items )
         return;
     memcpy(items, menu->items, (lastIndex + 1) * sizeof(itemDef_s *));
     memcpy(&items[lastIndex + 1], added, addedCount * sizeof(itemDef_s *));
     memcpy(&items[lastIndex + 1 + addedCount], &menu->items[lastIndex + 1],
            (menu->itemCount - lastIndex - 1) * sizeof(itemDef_s *));
-    menu->items = items;   // the zone's array stays as it was; this one lives as long as the menu
+    menu->items = items;
     menu->itemCount += addedCount;
     UI_NX_FitGamepadDiagram(menu, invert->window.rect.y + dy + rowStep + invert->window.rect.h,
                             invert->window.rect.vertAlign);
@@ -11720,7 +13816,7 @@ static bool UI_AddGraphicsChoiceRow(menuDef_t *menu, const itemDef_s *after, flo
         }
         if ( choice )
         {
-            focusItemDef_s *focus = (focusItemDef_s *)calloc(1, sizeof(focusItemDef_s));
+            focusItemDef_s *focus = (focusItemDef_s *)UI_NX_MenuAlloc(menu, sizeof(focusItemDef_s));
             if ( !focus ) return false;
             focus->focusTypeData.multi = values;
             copy->typeData.textDef->textTypeData.focusItemDef = focus;
@@ -11729,7 +13825,7 @@ static bool UI_AddGraphicsChoiceRow(menuDef_t *menu, const itemDef_s *after, flo
         added[count++] = copy;
     }
     if ( !count ) return false;
-    itemDef_s **items = (itemDef_s **)malloc((menu->itemCount + count) * sizeof(itemDef_s *));
+    itemDef_s **items = (itemDef_s **)UI_NX_MenuAlloc(menu, (menu->itemCount + count) * sizeof(itemDef_s *));
     if ( !items ) return false;
     memcpy(items, menu->items, (lastIndex + 1) * sizeof(itemDef_s *));
     memcpy(items + lastIndex + 1, added, count * sizeof(itemDef_s *));
@@ -11738,38 +13834,6 @@ static bool UI_AddGraphicsChoiceRow(menuDef_t *menu, const itemDef_s *after, flo
     menu->items = items;
     menu->itemCount += count;
     return true;
-}
-
-struct FrameRateOptionText
-{
-    const char *language;
-    const char *label;
-    const char *unlimited;
-};
-
-static const FrameRateOptionText &UI_NX_GetFrameRateOptionText()
-{
-    static constexpr FrameRateOptionText translations[] = {
-        { "english",   "FPS LIMIT", "UNLIMITED" },
-        { "french",    "LIMITE FPS", "SANS LIMITE" },
-        { "frenchcan", "LIMITE FPS", "SANS LIMITE" },
-        { "german",    "FPS-LIMIT", "UNBEGRENZT" },
-        { "austrian",  "FPS-LIMIT", "UNBEGRENZT" },
-        { "italian",   "LIMITE FPS", "ILLIMITATO" },
-        { "spanish",   "L\xCDMITE DE FPS", "SIN L\xCDMITE" },
-        { "british",   "FPS LIMIT", "UNLIMITED" },
-        { "russian",   "\xCB\xC8\xCC\xC8\xD2 FPS", "\xC1\xC5\xC7 \xCB\xC8\xCC\xC8\xD2\xC0" },
-        { "polish",    "LIMIT FPS", "BEZ LIMITU" },
-        { "korean",    "FPS \xC1\xA6\xC7\xD1", "\xC1\xA6\xC7\xD1 \xBE\xF8\xC0\xBD" },
-        { "japanese",  "FPS \x8F\xE3\x8C\xC0", "\x96\xB3\x90\xA7\x8C\xC0" },
-        { "czech",     "LIMIT FPS", "BEZ OMEZEN\xCD" },
-        { "fulljap",   "FPS \x8F\xE3\x8C\xC0", "\x96\xB3\x90\xA7\x8C\xC0" },
-    };
-    const char *language = SEH_GetLanguageName(SEH_GetCurrentLanguage());
-    for ( const auto &translation : translations )
-        if ( !I_stricmp(language, translation.language) )
-            return translation;
-    return translations[0];
 }
 
 // Removes the options row of a dvar: the items on its line from its column
@@ -11860,18 +13924,16 @@ static void UI_NX_AddFrameRateOption(menuDef_t *menu)
         return;
 
     static multiDef_s values = {
-        { "30 FPS", "40 FPS", "45 FPS", "50 FPS", "60 FPS", "75 FPS", "85 FPS", "90 FPS", "120 FPS", "UNLIMITED" },
+        { "30 FPS", "40 FPS", "45 FPS", "50 FPS", "60 FPS", "75 FPS", "85 FPS", "90 FPS", "120 FPS", "@MENU_UNLIMITED" },
         {}, { 30, 40, 45, 50, 60, 75, 85, 90, 120, 0 }, 10, 0, 0
     };
-    const auto &translation = UI_NX_GetFrameRateOptionText();
-    values.dvarList[values.count - 1] = translation.unlimited;
     const float rowY = vsync->window.rect.y + 19.0f;
     const float firstY = filter->window.rect.y - 1.0f;
     const float lastY = textures->window.rect.y;
     const float shift = rowY + 19.0f - filter->window.rect.y;
     if ( !UI_AddGraphicsChoiceRow(menu, vsync, rowY, "options_graphics_frame_limit",
             "options_graphics_frame_limit_hl", "options_graphics_frame_limit_row",
-            translation.label, "nx_fpsLimit", &values) )
+            "@OPENBLOPS_FPS_LIMIT", "nx_fpsLimit", &values) )
         return;
 
     if ( shift > 0.0f )

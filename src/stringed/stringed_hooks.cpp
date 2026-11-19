@@ -42,6 +42,274 @@ languageInfo_t g_languages[] =
 
 static const int SEH_LANGUAGE_COUNT = ARRAY_COUNT(g_languages);
 
+namespace
+{
+struct PortString
+{
+    const char *reference;
+    const char *game[10];
+    const char *utf8[10];
+};
+
+constexpr PortString portStrings[] = {
+#include "port_ui_translations.inc"
+};
+
+int SEH_PortLanguage()
+{
+    constexpr int columns[] = {0, 1, 1, 2, 2, 3, 4, 0, 5, 6, 7, 8, 9, 8};
+    static_assert(ARRAY_COUNT(columns) >= SEH_LANGUAGE_COUNT);
+    if (!loc_language || (loc_forceEnglish && loc_forceEnglish->current.enabled))
+        return 0;
+    const unsigned int language = SEH_GetCurrentLanguage();
+    return language < ARRAY_COUNT(columns) ? columns[language] : 0;
+}
+}
+
+const char *SEH_GetPortString(const char *reference, bool utf8)
+{
+    if (strncmp(reference, "OPENBLOPS_", 10))
+        return nullptr;
+    for (const PortString &entry : portStrings)
+        if (!strcmp(reference, entry.reference))
+            return (utf8 ? entry.utf8 : entry.game)[SEH_PortLanguage()];
+    return reference;
+}
+
+namespace
+{
+#include "game_encodings.inc"
+
+enum class GameEncoding { Western, Cyrillic, CentralEuropean, Korean, Japanese };
+
+GameEncoding SEH_PortEncoding()
+{
+    switch (SEH_PortLanguage())
+    {
+    case 5: return GameEncoding::Cyrillic;
+    case 6: case 9: return GameEncoding::CentralEuropean;
+    case 7: return GameEncoding::Korean;
+    case 8: return GameEncoding::Japanese;
+    default: return GameEncoding::Western;
+    }
+}
+
+const unsigned short *SEH_SingleByteTable(GameEncoding encoding)
+{
+    switch (encoding)
+    {
+    case GameEncoding::Cyrillic: return cp1251High;
+    case GameEncoding::CentralEuropean: return cp1250High;
+    case GameEncoding::Japanese: return cp932High;
+    case GameEncoding::Korean: return nullptr;
+    default: return cp1252High;
+    }
+}
+
+int SEH_ShiftJisIndex(unsigned char lead, unsigned char trail)
+{
+    int row, column;
+    if (lead >= 0x81 && lead <= 0x9F) row = lead - 0x81;
+    else if (lead >= 0xE0 && lead <= 0xEF) row = lead - 0xE0 + 31;
+    else return -1;
+    if (trail >= 0x40 && trail <= 0x7E) column = trail - 0x40;
+    else if (trail >= 0x80 && trail <= 0xFC) column = trail - 0x80 + 63;
+    else return -1;
+    return row * 188 + column;
+}
+
+unsigned int SEH_DecodeGameChar(GameEncoding encoding, const unsigned char *text, int *length)
+{
+    *length = 1;
+    const unsigned char lead = text[0];
+    if (lead < 0x80)
+        return lead;
+    if (encoding == GameEncoding::Korean && lead >= 0xB0 && lead <= 0xC8 && text[1] > 0xA0 && text[1] != 0xFF)
+    {
+        *length = 2;
+        return koreanHangul[(lead - 0xB0) * 94 + text[1] - 0xA1];
+    }
+    if (encoding == GameEncoding::Japanese)
+    {
+        const int index = SEH_ShiftJisIndex(lead, text[1]);
+        if (index >= 0)
+        {
+            *length = 2;
+            return japaneseShiftJis[index];
+        }
+    }
+    const unsigned short *table = SEH_SingleByteTable(encoding);
+    return table ? table[lead - 0x80] : 0;
+}
+
+size_t SEH_WriteUtf8(unsigned int code, char *out)
+{
+    if (code < 0x80)
+    {
+        out[0] = static_cast<char>(code);
+        return 1;
+    }
+    if (code < 0x800)
+    {
+        out[0] = static_cast<char>(0xC0 | (code >> 6));
+        out[1] = static_cast<char>(0x80 | (code & 0x3F));
+        return 2;
+    }
+    out[0] = static_cast<char>(0xE0 | (code >> 12));
+    out[1] = static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+    out[2] = static_cast<char>(0x80 | (code & 0x3F));
+    return 3;
+}
+}
+
+bool SEH_GameTextToUtf8(const char *text, char *out, size_t size)
+{
+    if (!size)
+        return false;
+    const GameEncoding encoding = SEH_PortEncoding();
+    bool exact = true;
+    size_t length = 0;
+    const unsigned char *ch = reinterpret_cast<const unsigned char *>(text ? text : "");
+    while (*ch)
+    {
+        int used;
+        unsigned int code = SEH_DecodeGameChar(encoding, ch, &used);
+        ch += used;
+        if (!code)
+        {
+            code = '?';
+            exact = false;
+        }
+        char encoded[3];
+        const size_t count = SEH_WriteUtf8(code, encoded);
+        if (length + count >= size)
+        {
+            exact = false;
+            break;
+        }
+        memcpy(out + length, encoded, count);
+        length += count;
+    }
+    out[length] = 0;
+    return exact;
+}
+
+unsigned int SEH_ReadUtf8Char(const char **text)
+{
+    const unsigned char *s = reinterpret_cast<const unsigned char *>(*text);
+    if (s[0] < 0x80)
+    {
+        *text += 1;
+        return s[0];
+    }
+    const int trailing = s[0] >= 0xF8 ? -1 : s[0] >= 0xF0 ? 3 : s[0] >= 0xE0 ? 2 : s[0] >= 0xC0 ? 1 : -1;
+    if (trailing < 0)
+    {
+        *text += 1;
+        return 0xFFFD;
+    }
+    unsigned int code = s[0] & (0x3F >> trailing);
+    for (int i = 1; i <= trailing; ++i)
+    {
+        if ((s[i] & 0xC0) != 0x80)
+        {
+            *text += i;
+            return 0xFFFD;
+        }
+        code = (code << 6) | (s[i] & 0x3F);
+    }
+    *text += trailing + 1;
+    return code;
+}
+
+int SEH_EncodeGameChar(unsigned int code, char *out)
+{
+    if (!code)
+        return 0;
+    if (code < 0x80)
+    {
+        out[0] = static_cast<char>(code);
+        return 1;
+    }
+    if (code > 0xFFFF)
+        return 0;
+    const GameEncoding encoding = SEH_PortEncoding();
+    if (const unsigned short *table = SEH_SingleByteTable(encoding))
+    {
+        for (int i = 0; i < 128; ++i)
+        {
+            if (table[i] == code)
+            {
+                out[0] = static_cast<char>(0x80 + i);
+                return 1;
+            }
+        }
+    }
+    if (encoding == GameEncoding::Korean)
+    {
+        for (int i = 0; i < static_cast<int>(ARRAY_COUNT(koreanHangul)); ++i)
+        {
+            if (koreanHangul[i] == code)
+            {
+                out[0] = static_cast<char>(0xB0 + i / 94);
+                out[1] = static_cast<char>(0xA1 + i % 94);
+                return 2;
+            }
+        }
+    }
+    if (encoding == GameEncoding::Japanese)
+    {
+        for (int i = 0; i < static_cast<int>(ARRAY_COUNT(japaneseShiftJis)); ++i)
+        {
+            if (japaneseShiftJis[i] == code)
+            {
+                const int lead = i / 188, trail = i % 188;
+                out[0] = static_cast<char>(lead < 31 ? 0x81 + lead : 0xE0 + lead - 31);
+                out[1] = static_cast<char>(trail < 63 ? 0x40 + trail : 0x80 + trail - 63);
+                return 2;
+            }
+        }
+    }
+    return 0;
+}
+
+bool SEH_Utf8ToGameText(const char *text, char *out, size_t size)
+{
+    if (!size)
+        return false;
+    bool exact = true;
+    size_t length = 0;
+    const char *ch = text ? text : "";
+    while (*ch)
+    {
+        char encoded[2];
+        int count = SEH_EncodeGameChar(SEH_ReadUtf8Char(&ch), encoded);
+        if (!count)
+        {
+            encoded[0] = '?';
+            count = 1;
+            exact = false;
+        }
+        if (length + count >= size)
+        {
+            exact = false;
+            break;
+        }
+        memcpy(out + length, encoded, count);
+        length += count;
+    }
+    out[length] = 0;
+    return exact;
+}
+
+const char *SEH_LocalizePortText(const char *english)
+{
+    for (const PortString &entry : portStrings)
+        if (!strcmp(english, entry.game[0]))
+            return entry.game[SEH_PortLanguage()];
+    return english;
+}
+
 int __cdecl SEH_GetCurrentLanguage()
 {
     return loc_language->current.integer;
@@ -239,6 +507,8 @@ const char *__cdecl SEH_StringEd_GetString(char *pszReference)
 {
     if ( !loc_translate || !loc_translate->current.enabled )
         return pszReference;
+    if (const char *translation = SEH_GetPortString(pszReference))
+        return translation;
     if ( *pszReference && pszReference[1] )
         return SE_GetString(pszReference);
     return pszReference;
@@ -473,6 +743,10 @@ void __cdecl SEH_GetBindingForDirective(int localClientNum, char *directive, cha
     else
     {
         SEH_ParseDirective(directive, name, arg0);
+#ifdef KISAK_NX
+        if (UI_GetSticksTranslatedString(localClientNum, name, result))
+            return;
+#endif
         if ( !I_stricmp(name, "gocrouch")
             && (UI_GetKeyBindingLocalizedString(localClientNum, "togglecrouch", result, 0)
              || UI_GetKeyBindingLocalizedString(localClientNum, "+movedown", result, 0)) )

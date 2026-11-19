@@ -58,6 +58,9 @@ struct ItemCopy
     itemDef_s item{};
     textDef_s text{};
     focusItemDef_s focus{};
+    UIAnimInfo animation{};
+    std::vector<animParamsDef_t> states;
+    std::vector<animParamsDef_t *> statePointers;
 };
 struct MenuCopy
 {
@@ -66,6 +69,9 @@ struct MenuCopy
     std::vector<itemDef_s *> items;
     itemDef_s *hostButton = nullptr;
     GenericEventScript *privateAction = nullptr;
+    std::list<GenericEventHandler> events;
+    GenericEventScript closeScript{};
+    std::string closeAction;
 };
 std::list<MenuCopy> menus;
 struct ServerSettingItem
@@ -126,7 +132,7 @@ void PatchServerSettings(menuDef_t *menu)
     _Dvar_RegisterString("g_password", "", 0, "Password");
     _Dvar_RegisterInt("bo1_host_maxplayers", 0, 0, 18, 1u, "Max players override (zero uses mode defaults)");
     static multiDef_s limits = {};
-    static const char *labels[] = { "DEFAULT", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    static const char *labels[] = { "@MENU_DEFAULT", "1", "2", "3", "4", "5", "6", "7", "8", "9",
         "10", "11", "12", "13", "14", "15", "16", "17", "18" };
     limits.count = 19;
     for (int i = 0; i < limits.count; ++i) { limits.dvarList[i] = labels[i]; limits.dvarValue[i] = float(i); }
@@ -219,9 +225,9 @@ std::list<ItemCopy> lobbyCaptions;
 void PatchLobbyCaption(menuDef_t *menu)
 {
     if (!menu || !Named(menu->window.name, "menu_xboxlive_privatelobby")) return;
-    const char *caption = hostPhase == HostPhase::Off ? "OFFLINE MATCH" : "HOST MATCH";
+    const char *caption = hostPhase == HostPhase::Off ? "@OPENBLOPS_OFFLINE_MATCH" : "@OPENBLOPS_HOST_MATCH";
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
-    if (UI_SplitScreenIsCustomMenu(menu)) caption = "SPLIT-SCREEN";
+    if (UI_SplitScreenIsCustomMenu(menu)) caption = "@MENU_SPLIT_SCREEN_CAPS";
 #endif
     for (int i = 0; i < menu->itemCount; ++i)
     {
@@ -230,7 +236,15 @@ void PatchLobbyCaption(menuDef_t *menu)
         if (!Named(source->window.name, "openblops_lobby_caption")
             && !HasLabel(source->typeData.textDef, "@MPUI_CUSTOM_MATCH_LOBBY_CAPS")) continue;
         for (auto &copy : lobbyCaptions)
-            if (&copy.item == source && copy.item.parent == menu) { copy.text.text = caption; return; }
+            if (&copy.item == source && copy.item.parent == menu)
+            {
+                if (copy.text.text != caption)
+                {
+                    copy.text.text = caption;
+                    copy.text.textRect[0] = {};
+                }
+                return;
+            }
         // Each normal/split-screen lobby owns its caption; leave the zone's
         // expression and any independently copied lobby untouched.
         lobbyCaptions.emplace_back(); auto &copy = lobbyCaptions.back();
@@ -253,6 +267,69 @@ void CancelPublic(bool explicitChoice = false)
     hostPhase = HostPhase::Off;
     hostMap.clear();
 }
+void CompactFlyoutItem(ItemCopy &copy, float offset, float removedHeight, const animParamsDef_t *nextFade)
+{
+    itemDef_s &item = copy.item;
+    item.window.rect.y += offset;
+    item.window.rectClient.y += offset;
+    if (!item.animInfo)
+        return;
+    copy.animation = *item.animInfo;
+    item.animInfo = &copy.animation;
+    auto adjust = [offset, removedHeight](animParamsDef_t &state) {
+        state.rectClient.y += offset;
+        if (removedHeight > 0.0f && state.rectClient.h > removedHeight)
+            state.rectClient.h -= removedHeight;
+    };
+    adjust(copy.animation.currentAnimState);
+    adjust(copy.animation.nextAnimState);
+    if (!copy.animation.animStates)
+        return;
+    const int count = copy.animation.animStateCount;
+    copy.states.resize(count);
+    copy.statePointers.resize(count);
+    for (int i = 0; i < count; ++i)
+    {
+        const animParamsDef_t *original = copy.animation.animStates[i];
+        if (!original)
+            continue;
+        auto &state = copy.states[i];
+        state = *original;
+        adjust(state);
+        if (nextFade && Named(state.name, "FadeIn"))
+            state.onEvent = nextFade->onEvent;
+        copy.statePointers[i] = &state;
+    }
+    copy.animation.animStates = copy.statePointers.data();
+}
+
+void RemoveWagerReset(MenuCopy &copy)
+{
+    constexpr char reset[] = "execNow ui_animate live_flyout ThirdFlyout Default 0 ; ";
+    GenericEventHandler *previous = nullptr;
+    for (auto *event = copy.menu->onEvent; event; event = event->next)
+    {
+        copy.events.push_back(*event);
+        auto &replacement = copy.events.back();
+        if (previous)
+            previous->next = &replacement;
+        previous = &replacement;
+        const auto *script = event->eventScript;
+        if (!Named(event->name, "onClose") || !script || !script->action)
+            continue;
+        const char *position = std::strstr(script->action, reset);
+        if (!position)
+            continue;
+        copy.closeAction = script->action;
+        copy.closeAction.erase(position - script->action, sizeof(reset) - 1);
+        copy.closeScript = *script;
+        copy.closeScript.action = copy.closeAction.c_str();
+        replacement.eventScript = &copy.closeScript;
+    }
+    if (previous)
+        copy.menu->onEvent = &copy.events.front();
+}
+
 void PatchMenu(menuDef_t *menu)
 {
     if (!menu || (!Named(menu->window.name, "main_text") && !Named(menu->window.name, "live_flyout")))
@@ -261,27 +338,42 @@ void PatchMenu(menuDef_t *menu)
         if (copy.menu == menu && menu->items == copy.items.data())
             return;
     itemDef_s *privateButton = nullptr;
+    itemDef_s *wagerButton = nullptr;
     if (Named(menu->window.name, "live_flyout"))
         for (int i = 0; i < menu->itemCount; ++i)
-            if (HasAction(menu->items[i], "open menu_xboxlive_privatelobby"))
-                privateButton = menu->items[i];
+        {
+            itemDef_s *item = menu->items[i];
+            if (HasAction(item, "open menu_xboxlive_privatelobby"))
+                privateButton = item;
+            if (Named(item->window.name, "ThirdFlyout"))
+                wagerButton = item;
+        }
     menus.emplace_back();
     auto &copy = menus.back();
     copy.menu = menu;
     copy.privateAction = Event(privateButton, "action");
+    const rectDef_s *wagerRow = wagerButton ? &wagerButton->window.rectClient : nullptr;
+    const animParamsDef_t *nextFade = wagerButton ? Item_FindStateByName(wagerButton, "FadeIn") : nullptr;
+    if (wagerRow)
+        RemoveWagerReset(copy);
     for (int i = 0; i < menu->itemCount; ++i)
     {
         itemDef_s *source = menu->items[i];
         const bool text = Item_IsTextDefType(source) && source->typeData.textDef;
         const auto *label = text ? source->typeData.textDef : nullptr;
+        const rectDef_s &rect = source->window.rectClient;
+        const bool aligned = wagerRow && rect.horzAlign == wagerRow->horzAlign && rect.vertAlign == wagerRow->vertAlign;
+        if (aligned && rect.x == wagerRow->x && rect.y == wagerRow->y && rect.w == wagerRow->w && rect.h == wagerRow->h)
+            continue;
+        const float offset = aligned && rect.y >= wagerRow->y + wagerRow->h ? -wagerRow->h : 0.0f;
+        const float shrink = wagerRow && Named(source->window.name, "ButtonBackground") ? wagerRow->h : 0.0f;
+        const animParamsDef_t *fade = Named(source->window.name, "SecondFlyout") ? nextFade : nullptr;
         const bool operations = HasLabel(label, "@MENU_OPERATIONS_CAPS");
         const bool ranked = Named(menu->window.name, "live_flyout") && privateButton &&
                             (HasLabel(label, "@MENU_RANKED_MATCH_CAPS") || HasAction(source, "quickmatch"));
         const bool offline = Named(menu->window.name, "live_flyout") && privateButton
             && (HasLabel(label, "@MPUI_CUSTOM_MATCH_CAPS") || HasLabel(label, "PRIVATE MATCH") || source == privateButton);
-        const bool wager = Named(menu->window.name, "live_flyout")
-            && (HasLabel(label, "@MPUI_WAGER_MATCH_CAPS") || HasLabel(label, "WAGER MATCH"));
-        if (!operations && !ranked && !offline && !wager)
+        if (!operations && !ranked && !offline && offset == 0.0f && shrink == 0.0f && !fade)
         {
             copy.items.push_back(source);
             continue;
@@ -295,8 +387,12 @@ void PatchMenu(menuDef_t *menu)
         {
             part.text = *source->typeData.textDef;
             item.typeData.textDef = &part.text;
-            part.text.text = wager ? "" : offline ? "OFFLINE MATCH" : ranked ? "HOST MATCH" : "CREATE A CLASS";
-            part.text.textExpData = nullptr;
+            if (operations || ranked || offline)
+            {
+                part.text.text = offline ? "@OPENBLOPS_OFFLINE_MATCH"
+                    : ranked ? "@OPENBLOPS_HOST_MATCH" : "@MPUI_CREATE_A_CLASS_CAPS";
+                part.text.textExpData = nullptr;
+            }
             part.text.textRect[0] = {};
             if (source->dataType == 3 && part.text.textTypeData.focusItemDef)
             {
@@ -316,9 +412,12 @@ void PatchMenu(menuDef_t *menu)
             item.showBits = privateButton->showBits;
             item.hideBits = privateButton->hideBits;
         }
+        if (offset != 0.0f || shrink != 0.0f || fade)
+            CompactFlyoutItem(part, offset, shrink, fade);
         copy.items.push_back(&item);
     }
     menu->items = copy.items.data();
+    menu->itemCount = static_cast<int>(copy.items.size());
 }
 } // namespace
 #ifdef KISAK_NX
@@ -326,7 +425,7 @@ namespace
 {
 // Switch: the browser refreshes on Y (the Switch's Y arrives as K_BUTTON_X;
 // Directory_HandleControllerKey). Put the button glyph in front of the stock
-// refresh label. Glyph 3 is X, which nx_switchglyphs draws as the Switch's Y.
+// refresh label. Glyph 3 draws as the Switch's Y.
 const char *FirstStringConstant(const textDef_s *text)
 {
     if (!text->textExpData)
@@ -342,7 +441,7 @@ const char *FirstStringConstant(const textDef_s *text)
 }
 void PatchRefreshPrompt(menuDef_t *menu)
 {
-    if (!Named(menu->window.name, "server_browser_unranked"))
+    if (!UI_NX_IsServerBrowserMenu(menu))
         return;
     static std::list<std::string> labels;
     static std::list<textDef_s> texts;
@@ -359,7 +458,7 @@ void PatchRefreshPrompt(menuDef_t *menu)
         if (HasAction(item, "RefreshServers") || HasAction(item, "RefreshFilter"))
             glyph = '\x03';
         else if (HasAction(item, "JoinServer"))
-            glyph = '\x02';   // draws as the Switch's A (nx_switchglyphs swaps 1 and 2)
+            glyph = '\x02';   // draws as the Switch's A
         if (!glyph)
             continue;
         if (const char *key = FirstStringConstant(text))
@@ -434,7 +533,7 @@ bool Directory_HandleMenuEvent(int localClientNum, UiContext *dc, itemDef_s *ite
                     Item_RunSingleEventScript(localClientNum, dc, item, script);
                 Dvar_SetStringByName(
                     "ui_lobby_desc",
-                    const_cast<char *>("Set up a match and advertise it in the server browser."));
+                    UI_SafeTranslateString("OPENBLOPS_HOST_HINT"));
                 return true;
             }
             if (Named(event, "action"))

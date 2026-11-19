@@ -5,7 +5,7 @@
 
 void __cdecl UI_Project_RegisterDvars();
 #ifdef KISAK_MP
-void UI_PrepareCustomBotMenu();
+bool UI_PrepareCustomBotMenu(UiContext *dc);
 bool UI_IsCustomBotMenu(const menuDef_t *menu);
 bool UI_IsHiddenBotSettingsHighlight(int contextIndex, const itemDef_s *item);
 void UI_AddCustomBotSettings(int localClientNum, UiContext *dc, menuDef_t *menu);

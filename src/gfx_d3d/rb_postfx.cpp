@@ -5,6 +5,10 @@
 #include "r_state.h"
 #include "rb_draw3d.h"
 #include "rb_backend.h"
+#include "rb_pixelcost.h"
+#include "r_scene.h"
+
+static void RB_BlurScreen(const GfxViewInfo *viewInfo, float blurRadius, bool sceneAlreadyResolved);
 
 bool __cdecl RB_UsingDepthOfFieldFX(const GfxViewInfo *viewInfo)
 {
@@ -1310,7 +1314,41 @@ void    RB_SetVisionSetColorCorrection(const GfxViewInfo *viewInfo)
     R_UpdateCodeConstant(&gfxCmdBufSourceState, CONST_SRC_CODE_POSTFX_CONTROLA, midSMul, midSAdd, midEMul, midEAdd);
 }
 
-void __cdecl RB_BloomLDR(const GfxViewInfo *viewInfo)
+#ifdef KISAK_NX
+static bool RB_CanRenderBloomToTexture(const GfxViewInfo *viewInfo)
+{
+    const GfxRenderTarget &scene = gfxRenderTargets[R_RENDERTARGET_SCENE];
+    const GfxRenderTarget &bloom = gfxRenderTargets[R_RENDERTARGET_BLOOM_APPLIED];
+    if (!bloom.image || bloom.width != scene.width || bloom.height != scene.height
+        || pixelCostMode != GFX_PIXEL_COST_MODE_OFF || (viewInfo->sceneComposition.renderingMode & 7)
+        || !viewInfo->isRenderingFullScreen || tess.indexCount || gfxCmdBufSourceState.scissorEnabled)
+        return false;
+
+    GfxViewport viewport;
+    R_GetViewport(&gfxCmdBufSourceState, &viewport);
+    if (viewport.x || viewport.y || viewport.width != scene.width || viewport.height != scene.height)
+        return false;
+
+    const Material *material = rgp.bloomApplyLDR;
+    constexpr unsigned int unlitTechnique = 4;
+    constexpr unsigned int bloomColorState = 0x18128812;
+    constexpr unsigned int bloomDepthState = 0xe00e0002;
+    if (!material || !material->stateBitsTable || !rgp.postFxColorMaterial)
+        return false;
+    const MaterialTechnique *technique = Material_GetTechnique(material, unlitTechnique);
+    const MaterialTechnique *colorCorrection = Material_GetTechnique(rgp.postFxColorMaterial, unlitTechnique);
+    const unsigned int state = material->stateBitsEntry[unlitTechnique];
+    return technique && technique->passCount == 1 && state < material->stateBitsCount
+        && technique->passArray[0].pixelShader
+        && !strcmp(technique->passArray[0].pixelShader->name, "pimp_shader_hdr_f611902e.hlsl")
+        && material->stateBitsTable[state].loadBits[0] == bloomColorState
+        && material->stateBitsTable[state].loadBits[1] == bloomDepthState
+        && colorCorrection && colorCorrection->passCount == 1 && colorCorrection->passArray[0].pixelShader
+        && !strcmp(colorCorrection->passArray[0].pixelShader->name, "pimp_shader_postfx_45a4d549.hlsl");
+}
+#endif
+
+static void RB_BloomLDR(const GfxViewInfo *viewInfo, bool renderBloomToTexture)
 {
     float v1; // [esp+14h] [ebp-50h]
     float v2; // [esp+18h] [ebp-4Ch]
@@ -1418,8 +1456,9 @@ void __cdecl RB_BloomLDR(const GfxViewInfo *viewInfo)
 #ifdef KISAK_NX
 apply:
 #endif
-    R_SetRenderTargetSize(&gfxCmdBufSourceState, R_RENDERTARGET_SCENE);
-    R_SetRenderTarget(gfxCmdBufContext, R_RENDERTARGET_SCENE);
+    const GfxRenderTargetId bloomOutput = renderBloomToTexture ? R_RENDERTARGET_BLOOM_APPLIED : R_RENDERTARGET_SCENE;
+    R_SetRenderTargetSize(&gfxCmdBufSourceState, bloomOutput);
+    R_SetRenderTarget(gfxCmdBufContext, bloomOutput);
     RB_SetFilmCurveConstants(viewInfo);
     R_SetCodeImageTexture(&gfxCmdBufSourceState, 0x22u, gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
 #ifdef KISAK_NX
@@ -1431,8 +1470,18 @@ apply:
     R_SetCodeImageTexture(&gfxCmdBufSourceState, 0x24u, gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
     RB_Filter(rgp.bloomApplyLDR, viewInfo);
     RB_SetVisionSetColorCorrection(viewInfo);
-    R_Resolve(gfxCmdBufContext, gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
-    R_SetCodeImageTexture(&gfxCmdBufSourceState, 0xAu, gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
+    if (renderBloomToTexture)
+    {
+        R_SetResolvedScene(gfxCmdBufContext);
+        R_SetCodeImageTexture(&gfxCmdBufSourceState, TEXTURE_SRC_CODE_RESOLVED_SCENE,
+            gfxRenderTargets[R_RENDERTARGET_BLOOM_APPLIED].image);
+    }
+    else
+    {
+        R_Resolve(gfxCmdBufContext, gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
+        R_SetCodeImageTexture(&gfxCmdBufSourceState, TEXTURE_SRC_CODE_RESOLVED_SCENE,
+            gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
+    }
     RB_Filter(rgp.postFxColorMaterial, viewInfo);
 }
 
@@ -2566,10 +2615,15 @@ void __cdecl RB_ProcessPostEffects(const GfxViewInfo *viewInfo)
     __debugbreak();
   }
   RB_GetResolvedScene();
-  RB_BloomLDR(viewInfo);
+  bool renderBloomToTexture = false;
+#ifdef KISAK_NX
+  renderBloomToTexture = RB_CanRenderBloomToTexture(viewInfo);
+#endif
+  RB_BloomLDR(viewInfo, renderBloomToTexture);
   if ( RB_UsingPostEffects(viewInfo) )
   {
     RB_GetResolvedScene();
+    bool sceneChanged = true;
     if ( RB_UsingFlameFX(viewInfo) )
     {
         PROF_SCOPED("RB_ApplyFlameFX");
@@ -2604,6 +2658,7 @@ void __cdecl RB_ProcessPostEffects(const GfxViewInfo *viewInfo)
         {
           if (!RB_UsingDepthOfFieldFX(viewInfo))
           {
+            sceneChanged = false;
             goto LABEL_29;
           }
           PROF_SCOPED("RB_ApplyDepthOfField");
@@ -2619,6 +2674,7 @@ LABEL_29:
     {
       PROF_SCOPED("genericFilter effect");
       RB_GenericFilterFX(viewInfo);
+      sceneChanged = true;
     }
     if ( RB_UsingBlur(viewInfo) )
     {
@@ -2636,7 +2692,8 @@ LABEL_29:
       }
       
       PROF_SCOPED("RB_BlurScreen()");
-      RB_BlurScreen(viewInfo, blurRadius);
+      RB_BlurScreen(viewInfo, blurRadius, !sceneChanged && !r_reflectionProbeGenerate->current.enabled);
+      sceneChanged = true;
     }
     if ( viewInfo->saveScreenFx.blendBlurredParam.enabled
       || viewInfo->saveScreenFx.blendFlashedParam.enabled
@@ -2646,9 +2703,20 @@ LABEL_29:
       RB_SaveScreen_BlendBlurred(&viewInfo->saveScreenFx.blendBlurredParam, viewInfo);
       RB_SaveScreen_BlendFlashed(&viewInfo->saveScreenFx.blendFlashedParam, viewInfo);
       RB_SaveScreen(&viewInfo->saveScreenFx.saveScreenParam, viewInfo);
+      sceneChanged = true;
     }
-    R_Resolve(gfxCmdBufContext, gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
-    R_SetCodeImageTexture(&gfxCmdBufSourceState, 0xAu, gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
+    if (sceneChanged || r_reflectionProbeGenerate->current.enabled)
+    {
+      R_Resolve(gfxCmdBufContext, gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
+      R_SetCodeImageTexture(&gfxCmdBufSourceState, TEXTURE_SRC_CODE_RESOLVED_SCENE,
+          gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
+    }
+  }
+  else if (renderBloomToTexture)
+  {
+    const GfxImage *bloom = gfxRenderTargets[R_RENDERTARGET_BLOOM_APPLIED].image;
+    R_SetCodeImageTexture(&gfxCmdBufSourceState, 0x22u, bloom);
+    R_SetCodeImageTexture(&gfxCmdBufSourceState, 0x24u, bloom);
   }
 }
 
@@ -2914,7 +2982,7 @@ double __cdecl RB_GetBlurRadius(float blurRadiusFromCode)
     return blurRadiusFinal;
 }
 
-void __cdecl RB_BlurScreen(const GfxViewInfo *viewInfo, float blurRadius)
+static void RB_BlurScreen(const GfxViewInfo *viewInfo, float blurRadius, bool sceneAlreadyResolved)
 {
   const char *v2; // eax
   const char *v3; // eax
@@ -2936,44 +3004,28 @@ void __cdecl RB_BlurScreen(const GfxViewInfo *viewInfo, float blurRadius)
     HIBYTE(color) = (int)((float)((float)(blurRadius / blurRadiusMin) * 255.0) + 9.313225746154785e-10);
     blurRadius = 1440.0 / (float)gfxCmdBufSourceState.sceneViewport.height;
   }
-  imageSurface = Image_GetSurface(gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
-  iassert(imageSurface);
-  if ( r_logFile && r_logFile->current.integer )
-    RB_LogPrint(
-      "gfxCmdBufContext.state->prim.device->StretchRect( gfxRenderTargets[srcRtId].surface.color, 0, imageSurface, 0, D3DTEXF_LINEAR )\n");
-
-  //hr = gfxCmdBufContext.state->prim.device->StretchRect(
-  //       gfxCmdBufContext.state->prim.device,
-  //       (IDirect3DSurface9 *)dword_B50E870,
-  //       0,
-  //       imageSurface,
-  //       0,
-  //       D3DTEXF_LINEAR);
-
-  hr = gfxCmdBufContext.state->prim.device->StretchRect(gfxRenderTargets[R_RENDERTARGET_SCENE].surface.color, NULL, imageSurface, NULL, D3DTEXF_LINEAR);
-  if ( hr < 0 )
+  if (!sceneAlreadyResolved)
   {
-    ++g_disableRendering;
-    v2 = R_ErrorDescription(hr);
-    Com_Error(
-      ERR_FATAL,
-      "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\rb_postfx.cpp (%i) gfxCmdBufContext.state->prim.device->StretchRect( g"
-      "fxRenderTargets[srcRtId].surface.color, 0, imageSurface, 0, D3DTEXF_LINEAR ) failed: %s\n",
-      4256,
-      v2);
-  }
-  if ( r_logFile && r_logFile->current.integer )
-    RB_LogPrint("imageSurface->Release()\n");
-  v5 = imageSurface->Release();
-  if ( v5 < 0 )
-  {
-    ++g_disableRendering;
-    v3 = R_ErrorDescription(v5);
-    Com_Error(
-      ERR_FATAL,
-      "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\rb_postfx.cpp (%i) imageSurface->Release() failed: %s\n",
-      4257,
-      v3);
+    imageSurface = Image_GetSurface(gfxRenderTargets[R_RENDERTARGET_RESOLVED_SCENE].image);
+    iassert(imageSurface);
+    if ( r_logFile && r_logFile->current.integer )
+      RB_LogPrint("gfxCmdBufContext.state->prim.device->StretchRect( gfxRenderTargets[R_RENDERTARGET_SCENE].surface.color, 0, imageSurface, 0, D3DTEXF_LINEAR )\n");
+    hr = gfxCmdBufContext.state->prim.device->StretchRect(gfxRenderTargets[R_RENDERTARGET_SCENE].surface.color, nullptr, imageSurface, nullptr, D3DTEXF_LINEAR);
+    if ( hr < 0 )
+    {
+      ++g_disableRendering;
+      v2 = R_ErrorDescription(hr);
+      Com_Error(ERR_FATAL, "RB_BlurScreen: StretchRect failed: %s\n", v2);
+    }
+    if ( r_logFile && r_logFile->current.integer )
+      RB_LogPrint("imageSurface->Release()\n");
+    v5 = imageSurface->Release();
+    if ( v5 < 0 )
+    {
+      ++g_disableRendering;
+      v3 = R_ErrorDescription(v5);
+      Com_Error(ERR_FATAL, "RB_BlurScreen: imageSurface->Release() failed: %s\n", v3);
+    }
   }
   RB_GaussianFilterImage(blurRadius, R_RENDERTARGET_RESOLVED_SCENE, R_RENDERTARGET_POST_EFFECT_0);
   R_SetRenderTargetSize(&gfxCmdBufSourceState, R_RENDERTARGET_SCENE);

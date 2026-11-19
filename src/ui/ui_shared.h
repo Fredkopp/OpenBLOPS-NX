@@ -1160,7 +1160,7 @@ itemDef_s *__cdecl Menu_SetNextCursorItem(
 int __cdecl Item_HasFocusEvent(int localClientNum, UiContext *dc, itemDef_s *item);
 void __cdecl Menus_PrintAllLoadedMenus(UiContext *dc);
 int    Menu_CheckOnKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key);
-void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down);
+void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int key, int down, int controllerKey = 0);
 itemDef_s *__cdecl Item_LoseFocus(int localClientNum, UiContext *dc, itemDef_s *item);
 bool __cdecl Item_IsModal(itemDef_s *item);
 int __cdecl Item_ListBox_HandleKey(int localClientNum, UiContext *dc, itemDef_s *item, int key, int down, int force);
@@ -1269,6 +1269,14 @@ void __cdecl UI_DrawWrappedTextSubtitled(
                 const float *subtitleGlowColor,
                 bool cinematic);
 char __cdecl UI_GetSticksTranslatedString(int localClientNum, const char *command, char *keys);
+#ifdef KISAK_NX
+bool UI_NX_IsClassRotationMenu(const menuDef_t *menu);
+bool UI_NX_IsGamepadOptionsMenu(const menuDef_t *menu);
+bool UI_NX_IsHiddenClassFooter(int contextIndex, itemDef_s *item);
+bool UI_NX_IsServerBrowserMenu(const menuDef_t *menu);
+bool UI_NX_ReplaceControlPrompt(const char *label, const char *binding, char *buffer, int size,
+    const char *expected = nullptr);
+#endif
 int __cdecl UI_GetKeyBindingLocalizedString(int localClientNum, const char *command, char *keys, int bindNum);
 void __cdecl GetPlatformCommand(int localClientNum, const char *command, const char **consoleCommand);
 int __cdecl Display_KeyBindPending();

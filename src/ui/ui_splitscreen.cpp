@@ -204,9 +204,7 @@ namespace
         const float step = rect.h;
         rect.y += step;
         // The enabled Play row is backing -> focus box -> white button ->
-        // black focused label. Its later grey copies are online-disabled states,
-        // which do not apply to this local option. Preserve native draw order,
-        // materials, font/alignment and all colors instead of painting new text.
+        // black focused label. Preserve the native draw order and appearance.
         int at = 0;
         while (at < menu->itemCount && menu->items[at] != play) ++at;
         auto sameRow = [&](const itemDef_s *item) {
@@ -262,11 +260,43 @@ namespace
             item->window.dynamicFlags[0] = (item->window.dynamicFlags[0] & ~2) | 4;
             if (Item_IsTextDefType(item) && item->typeData.textDef)
             {
-                item->typeData.textDef->text = "SPLIT-SCREEN";
+                item->typeData.textDef->text = "@MENU_SPLIT_SCREEN_CAPS";
                 item->typeData.textDef->textExpData = nullptr;
             }
             row.rowItems.push_back(item);
         }
+        const itemDef_s *dimmedLabel = nullptr;
+        for (int i = last + 1; i < menu->itemCount && sameRow(menu->items[i]); ++i)
+        {
+            const itemDef_s *candidate = menu->items[i];
+            if (candidate->type == 1 && candidate->typeData.textDef
+                && candidate->window.foreColor[3] < play->window.foreColor[3])
+            {
+                dimmedLabel = candidate;
+                break;
+            }
+        }
+        row.layers.emplace_back();
+        auto &dimmed = row.layers.back();
+        CopyItem(dimmed, dimmedLabel ? dimmedLabel : play, menu, step);
+        dimmed.item.window.name = "kisak_split_screen_dimmed";
+        dimmed.item.window.staticFlags |= 0x100000;
+        dimmed.item.window.dynamicFlags[0] = (dimmed.item.window.dynamicFlags[0] & ~2) | 4;
+        if (!dimmedLabel)
+            dimmed.item.window.foreColor[3] = 0.45f;
+        dimmed.item.type = dimmed.item.dataType = 1;
+        dimmed.item.onEvent = nullptr;
+        dimmed.item.animInfo = nullptr;
+        dimmed.item.dvar = dimmed.item.dvarTest = dimmed.item.enableDvar = nullptr;
+        dimmed.item.dvarFlags = 0;
+        dimmed.item.visibleExp = {};
+        dimmed.item.forecolorAExp = {};
+        dimmed.item.showBits = 0;
+        dimmed.item.hideBits = ~0ULL;
+        dimmed.text.text = "@MENU_SPLIT_SCREEN_CAPS";
+        dimmed.text.textExpData = nullptr;
+        dimmed.text.textTypeData.focusItemDef = nullptr;
+        row.rowItems.push_back(&dimmed.item);
         bool inserted = false;
         for (int i = 0; i < menu->itemCount; ++i)
         {
@@ -348,7 +378,7 @@ void UI_SplitScreenAddMenus(int localClientNum, UiContext *dc, menuDef_t *menu)
         {
             item.window.name = guestButton;
             item.onEvent = &events.actionEvent;
-            copy.text.text = "SPLIT-SCREEN";
+            copy.text.text = "@MENU_SPLIT_SCREEN_CAPS";
             copy.text.textExpData = nullptr;
         }
         else
@@ -443,6 +473,15 @@ bool UI_SplitScreenStartZombieMap(int localClientNum, const char *notify)
 // replace only the copied row's online availability/highlight expressions.
 bool UI_SplitScreenIsHiddenLayer(int contextIndex, const itemDef_s *item)
 {
+    if (item && item->parent && Named(item->parent->window.name, "main_text"))
+    {
+        if (Named(item->window.name, "kisak_split_screen_dimmed"))
+            return Dvar_GetInt("ui_flyoutHasFocus") == 0;
+        if ((Named(item->window.name, guestButton) || Named(item->window.name, "kisak_split_screen_focus")
+                || Named(item->window.name, "kisak_split_screen_backing"))
+            && Dvar_GetInt("ui_flyoutHasFocus") != 0)
+            return true;
+    }
     // Leave only the button text visible while unfocused, including hiding
     // the copied row's translucent backing.
     if (item && (Named(item->window.name, "kisak_split_screen_focus")

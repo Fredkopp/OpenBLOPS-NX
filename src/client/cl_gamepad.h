@@ -129,6 +129,9 @@ const char *__cdecl Gamepad_VirtualAxisName(GamepadVirtualAxis axis);
 const char *__cdecl Gamepad_InputTypeName(GamepadMapping mapType);
 void __cdecl CL_GamepadEvent(int portIndex, unsigned int physicalAxis, int value);
 void __cdecl CL_GamepadGenerateAPad(int localClientNum, int portIndex, unsigned int physicalAxis);
+#ifdef KISAK_NX
+void CL_GamepadUpdateMenuStick(float x, float y, unsigned int time);
+#endif
 double __cdecl CL_GamepadAxisValue(int localClientNum, unsigned int virtualAxis);
 void __cdecl CL_GamepadResetMenuScrollTime(int localClientNum, int key, int down, unsigned int time);
 void __cdecl CL_GamepadButtonEvent(

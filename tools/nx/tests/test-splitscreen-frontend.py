@@ -1,7 +1,7 @@
 """Exercise menu-only split-screen selection, native UI dispatch, and session cleanup."""
 from pathlib import Path
 import argparse,json,re,struct,subprocess
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--compiler',default='/c/msys64/ucrt64/bin/g++.exe');args=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--compiler',default='/c/msys64/ucrt64/bin/g++.exe');p.add_argument('--zone-dir',type=Path,default=Path('F:/pluto_t5_full_game/kbz'));args=p.parse_args()
 root=Path(__file__).resolve().parents[3];out=root/'build-nx/splitscreen-frontend-tests';out.mkdir(parents=True,exist_ok=True)
 def function(n,sig):
  s=(root/n).read_text();a=s.index(sig);b=s.index('{',a)+1;d=1
@@ -10,8 +10,8 @@ def function(n,sig):
 def clean(s):return re.sub(r'^\s*#include.*\n','',s,flags=re.M)
 # Read the supplied zones through their actual relocation tables, without loading
 # or changing game files. Verify the row/action used by the native integration.
-def menu_items(zone,name):
- path=Path('F:/pluto_t5_full_game/kbz')/(zone+'.kbz')
+def menu_items(zone,name,zone_dir=Path('F:/pluto_t5_full_game/kbz')):
+ path=zone_dir/(zone+'.kbz')
  if not path.exists():return None
  b=path.read_bytes();nb=struct.unpack_from('<I',b,8)[0];sizes=struct.unpack_from('<'+'I'*nb,b,12);nr,na=struct.unpack_from('<II',b,12+4*nb);pos=20+4*nb;blocks=[]
  for i,n in enumerate(sizes):blocks.append(b[pos:pos+n] if i!=1 else b'');pos+=n if i!=1 else 0
@@ -38,13 +38,14 @@ def menu_items(zone,name):
    result.append(dict(flags=num(item,92),style=blocks[item[0]][item[1]+64],forecolor=struct.unpack_from('<4f',blocks[item[0]],item[1]+100),backcolor=struct.unpack_from('<4f',blocks[item[0]],item[1]+116),name=string(ptr(item)),type=num(item,176),rect=struct.unpack_from('<4fii',blocks[item[0]],item[1]+8),actions=actions))
   return result
  raise AssertionError('missing menu '+zone+':'+name)
-sp=menu_items('frontend','main_online');mp=menu_items('ui_mp','menu_xboxlive_privatelobby');main=menu_items('ui_mp','main_text')
+sp=menu_items('frontend','main_online',args.zone_dir);mp=menu_items('ui_mp','menu_xboxlive_privatelobby',args.zone_dir);main=menu_items('ui_mp','main_text',args.zone_dir)
 solo=next(x for x in sp if x['name']=='online_button2' and x['type']==3) if sp else dict(rect=(0,150,640,95,0,0))
 start=next(x for x in mp if any('StartListenServer' in a for a in x['actions'])) if mp else dict(actions=['uiScript StartListenServer ;'])
 play=next(x for x in main if x['type']==3 and any('open live_flyout' in a for a in x['actions'])) if main else dict(rect=(-258,40,180,17,2,1),actions=['open live_flyout ;'])
 if main:
  play_at=main.index(play);layers=main[play_at-2:play_at+2];assert [x['type'] for x in layers]==[2,0,3,1]
 else:layers=[dict(flags=65540,style=3,forecolor=(1,1,1,1),backcolor=(0,0,0,0)) for _ in range(4)]
+dimmed_alpha=next((x['forecolor'][3] for x in main or [] if x['type']==1 and x['rect']==play['rect'] and x['forecolor'][3]<1),0.45)
 if sp and mp and main:print('PASS: actual Zombies rows, four native Play row layers/colors, and private-match start/settings actions found in supplied zones')
 code=r"""
 #include <cassert>
@@ -157,11 +158,12 @@ code+=function('src/ui/ui_shared.cpp','void __cdecl Item_RunEventScript(')+'\n'
 code+='const char*startAction='+json.dumps(next(a for a in start['actions'] if 'StartListenServer' in a))+';\n'
 code+='rectDef_s soloRect{'+','.join(str(v) for v in solo['rect'])+'};\n'
 code+='rectDef_s playRect{'+','.join(str(v) for v in play['rect'])+'};\n'
+code+=f'constexpr float native_dimmed_alpha={dimmed_alpha}f;\n'
 code+='const char*playAction='+json.dumps(next(a for a in play['actions'] if 'open live_flyout' in a))+';\n'
 code+='const int native_flags[4]={'+','.join(str(layer['flags']) for layer in layers)+'};\n'
 code+='const unsigned char native_style[4]={'+','.join(str(layer['style']) for layer in layers)+'};\n'
 for field in ['forecolor','backcolor']:
- code+='const float native_'+field+'[4][4]={'+','.join('{'+','.join(str(v)+'f' for v in layer[field])+'}' for layer in layers)+'};\n'
+ code+='const float native_'+field+'[4][4]={'+','.join('{'+','.join(repr(float(v))+'f' for v in layer[field])+'}' for layer in layers)+'};\n'
 code+=r"""
 int main(){
  auto*dc=&ui.uiDC;
@@ -191,7 +193,7 @@ int main(){
 #ifdef KISAK_SP
  assert(parent.itemCount==6&&parent.items!=original&&parent.items[0]==&backing&&parent.items[1]==&source);
  auto*splitBacking=parent.items[3];auto*button=parent.items[4];auto*altButton=parent.items[5];
- assert(!strcmp(button->typeData.textDef->text,"SPLIT-SCREEN")&&!strcmp(altButton->typeData.textDef->text,"SPLIT-SCREEN"));
+ assert(!strcmp(button->typeData.textDef->text,"@MENU_SPLIT_SCREEN_CAPS")&&!strcmp(altButton->typeData.textDef->text,"@MENU_SPLIT_SCREEN_CAPS"));
  assert(splitBacking->window.style==3&&splitBacking->window.foreColor[3]==.24f&&button->window.foreColor[0]==.69f);
  assert(splitBacking->window.rectClient.y==soloRect.y+soloRect.h&&UI_SplitScreenIsHiddenLayer(0,splitBacking));
  altButton->window.dynamicFlags[0]|=2;assert(!UI_SplitScreenIsHiddenLayer(0,splitBacking));altButton->window.dynamicFlags[0]&=~2;
@@ -234,30 +236,43 @@ int main(){
  backing.window.rect=backing.window.rectClient=highlight.window.rect=highlight.window.rectClient=focusLabel.window.rect=focusLabel.window.rectClient=playRect;
  backing.window.rectClient.w+=1;backing.window.style=1;Material focusMaterial;highlight.window.background=&focusMaterial;
  textDef_s focusedText;focusLabel.typeData.textDef=&focusedText;
- itemDef_s*rootItems[]{&backing,&highlight,&play,&focusLabel,&operations};root.items=rootItems;root.itemCount=5;
+ itemDef_s originalDimmed=focusLabel;
+ originalDimmed.window.foreColor[3]=native_dimmed_alpha;
+ itemDef_s*rootItems[]{&backing,&highlight,&play,&focusLabel,&originalDimmed,&operations};root.items=rootItems;root.itemCount=6;
  for(int i=0;i<4;++i){rootItems[i]->window.style=native_style[i];rootItems[i]->window.dynamicFlags[0]=native_flags[i]|2;memcpy(rootItems[i]->window.foreColor,native_forecolor[i],sizeof(native_forecolor[i]));memcpy(rootItems[i]->window.backColor,native_backcolor[i],sizeof(native_backcolor[i]));}
  zoneMenus[root.window.name]=&root;UI_AddMenu(0,dc,&root,1);UI_SplitScreenMenuOpening(0,dc,&root);
- assert(root.itemCount==9&&root.items[2]==&play&&root.items[8]!=&operations);
- auto*button=root.items[6];assert(!strcmp(button->typeData.textDef->text,"SPLIT-SCREEN"));
- assert(button->window.rectClient.y==playRect.y+17&&root.items[8]->window.rectClient.y==playRect.y+34);
- assert(root.items[8]->animInfo!=&operationAnimation&&operationState.rectClient.y==playRect.y+17);
- assert(root.items[8]->animInfo->animStates[0]->rectClient.y==playRect.y+34);
- for(int i=0;i<4;++i){assert(!memcmp(root.items[4+i]->window.foreColor,native_forecolor[i],sizeof(native_forecolor[i])));assert(!memcmp(root.items[4+i]->window.backColor,native_backcolor[i],sizeof(native_backcolor[i])));}
- assert(root.items[4]->window.style==native_style[0]&&root.items[5]->window.background==&focusMaterial);
+ assert(root.itemCount==11&&root.items[2]==&play&&root.items[10]!=&operations);
+ auto*button=root.items[7];assert(!strcmp(button->typeData.textDef->text,"@MENU_SPLIT_SCREEN_CAPS"));
+ assert(button->window.rectClient.y==playRect.y+17&&root.items[10]->window.rectClient.y==playRect.y+34);
+ assert(root.items[10]->animInfo!=&operationAnimation&&operationState.rectClient.y==playRect.y+17);
+ assert(root.items[10]->animInfo->animStates[0]->rectClient.y==playRect.y+34);
+ for(int i=0;i<4;++i){assert(!memcmp(root.items[5+i]->window.foreColor,native_forecolor[i],sizeof(native_forecolor[i])));assert(!memcmp(root.items[5+i]->window.backColor,native_backcolor[i],sizeof(native_backcolor[i])));}
+ assert(root.items[5]->window.style==native_style[0]&&root.items[6]->window.background==&focusMaterial);
  // Copied colors must reach the painter: dropping 0x10000 draws opaque white.
- assert(NativeMaterialTint(dc,root.items[4])==root.items[4]->window.foreColor);
- assert(root.items[4]->window.foreColor[0]==0&&root.items[4]->window.foreColor[3]>0&&root.items[4]->window.foreColor[3]<1);
- for(int i=0;i<4;++i)assert(root.items[4+i]->window.dynamicFlags[0]==((native_flags[i]&~2)|4));
+ assert(NativeMaterialTint(dc,root.items[5])==root.items[5]->window.foreColor);
+ assert(root.items[5]->window.foreColor[0]==0&&root.items[5]->window.foreColor[3]>0&&root.items[5]->window.foreColor[3]<1);
+ for(int i=0;i<4;++i)assert(root.items[5+i]->window.dynamicFlags[0]==((native_flags[i]&~2)|4));
  // Unselected: text only, no backing or highlight. Selected: all native layers.
- assert(UI_SplitScreenIsHiddenLayer(0,root.items[4]));
+ assert(UI_SplitScreenIsHiddenLayer(0,root.items[5]));
  assert(!UI_SplitScreenIsHiddenLayer(0,button));
- assert(UI_SplitScreenIsHiddenLayer(0,root.items[5])&&UI_SplitScreenIsHiddenLayer(0,root.items[7]));
+ assert(UI_SplitScreenIsHiddenLayer(0,root.items[6])&&UI_SplitScreenIsHiddenLayer(0,root.items[8]));
  button->window.dynamicFlags[0]|=2;
- assert(!UI_SplitScreenIsHiddenLayer(0,root.items[4]));
- assert(!UI_SplitScreenIsHiddenLayer(0,root.items[5])&&!UI_SplitScreenIsHiddenLayer(0,root.items[7]));
+ assert(!UI_SplitScreenIsHiddenLayer(0,root.items[5]));
+ assert(!UI_SplitScreenIsHiddenLayer(0,root.items[6])&&!UI_SplitScreenIsHiddenLayer(0,root.items[8]));
  button->window.dynamicFlags[0]&=~2;
- assert(UI_SplitScreenIsHiddenLayer(0,root.items[4])&&!UI_SplitScreenIsHiddenLayer(0,button));
- UI_SplitScreenMenuOpening(0,dc,&root);assert(root.itemCount==9); // no repeated shifts
+ assert(UI_SplitScreenIsHiddenLayer(0,root.items[5])&&!UI_SplitScreenIsHiddenLayer(0,button));
+ auto*dimmed=root.items[9];
+ assert(dimmed->type==1&&dimmed->onEvent==nullptr&&!strcmp(dimmed->typeData.textDef->text,"@MENU_SPLIT_SCREEN_CAPS"));
+ assert(dimmed->window.foreColor[3]==native_dimmed_alpha&&dimmed->window.rectClient.y==button->window.rectClient.y);
+ assert(UI_SplitScreenIsHiddenLayer(0,dimmed));
+ vars["ui_flyoutHasFocus"]="1";
+ button->window.dynamicFlags[0]|=2;
+ for(int i=5;i<=8;++i)assert(UI_SplitScreenIsHiddenLayer(0,root.items[i]));
+ assert(!UI_SplitScreenIsHiddenLayer(0,dimmed));
+ button->window.dynamicFlags[0]&=~2;
+ vars["ui_flyoutHasFocus"]="0";
+ assert(UI_SplitScreenIsHiddenLayer(0,dimmed)&&!UI_SplitScreenIsHiddenLayer(0,button));
+ UI_SplitScreenMenuOpening(0,dc,&root);assert(root.itemCount==11); // no repeated shifts
  // Separate lobby state, but native name lookup still finds it for child
  // map/game-mode/settings menus and ui_animate. No start chooser remains.
  Item_RunEventScript(0,dc,button,"action");auto*copy=lastOpened;

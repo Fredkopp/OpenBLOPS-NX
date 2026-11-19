@@ -3121,7 +3121,6 @@ void __fastcall Actor_InitMove(actor_s *self)
     //}
 
     //self->Physics.proximity_data.__vftable = dummy_3.__vftable;
-#ifdef KISAK_SP
     // RESTORE THE VTABLE POINTER. The memset above zeroes all of actor_s::Physics, which includes
     // the embedded colgeom_visitor_inlined_t<200> -- and that object is POLYMORPHIC, so the
     // memset destroys its vptr. The `= dummy_3` on the next line cannot put it back: it
@@ -3143,7 +3142,6 @@ void __fastcall Actor_InitMove(actor_s *self)
     // initial import (git blame: 28cbd7d); it only became reachable once actors lived
     // long enough to run AIPhys_GroundTrace.
     new (&self->Physics.proximity_data) colgeom_visitor_inlined_t<200>();
-#endif
     self->Physics.proximity_data = dummy_3;
     //colgeom_visitor_inlined_t<500>::reset(&self->Physics.proximity_data);
     self->Physics.proximity_data.reset();

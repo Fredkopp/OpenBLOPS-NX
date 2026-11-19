@@ -23,6 +23,7 @@ struct itemDef_s{int dataType=0;struct{const char*name=nullptr;rectDef_s rect,re
 struct menuDef_t{struct{const char*name="options_gamepad";}window;int itemCount=0;itemDef_s**items=nullptr;};
 bool focused=false;bool Window_HasFocus(int,const decltype(itemDef_s::window)*){return focused;}
 """
+s=(root/'src/ui/ui_shared.cpp').read_text();code+='#include <unordered_map>\n#include <vector>\n'+s[s.index('static std::unordered_map<const menuDef_t *'):s.index('#ifdef KISAK_NX\nstatic const menuDef_t *s_nxClassFactionEditMenu;')]
 code+=function('src/ui/ui_utils.cpp','int __cdecl Item_IsTextDefType(')+'\n'
 for sig in ['static itemDef_s *UI_NX_FindItem(', 'static bool UI_NX_ItemNamed(', 'static itemDef_s *UI_NX_FindItemByDvar(', 'static void UI_NX_MoveItem(', 'static itemDef_s *UI_NX_CloneItem(', 'bool UI_NX_IsHiddenAimAssistHighlight(', 'static int UI_NX_CloneInvertRow(', 'static void UI_NX_ScaleRectAbout(', 'static void UI_NX_ScaleItem(', 'static void UI_NX_FitGamepadDiagram(', 'static void UI_NX_AddAimAssistOption(']:
  # The add function has an earlier forward declaration; select definition.
@@ -54,8 +55,8 @@ int main(){
  for(int i=0;i<menu.itemCount;++i){
   auto*item=menu.items[i];if(item==option)assistIndex=i;if(item==accel)accelIndex=i;
   if(!item->typeData.textDef||item==&label||item==&choice)continue;
-  if(item->typeData.textDef->text&&!strcmp(item->typeData.textDef->text,"AIM ASSIST"))++assistLabels,assert(item->window.rect.y==100);
-  if(item->typeData.textDef->text&&!strcmp(item->typeData.textDef->text,"AIM ACCELERATION"))++accelLabels,assert(item->window.rect.y==130);
+  if(item->typeData.textDef->text&&!strcmp(item->typeData.textDef->text,"@MENU_AIM_ASSIST_CAPS"))++assistLabels,assert(item->window.rect.y==100);
+  if(item->typeData.textDef->text&&!strcmp(item->typeData.textDef->text,"@OPENBLOPS_AIM_ACCELERATION"))++accelLabels,assert(item->window.rect.y==130);
  }
  assert(assistLabels==1&&accelLabels==1&&assistIndex>=0&&accelIndex>assistIndex); // D-pad order: sensitivity, aim assist, acceleration
  UI_NX_AddAimAssistOption(&menu);assert(menu.itemCount==11);

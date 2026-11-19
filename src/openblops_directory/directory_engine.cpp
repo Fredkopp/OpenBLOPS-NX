@@ -1,7 +1,6 @@
 #include "directory_engine.h"
 #if defined(OPENBLOPS_NO_STEAM_AUTH)
 #include "directory_client.h"
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <client/cl_main.h>
@@ -18,6 +17,7 @@
 #include <qcommon/net_chan_mp.h>
 #include <server_mp/sv_init_mp.h>
 #include <server_mp/sv_main_mp.h>
+#include <stringed/stringed_hooks.h>
 #include <ui/ui_feeders.h>
 #include <ui/keycodes.h>
 #include <ui/ui_main.h>
@@ -29,6 +29,7 @@
 #include <win32/win_net.h>
 #ifdef KISAK_NX
 #include <switch.h>
+#include <ui/ui_keyboard.h>
 #else
 #include <wincrypt.h>
 #endif
@@ -194,7 +195,7 @@ void Initialize()
         _Dvar_RegisterBool("bo1_directory_force_relay", false, 0, "Use relay immediately for testing");
     publicName = _Dvar_RegisterString("bo1_directory_name", "OpenBLOPS match", 1,
                                       "Public match label (not a player roster)");
-    _Dvar_RegisterString("bo1_directory_status", "Ready", 0x40, "Community directory status");
+    _Dvar_RegisterString("bo1_directory_status", SEH_GetPortString("OPENBLOPS_DIR_READY"), 0x40, "Community directory status");
     Cmd_AddCommandInternal("directory_browser", OpenBrowser, &browserCommand);
     Cmd_AddCommandInternal("directory_cancel", Cancel, &cancelCommand);
     Cmd_AddCommandInternal("directory_status", PrintStatus, &statusCommand);
@@ -269,28 +270,17 @@ bool Directory_Source(int source)
 #ifdef KISAK_NX
 static bool EditDirectoryText(const char *dvar, bool password, int limit)
 {
-    SwkbdConfig keyboard{};
-    if (R_FAILED(swkbdCreate(&keyboard, 0)))
-    {
-        Com_PrintWarning(13, "Could not open the Switch software keyboard.\n");
+    UiNxTextRequest request;
+    request.header = SEH_GetPortString(password ? "OPENBLOPS_SERVER_PASSWORD" : "OPENBLOPS_SERVER_NAME", true);
+    request.headerIsUtf8 = true;
+    request.initialText = Dvar_GetString(dvar);
+    request.maxChars = limit;
+    request.password = password;
+    char text[256];
+    if (!UI_NX_EditText(request, text, sizeof(text)))
         return false;
-    }
-    if (password)
-        swkbdConfigMakePresetPassword(&keyboard);
-    else
-        swkbdConfigMakePresetDefault(&keyboard);
-    swkbdConfigSetHeaderText(&keyboard, password ? "Server password" : "Server name");
-    swkbdConfigSetInitialText(&keyboard, Dvar_GetString(dvar));
-    swkbdConfigSetStringLenMax(&keyboard, limit);
-    char text[48 * 4 + 1]{};
-    const Result result = swkbdShow(&keyboard, text, sizeof(text));
-    swkbdClose(&keyboard);
-    if (R_SUCCEEDED(result) && std::strlen(text) <= static_cast<size_t>(limit))
-    {
-        Dvar_SetStringByName(dvar, text);
-        return true;
-    }
-    return false;
+    Dvar_SetStringByName(dvar, text);
+    return true;
 }
 #endif
 
@@ -339,46 +329,6 @@ bool Directory_HandleControllerKey(int localClientNum, UiContext *dc, menuDef_t 
     // with a controller nothing focused its items, so A did nothing. Up/down
     // move between them and A runs the focused one; left/right stay native
     // (MAX PLAYERS cycles its values).
-#ifdef KISAK_NX
-    // MP host settings: the native up/down walks the item list in index order,
-    // and the password row (a copy placed where the stock VAC row was drawn,
-    // PatchServerSettings) was never reached with a controller. Move by screen
-    // position between the visible, selectable items instead.
-    if (!I_stricmp(name, "server_settings")
-        && (key == K_UPARROW || key == K_DPAD_UP || key == K_APAD_UP
-            || key == K_DOWNARROW || key == K_DPAD_DOWN || key == K_APAD_DOWN))
-    {
-        const bool down = key == K_DOWNARROW || key == K_DPAD_DOWN || key == K_APAD_DOWN;
-        std::vector<int> order;
-        for (int i = 0; i < menu->itemCount; ++i)
-        {
-            itemDef_s *item = menu->items[i];
-            if (!item || (item->window.staticFlags & 0x100000) || !Window_IsVisible(dc->contextIndex, &item->window)
-                || !Item_IsVisible(localClientNum, dc->contextIndex, item))
-                continue;
-            if (!item->onEvent && !Item_IsTextField(item) && item->type != 10)
-                continue;
-            order.push_back(i);
-        }
-        std::stable_sort(order.begin(), order.end(), [menu](int a, int b) {
-            const auto &ra = menu->items[a]->window.rect, &rb = menu->items[b]->window.rect;
-            return ra.y != rb.y ? ra.y < rb.y : ra.x < rb.x;
-        });
-        if (order.empty())
-            return false;
-        int at = -1;
-        for (int i = 0; i < int(order.size()); ++i)
-            if (Window_HasFocus(dc->contextIndex, &menu->items[order[i]]->window))
-                at = i;
-        const int count = int(order.size());
-        const int next = at < 0 ? 0 : (at + (down ? 1 : count - 1)) % count;
-        itemDef_s *target = menu->items[order[next]];
-        Menu_ClearFocus(localClientNum, dc, menu);
-        Menu_SetCursorItem(dc->contextIndex, menu, order[next]);
-        Item_SetFocus(localClientNum, dc, target, target->window.rect.x + 1, target->window.rect.y + 1);
-        return true;
-    }
-#endif
     // Switch only; the PC keeps its mouse/native handling.
 #ifdef KISAK_NX
     const bool zombieHost = !I_stricmp(name, "openblops_zombie_host");
@@ -442,6 +392,10 @@ bool Directory_HandleControllerKey(int localClientNum, UiContext *dc, menuDef_t 
         }
     }
 
+#ifdef KISAK_NX
+    if (browser && (key == K_LEFTARROW || key == K_RIGHTARROW))
+        return false;
+#endif
     if (up || key == K_LEFTARROW || key == K_DPAD_LEFT || key == K_APAD_LEFT)
         Menu_SetPrevCursorItem(localClientNum, dc, menu, 1);
     else if (down || key == K_RIGHTARROW || key == K_DPAD_RIGHT || key == K_APAD_RIGHT)
@@ -469,7 +423,19 @@ bool Directory_IsRow(int source, int index)
 }
 const char *Directory_Status()
 {
-    return client ? client->Status().c_str() : lastStatus.c_str();
+    const std::string &status = client ? client->Status() : lastStatus;
+    const char *localized = SEH_LocalizePortText(status.c_str());
+    if (localized != status.c_str())
+        return localized;
+    constexpr char hostPrefix[] = "Public host registered: ";
+    if (status.starts_with(hostPrefix))
+        return va(SEH_GetPortString("OPENBLOPS_DIR_HOST_LISTED"), status.c_str() + sizeof(hostPrefix) - 1);
+    if (client && status.ends_with(" public multiplayer hosts"))
+        return va(SEH_GetPortString("OPENBLOPS_DIR_HOST_COUNT"), static_cast<int>(client->Rows().size()));
+    constexpr char responsePrefix[] = "Directory: ";
+    if (status.starts_with(responsePrefix))
+        return va(SEH_GetPortString("OPENBLOPS_DIR_RESPONSE"), status.c_str() + sizeof(responsePrefix) - 1);
+    return localized;
 }
 void Directory_TransportReset()
 {
@@ -502,12 +468,14 @@ const char *Directory_BrowserMenu(const char *name)
     // Out of date: the browser and the host menus open the update popup.
     name = Directory_UpdateGateMenu(name);
 #endif
+#if !defined(KISAK_NX) || !defined(KISAK_MP)
     if (!name || !Directory_Source(0))
         return name;
     for (const char *legacy : {"server_browser_ranked", "server_browser_wager", "server_browser_friends",
                                "server_browser_favorites", "server_browser_history"})
         if (!std::strcmp(name, legacy))
             return "server_browser_unranked";
+#endif
     return name;
 }
 bool Directory_PopulateServers(int localClientNum, int contextIndex)
@@ -532,10 +500,12 @@ bool Directory_PopulateServers(int localClientNum, int contextIndex)
         else
             UI_StartServerRefresh(localClientNum, contextIndex, 1);
     }
+#if !defined(KISAK_NX) || !defined(KISAK_MP)
     else if (source == 1 || source == 2)
         OpenBrowser(); // Explicitly move legacy defaults to Unranked.
     else
         Com_Printf(14, "Community directory discovery supports Unranked only.\n");
+#endif
     return true;
 }
 // Check session selection as well as guest admission: loading a local match
@@ -605,7 +575,7 @@ void Directory_Frame()
             {
                 lastStatus = "Invalid directory IPv4:port or compatibility tag";
                 Com_PrintWarning(14, "%s\n", lastStatus.c_str());
-                Dvar_SetStringByName("bo1_directory_status", lastStatus.data());
+                Dvar_SetStringByName("bo1_directory_status", const_cast<char *>(Directory_Status()));
             }
             return;
         }
@@ -711,7 +681,7 @@ void Directory_Frame()
     if (client->Status() != lastStatus)
     {
         lastStatus = client->Status();
-        Dvar_SetStringByName("bo1_directory_status", lastStatus.data());
+        Dvar_SetStringByName("bo1_directory_status", const_cast<char *>(Directory_Status()));
         Com_Printf(14, "Directory: %s\n", lastStatus.c_str());
     }
     if (client->TakeDisconnect() && CL_GetLocalClientConnectionState(0) >= CA_CONNECTING)
@@ -726,6 +696,10 @@ void Directory_Frame()
 }
 bool Directory_Refresh(int source)
 {
+#if defined(KISAK_NX) && defined(KISAK_MP)
+    if (source != 0)
+        return false;
+#endif
     Directory_Init();
     if (!client)
         Directory_Frame();
@@ -815,7 +789,7 @@ bool Directory_AcceptJoinPassword()
             }
     }
     Dvar_SetStringByName("password", "");
-    Dvar_SetStringByName("ui_errorMessage", "This server is no longer available. Refresh the server list and try again.");
+    Dvar_SetStringByName("ui_errorMessage", UI_SafeTranslateString("OPENBLOPS_SERVER_GONE"));
     Menus_OpenByName(0, &ui->uiDC, "error_popmenu");
     return true;
 }
@@ -832,7 +806,7 @@ bool Directory_Join(int source, int index)
     }
     if (row.mod != ModTag(Dvar_GetString("fs_game")))
     {
-        Dvar_SetStringByName("ui_errorMessage", "This server requires a different mod.");
+        Dvar_SetStringByName("ui_errorMessage", UI_SafeTranslateString("OPENBLOPS_SERVER_OTHER_MOD"));
         Com_PrintWarning(14, "Directory: select the host's mod before joining\n");
         return true;
     }

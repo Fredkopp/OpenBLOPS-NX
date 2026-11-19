@@ -744,6 +744,7 @@ void __cdecl RB_StandardDrawCommands(GfxViewInfo *viewInfo)
     R_DrawReflected(viewInfo, &cmdBuf);
   }
 
+  if (viewInfo->drawList[DRAWLIST_LIT_POST_RESOLVE].drawSurfCount || r_setFrameBufferAlpha->current.enabled)
   {
       PROF_SCOPED("LitPostResolve");
       R_InitContext(data, &cmdBuf);
@@ -752,8 +753,11 @@ void __cdecl RB_StandardDrawCommands(GfxViewInfo *viewInfo)
   
   if ( r_setFrameBufferAlpha->current.enabled )
     RB_SetFrameBufferAlpha();
-  R_InitContext(data, &cmdBuf);
-  R_DrawDecal(viewInfo, &cmdBuf, 0);
+  if (viewInfo->drawList[DRAWLIST_DECAL].drawSurfCount)
+  {
+    R_InitContext(data, &cmdBuf);
+    R_DrawDecal(viewInfo, &cmdBuf, 0);
+  }
   if ( viewInfo->isRenderingFullScreen != isRenderingFullScreen
     && !Assert_MyHandler(
           "C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\rb_draw3d.cpp",
@@ -786,7 +790,7 @@ void __cdecl RB_StandardDrawCommands(GfxViewInfo *viewInfo)
     memcpy(gfxCmdBufState.refSamplerState, gfxCmdBufState.refSamplerState, sizeof(gfxCmdBufState));
   }
   memcpy(gfxCmdBufState.refSamplerState, gfxCmdBufState.refSamplerState, sizeof(gfxCmdBufState));
-  if ( r_enableDlights->current.enabled )
+  if ( r_enableDlights->current.enabled && viewInfo->pointLightCount )
   {
     R_InitContext(data, &cmdBuf);
     PROF_SCOPED("Dynamic Lights");

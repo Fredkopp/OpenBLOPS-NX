@@ -813,6 +813,14 @@ void R_ResolveIntZ_PC()
     else
 #endif
     {
+#ifdef KISAK_NX
+        constexpr DWORD resolveDepth = 0x7fa05000;
+        dx.device->SetTexture(0, gfxRenderTargets[R_RENDERTARGET_FLOAT_Z].image->texture.basemap);
+        dx.device->SetRenderState(D3DRS_POINTSIZE, 0);
+        dx.device->SetRenderState(D3DRS_POINTSIZE, resolveDepth);
+        dx.device->SetTexture(0, nullptr);
+        gfxCmdBufContext.state->samplerTexture[0] = nullptr;
+#else
         memset(dummy, 0, sizeof(dummy));
         dx.device->SetTexture(0, gfxRenderTargets[R_RENDERTARGET_FLOAT_Z].image->texture.basemap);
         dx.device->SetRenderState(D3DRS_POINTSIZE, 0);
@@ -823,6 +831,7 @@ void R_ResolveIntZ_PC()
         R_ClearAllStreamSources(&gfxCmdBufContext.state->prim);
         if (gfxCmdBufContext.state->prim.indexBuffer)
             R_ChangeIndices(&gfxCmdBufContext.state->prim, 0);
+#endif
     }
 }
 
@@ -2788,6 +2797,18 @@ void __cdecl GetShiftColor(
     }
 }
 
+#ifdef KISAK_NX
+static float RB_TextGlyphTop(Font_s *font, const Glyph *glyph, unsigned int letter)
+{
+    if (ValidGamePadButtonIcon(letter) && ValidGamePadButtonIcon(glyph->letter))
+    {
+        const Glyph *cap = R_GetCharacterGlyph(font, 'H');
+        return cap->y0 + (cap->pixelHeight - glyph->pixelHeight) * 0.5f;
+    }
+    return glyph->y0;
+}
+#endif
+
 void __cdecl RB_DrawText(const char *text, Font_s *font, float x, float y, GfxColor color)
 {
     DrawText2D(text, x, y, 1.0, font, 1.0, 1.0, 0.0, 1.0, color, 0x7FFFFFFF, 0, 0, 0, 0.0, color, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -3381,7 +3402,11 @@ void __cdecl DrawText2D(
                             deltaX = (float)glyphOriginal->dx;
                         }
                         xAdj = (float)((float)glyph->x0 + decayOffset) * xScale;
+#ifdef KISAK_NX
+                        yAdj = RB_TextGlyphTop(font, glyph, letter) * yScale;
+#else
                         yAdj = (float)glyph->y0 * yScale;
+#endif
                         if ( drawLargeCharAtEnd && maxLengthRemaining == 1 )
                         {
                             yScale = yScale * sizeIncrease;
@@ -4525,7 +4550,11 @@ void __cdecl RB_DrawTextInSpace(
     xyz[0] = (float)(x0 * *xPixelStep) + curOrg;
     xyz[1] = (float)(x0 * xPixelStep[1]) + curOrg_4;
     xyz[2] = (float)(x0 * xPixelStep[2]) + curOrg_8;
+#ifdef KISAK_NX
+    y0 = RB_TextGlyphTop(font, glyph, letter);
+#else
     y0 = (float)glyph->y0;
+#endif
     xyz[0] = (float)(y0 * *yPixelStep) + xyz[0];
     xyz[1] = (float)(y0 * yPixelStep[1]) + xyz[1];
     xyz[2] = (float)(y0 * yPixelStep[2]) + xyz[2];
@@ -4720,7 +4749,7 @@ void __cdecl RB_BeginFrame(GfxBackEndData *data)
     {
         if (!rg.renderHiResShot)
             ++r_glob.backEndFrameCount;
-        for (rt = 0; rt < 44; ++rt)
+        for (rt = 0; rt < R_RENDERTARGET_COUNT; ++rt)
             gfxRenderTargets[rt].cleared = 0;
         R_Cinematic_UpdateFrame(0);
         RB_UpdateBackEndDvarOptions();

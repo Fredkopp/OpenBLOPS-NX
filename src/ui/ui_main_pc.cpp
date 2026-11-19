@@ -987,7 +987,12 @@ int __cdecl UI_JoinMod_HandleKey(int flags, int key)
 
 void __cdecl UI_NetSource_UpdateDisplayList(int source)
 {
+#if !defined(KISAK_NX) || !defined(KISAK_MP)
     if (Directory_Source(0)) source = 0; // Keep mouse source selectors on our directory.
+#else
+    if (source != ui_netSource->current.integer)
+        UI_StopServerRefresh();
+#endif
     Dvar_SetInt((dvar_s *)ui_netSource, source);
     UI_BuildServerDisplayList(0, uiInfoArray, 1);
 }

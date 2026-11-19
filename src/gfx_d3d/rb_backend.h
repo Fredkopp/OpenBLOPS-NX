@@ -652,7 +652,6 @@ void __cdecl RB_SaveScreen(const GfxSaveScreenParam *p, const GfxViewInfo *viewI
 void __cdecl R_ResolveSection(GfxCmdBufContext context, GfxImage *image);
 
 
-extern GfxRenderTarget gfxRenderTargets[44];
 extern GfxDrawConsts g_drawConsts;
 extern r_backEndGlobals_t backEnd;
 extern materialCommands_t tess;

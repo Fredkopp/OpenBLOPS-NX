@@ -954,6 +954,8 @@ static void nxReleaseGpuAtExit(void)
     nxExitStep("after atexit: C++ destructors, libc cleanup");
 }
 
+extern "C" void nx_sbrk_flush_log(void);
+
 // Called from Win_GetEvent on the main thread every frame. Nothing read the
 // applet's messages before, so closing the title from HOME went unanswered:
 // with appletLockExit held the system waited, then killed the process (shown
@@ -964,6 +966,7 @@ extern "C" bool NX_PumpAppletMessages(void)
 {
     static bool s_exitRequested;
     ++s_mainHeartbeat;
+    nx_sbrk_flush_log();
     NX_LoadBoostUpdate();
     u32 msg = 0;
     while (!s_exitRequested && R_SUCCEEDED(appletGetMessage(&msg))) {

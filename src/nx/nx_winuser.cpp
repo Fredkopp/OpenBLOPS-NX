@@ -331,13 +331,6 @@ BOOL EnumDisplayMonitors(HDC, const RECT *, MONITORENUMPROC proc, LPARAM data)
 
 LONG ChangeDisplaySettingsA(LPDEVMODEA, DWORD) { return DISP_CHANGE_SUCCESSFUL; }
 
-// Touch coordinates are scaled from 1280x720 to the game window.
-extern "C" void NX_GameWindowSize(int *w, int *h)
-{
-    *w = s_window.inUse && s_window.w > 0 ? s_window.w : NX_SCREEN_WIDTH;
-    *h = s_window.inUse && s_window.h > 0 ? s_window.h : NX_SCREEN_HEIGHT;
-}
-
 BOOL EnumDisplaySettingsA(LPCSTR, DWORD modeNum, LPDEVMODEA devMode)
 {
     static const int modes[][3] = { { 1280, 720, 60 }, { 1920, 1080, 60 }, { 960, 540, 60 } };

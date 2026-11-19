@@ -8,6 +8,7 @@ import subprocess
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--compiler', default='C:/msys64/ucrt64/bin/g++.exe')
+p.add_argument('--zone-dir', type=Path, default=Path('F:/pluto_t5_full_game/kbz'))
 a = p.parse_args()
 root = Path(__file__).resolve().parents[3]
 out = root / 'build-nx/zombies-directory-tests'
@@ -25,15 +26,18 @@ parser = parser.replace('result.append(dict(', '''td=ptr(item,224);exp=ptr(td,64
    result.append(dict(expression_keys=keys,''')
 scope = dict(Path=Path, struct=struct)
 exec(parser, scope)
-rows = scope['menu_items']('frontend', 'menu_xboxlive')
-assert sum('@MPUI_FIND_MATCH_CAPS' in x['expression_keys'] for x in rows) == 4
-assert sum('@MPUI_CUSTOM_MATCH_CAPS' in x['expression_keys'] for x in rows) == 4
-templates = scope['menu_items']('frontend', 'mods_menu')
-assert any(x['type'] == 4 and x['name'] == 'modlist' for x in templates)
-assert any(x['type'] == 3 for x in templates)
-picker = scope['menu_items']('frontend', 'levels_zombie')
-assert any('startlevel 0' in action for x in picker for action in x['actions'])
-print('PASS: shipped Zombies Find/Private layers, SP browser templates and native map-picker callback', flush=True)
+rows = scope['menu_items']('frontend', 'menu_xboxlive', a.zone_dir)
+if rows is not None:
+    assert sum('@MPUI_FIND_MATCH_CAPS' in x['expression_keys'] for x in rows) == 4
+    assert sum('@MPUI_CUSTOM_MATCH_CAPS' in x['expression_keys'] for x in rows) == 4
+    templates = scope['menu_items']('frontend', 'mods_menu', a.zone_dir)
+    assert any(x['type'] == 4 and x['name'] == 'modlist' for x in templates)
+    assert any(x['type'] == 3 for x in templates)
+    picker = scope['menu_items']('frontend', 'levels_zombie', a.zone_dir)
+    assert any('startlevel 0' in action for x in picker for action in x['actions'])
+    print('PASS: shipped Zombies Find/Private layers, SP browser templates and native map-picker callback', flush=True)
+else:
+    print('SKIP: frontend.kbz unavailable for shipped Zombies menu checks', flush=True)
 
 code = r'''
 #include <openblops_directory/directory_engine.h>
@@ -43,6 +47,7 @@ code = r'''
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <strings.h>
 #include <list>
 #include <map>
 #include <string>
@@ -88,6 +93,8 @@ const char *StringTable_Lookup(const StringTable *table,int keyColumn,const char
  return "";
 }
 char *UI_SafeTranslateString(const char *key){
+ if (!strcmp(key,"MENU_MAP")) return const_cast<char *>("MAP");
+ if (!strcmp(key,"OPENBLOPS_BROWSER_COUNTS")) return const_cast<char *>("Players: %d, servers: %d");
  if (!strcmp(key,"MENU_ZOMBIE_THEATER_CAPS")) return const_cast<char *>("KINO DER TOTEN");
  if (!strcmp(key,"MENU_ZOMBIE_PENTAGON_CAPS")) return const_cast<char *>("\"FIVE\"");
  return const_cast<char *>(key);
@@ -132,6 +139,7 @@ itemDef_s *Menu_FindItemByName(menuDef_t *menu,const char *name){
 }
 listBoxDef_s *Item_GetListBoxDef(itemDef_s *item){return item->typeData.textDef->textTypeData.focusItemDef->focusTypeData.listBox;}
 int rows=2,selectedRow=-1,focusMoves=0;
+int Menu_GetCursorItem(int,menuDef_t *menu){return menu->cursorItem[0];}
 int UI_FeederCount(int,int,float,listBoxDef_s*){return rows;}
 void UI_FeederSelection(int,int,float,int row){selectedRow=row;}
 itemDef_s *Menu_SetPrevCursorItem(int,UiContext*,menuDef_t*,int){--focusMoves;return nullptr;}
@@ -146,26 +154,21 @@ int Item_ListBox_HandleKey(int,UiContext*,itemDef_s *item,int key,int down,int f
  return 1;
 }
 #ifdef KISAK_NX
-struct SwkbdConfig {bool password=false;int limit=0;};
-using Result=int;
-#define R_FAILED(result) ((result)!=0)
-#define R_SUCCEEDED(result) ((result)==0)
+struct UiNxTextRequest {const char *header=nullptr;bool headerIsUtf8=false;const char *initialText="";int maxChars=255;bool password=false;int filter=0;};
 int keyboardResult=0,keyboardsClosed=0;
 const char *keyboardText="pad password";
-Result swkbdCreate(SwkbdConfig*,int){return 0;}
-void swkbdConfigMakePresetPassword(SwkbdConfig *keyboard){keyboard->password=true;}
-void swkbdConfigMakePresetDefault(SwkbdConfig*){}
-void swkbdConfigSetHeaderText(SwkbdConfig*,const char*){}
-void swkbdConfigSetInitialText(SwkbdConfig*,const char*){}
-void swkbdConfigSetStringLenMax(SwkbdConfig *keyboard,int limit){keyboard->limit=limit;}
-Result swkbdShow(SwkbdConfig *keyboard,char *text,size_t size){
- assert(keyboard->password&&keyboard->limit==32);
+const char *SEH_GetPortString(const char *key,bool utf8){assert(utf8);return key;}
+bool Directory_UpdateControllerKey(int,UiContext*,menuDef_t*,int){return false;}
+bool UI_NX_EditText(const UiNxTextRequest &request,char *text,size_t size){
+ assert(request.headerIsUtf8);
+ assert(!strcmp(request.header,"OPENBLOPS_SERVER_PASSWORD")||!strcmp(request.header,"OPENBLOPS_SERVER_NAME"));
+ assert(request.password&&request.maxChars==32);
+ ++keyboardsClosed;
+ if(keyboardResult)return false;
  snprintf(text,size,"%s",keyboardText);
- return keyboardResult;
+ return true;
 }
-void swkbdClose(SwkbdConfig*){++keyboardsClosed;}
 void Com_PrintWarning(int,const char*,...){}
-int Menu_GetCursorItem(int,menuDef_t *menu){return menu->cursorItem[0];}
 bool Item_IsTextField(const itemDef_s *item){return item->type==5;}
 #endif
 menuDef_t *Menus_FindByName(UiContext *dc,const char *n){for(int i=0;i<dc->menuCount;++i)if(!strcmp(dc->Menus[i]->window.name,n))return dc->Menus[i];return nullptr;}
@@ -186,7 +189,7 @@ code += ui_source[ui_source.index('char *__cdecl UI_GetMapDisplayName('):
 source = (root / 'src/openblops_directory/directory_zombies.cpp').read_text()
 code += re.sub(r'^#include[^\n]*\n', '', source, flags=re.M)
 engine = (root / 'src/openblops_directory/directory_engine.cpp').read_text()
-controller = engine.index('#ifdef KISAK_NX\nstatic void EditDirectoryText(')
+controller = engine.index('#ifdef KISAK_NX\nstatic bool EditDirectoryText(')
 code += engine[controller:engine.index('bool Directory_UpdateBrowserCounts()', controller)]
 for signature in ['static bool Directory_IsSplitScreenHost(', 'static bool Directory_IsCompatibleHostMap(']:
     start = engine.index(signature)
@@ -254,11 +257,13 @@ int main(){
  for(int i=0;i<popup->itemCount;++i)if(popup->items[i]==passwordField)popup->cursorItem[0]=i;
  passwordField->window.dynamicFlags[0]|=2;
  assert(Directory_HandleControllerKey(0,dc,popup,K_BUTTON_A)&&keyboardsClosed==1);
- assert(vars["ui_directory_joinPassword"]=="pad password"&&vars["password"].empty());
+ assert(vars["ui_directory_joinPassword"]=="pad password"&&vars["password"].empty()&&!pendingPassword&&accepts==1);
+ pendingPassword=true;
  keyboardResult=1;keyboardText="cancelled input";
  assert(Directory_HandleControllerKey(0,dc,popup,K_BUTTON_A)&&keyboardsClosed==2);
  assert(vars["ui_directory_joinPassword"]=="pad password"&&pendingPassword);
  pendingPassword=false;
+ accepts=0;
 #endif
  joins=refreshes=0;
  press(find(browser,"directory_refresh"));press(find(browser,"directory_join"));assert(refreshes==1&&joins==1);
@@ -273,8 +278,8 @@ int main(){
  online.items=ep;online.itemCount=8;Directory_MenuOpening(0,dc,&online);
  assert(online.itemCount==8&&online.items!=ep);assert(entries[0].window.name==std::string("stock"));
  for(int i=0;i<8;++i){assert(online.items[i]->onEvent==&stockFocusEvent&&online.items[i]->visibleExp.numRpn==i+1);assert(online.items[i]->window.foreColor[0]==(i%2?0:1)&&online.items[i]->window.foreColor[3]==1);}
- assert(find(&online,"directory_zombie_browser")->typeData.textDef->text==std::string("SERVER BROWSER"));
- assert(find(&online,"directory_zombie_host")->typeData.textDef->text==std::string("HOST MATCH"));
+ assert(find(&online,"directory_zombie_browser")->typeData.textDef->text==std::string("@OPENBLOPS_SERVER_BROWSER"));
+ assert(find(&online,"directory_zombie_host")->typeData.textDef->text==std::string("@OPENBLOPS_HOST_MATCH"));
  Directory_MenuOpening(0,dc,&online);assert(online.itemCount==8);
  vars["bo1_directory_publish"]="1";press(find(&online,"directory_zombie_browser"));assert(focused==browser&&vars["bo1_directory_publish"]=="0");
  vars["ui_mapname"]="zombie_theater";press(find(&online,"directory_zombie_host"));assert(focused==host&&configuringHost);
@@ -306,7 +311,7 @@ int main(){
  pendingPassword=true;lifecycle(popup,"onClose");assert(!pendingPassword&&cancels==2);
  pendingPassword=true;lifecycle(popup,"onESC");assert(!pendingPassword&&cancels==3);
  cls.numunrankedservers=2;cls.unrankedServers[0].clients=2;cls.unrankedServers[1].clients=3;
- Directory_FrontendFrame();assert(strstr(browserCounts,"5 players, 2 servers")&&strstr(browserStatus,"Ready to join"));
+ Directory_FrontendFrame();assert(strstr(browserCounts,"Players: 5, servers: 2")&&strstr(browserStatus,"Ready to join"));
  vars["mapname"]="zombie_theater";assert(Hosting());
  for(const char *map:{"frontend","vorkuta","zombietron","mp_nuked"}){vars["mapname"]=map;assert(!Hosting());}
  vars["mapname"]="zombie_theater";vars["zombietron"]="1";assert(!Hosting());vars["zombietron"]="0";

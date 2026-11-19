@@ -136,7 +136,7 @@ void __cdecl R_InitUI3DRenderTarget(
                 bool allocatePingPongBuffer);
 void __cdecl R_ShutdownUI3DRenderTarget(bool freePingPongBuffer);
 
-extern GfxRenderTarget gfxRenderTargets[44];
+extern GfxRenderTarget gfxRenderTargets[R_RENDERTARGET_COUNT];
 
 #ifdef NX_DXVK
 extern bool g_nxIntZDepthBuffer;

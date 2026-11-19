@@ -151,6 +151,12 @@ int __cdecl SEH_StringEd_SetLanguageStrings(unsigned int iLanguage);
 const char *__cdecl SE_GetString(char *psPackageAndStringReference);
 const char *__cdecl SE_GetString_FastFile(char *psPackageAndStringReference);
 const char *__cdecl SEH_StringEd_GetString(char *pszReference);
+const char *SEH_GetPortString(const char *reference, bool utf8 = false);
+bool SEH_GameTextToUtf8(const char *text, char *out, size_t size);
+bool SEH_Utf8ToGameText(const char *text, char *out, size_t size);
+unsigned int SEH_ReadUtf8Char(const char **text);
+int SEH_EncodeGameChar(unsigned int code, char *out);
+const char *SEH_LocalizePortText(const char *english);
 char *__cdecl SEH_SafeTranslateString(const char *pszReference);
 void __cdecl SEH_LocalizeTextMessageWithBindings(
     int localClientNum, const char *input, const char *messageType, char *output, unsigned int size);

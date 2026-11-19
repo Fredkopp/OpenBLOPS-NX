@@ -1305,6 +1305,12 @@ cmd_function_s Cmd_ExecAddText_f_VAR;
 cmd_function_s Cmd_Vstr_f_VAR;
 cmd_function_s Cmd_Wait_f_VAR;
 
+#ifdef KISAK_NX
+static void Cmd_UnsupportedPlatformAction_f()
+{
+}
+#endif
+
 void __cdecl Cmd_Init()
 {
     Cmd_ResetArgs(g_cmd_args);
@@ -1315,6 +1321,17 @@ void __cdecl Cmd_Init()
     Cmd_AddCommandInternal("exec_addtext", Cmd_ExecAddText_f, &Cmd_ExecAddText_f_VAR);
     Cmd_AddCommandInternal("vstr", Cmd_Vstr_f, &Cmd_Vstr_f_VAR);
     Cmd_AddCommandInternal("wait", Cmd_Wait_f, &Cmd_Wait_f_VAR);
+#ifdef KISAK_NX
+    static const char *const legacyPlatformCommands[] = {
+        "xstartprivateparty",
+        "xstopprivateparty",
+        "xstartparty",
+        "xstopparty",
+    };
+    static cmd_function_s legacyPlatformCommandEntries[ARRAY_COUNT(legacyPlatformCommands)];
+    for (size_t i = 0; i < ARRAY_COUNT(legacyPlatformCommands); ++i)
+        Cmd_AddCommandInternal(legacyPlatformCommands[i], Cmd_UnsupportedPlatformAction_f, &legacyPlatformCommandEntries[i]);
+#endif
 }
 
 void __cdecl Cmd_Exec_f()

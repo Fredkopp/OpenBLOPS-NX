@@ -15,7 +15,6 @@ void __cdecl RB_SetBlurConstants(float radius, float textureScaler);
 void __cdecl RB_SetFilmCurveConstants(const GfxViewInfo *viewInfo);
 // local variable allocation has failed, the output may be wrong!
 void    RB_SetVisionSetColorCorrection(const GfxViewInfo *viewInfo);
-void __cdecl RB_BloomLDR(const GfxViewInfo *viewInfo);
 bool __cdecl R_UsingDoubleVision(const GfxViewInfo *viewInfo);
 bool __cdecl RB_UsingColorManipulation(const GfxViewInfo *viewInfo);
 void __cdecl RB_PoisonFX(const GfxViewInfo *viewInfo);
@@ -43,4 +42,3 @@ void __cdecl RB_GetViewModelDepthOfFieldEquation(float outOfFocus, float inFocus
 double __cdecl RB_GetDepthOfFieldBlurFraction(const GfxViewInfo *viewInfo, float pixelRadiusAtSceneRes);
 void __cdecl RB_GetDepthOfFieldInputImages(float radius);
 double __cdecl RB_GetBlurRadius(float blurRadiusFromCode);
-void __cdecl RB_BlurScreen(const GfxViewInfo *viewInfo, float blurRadius);

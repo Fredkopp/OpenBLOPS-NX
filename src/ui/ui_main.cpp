@@ -865,6 +865,7 @@ void __cdecl UI_Refresh(int localClientNum)
         UI_BuildFindPlayerList();
         if ( UI_ShouldDrawBuildNumber(localClientNum) )
             UI_DrawBuildNumber(contextIndex);
+#ifndef KISAK_NX
         // Retail SP UI_Refresh (0x004AFFF8) gates the ui_cursor blit on 0x0069AA20, not on
         // the function this MP reconstruction has here. CG_IsShowingZombieMap() is a
         // hardcoded `return 0` stub (cg_compass.cpp:4029) that the matcher applied to 39
@@ -892,6 +893,7 @@ void __cdecl UI_Refresh(int localClientNum)
                 4,
                 0,
                 sharedUiInfo.assets.cursor);
+#endif
     }
     if ( !Menu_GetFocused(&uiInfo->uiDC) && Key_IsCatcherActive(localClientNum, 16) )
         Key_RemoveCatcher(localClientNum, -17);
@@ -1034,6 +1036,7 @@ void __cdecl UI_Update(const char *name)
         {
             if ( I_stricmp(name, "ui_setRate") )
             {
+#ifndef KISAK_NX
                 if ( !I_stricmp(name, "ui_mousePitch") )
                 {
                     if ( Dvar_GetBool(name) )
@@ -1041,6 +1044,7 @@ void __cdecl UI_Update(const char *name)
                     else
                         Dvar_SetFloatByName("m_pitch", 0.022);
                 }
+#endif
             }
             else
             {
@@ -1792,6 +1796,7 @@ void __cdecl UI_Pause(int localClientNum, int b)
 
 void __cdecl UI_MouseEvent(int localClientNum, int x, int y)
 {
+#ifndef KISAK_NX
 #ifdef KISAK_EXPERIMENTAL_SPLITSCREEN
     if (CL_SplitGuestOwnsMenu())
         return;
@@ -1817,6 +1822,7 @@ void __cdecl UI_MouseEvent(int localClientNum, int x, int y)
         if ( Menu_Count(&uiInfo->uiDC) > 0 )
             Display_MouseMove(localClientNum, &uiInfo->uiDC);
     }
+#endif
 }
 
 uiMenuCommand_t __cdecl UI_GetActiveMenu(int localClientNum)
@@ -2188,12 +2194,14 @@ int __cdecl UI_PopupScriptMenu(int localClientNum, const char *menuName, bool us
     if ( !pFocus || I_stricmp(pFocus->window.name, menuName) )
     {
         uiInfo->currentMenuType = UIMENU_SCRIPT_POPUP;
+#ifndef KISAK_NX
         if ( !useMouse )
         {
             uiInfo->uiDC.cursor.x = 639.0f;
             uiInfo->uiDC.cursor.y = 479.0f;
             UI_SetSystemCursorPos(&uiInfo->uiDC, 639.0, 479.0);
         }
+#endif
         Menus_CloseAll(localClientNum, &uiInfo->uiDC);
         Menus_OpenByName(localClientNum, &uiInfo->uiDC, menuName);
         UIContextIndex = Com_LocalClient_GetUIContextIndex(localClientNum);
@@ -3405,8 +3413,10 @@ void __cdecl UI_InitOnceForAllClients()
         UI_MapLoadInfo(v0);
     }
     UI_ServersSort(8);
+#ifndef KISAK_NX
     Float = Dvar_GetFloat("m_pitch");
     Dvar_SetBoolByName("ui_mousePitch", Float < 0.0);
+#endif
     if ( ui_netGameType->current.integer >= 0x20u
         && !Assert_MyHandler(
                     "C:\\projects_pc\\cod\\codsrc\\src\\ui\\ui_main.cpp",
@@ -3839,8 +3849,11 @@ void __cdecl UI_KeyEvent(int localClientNum, int key, int down)
     int savedregs; // [esp+Ch] [ebp+0h] BYREF
 
     uiInfo = UI_GetInfo(localClientNum);
+    const int inputKey = key;
     const bool controller = IsGamepadKey(key);
 #ifdef KISAK_NX
+    if (!controller)
+        return;
     key = NX_UI_GamepadDirectionToArrow(key);
 #ifdef KISAK_SP
     if ( down )
@@ -3856,11 +3869,15 @@ void __cdecl UI_KeyEvent(int localClientNum, int key, int down)
             bypassKeyClear = 1;
         if ( UI_KeyEvent_CancelButtonPressed(&uiInfo->uiDC, menu, key, down) )
             Menus_CloseAll(localClientNum, &uiInfo->uiDC);
-        if ( UI_KeyEvent_AutoJoinButtonPressed(localClientNum, &uiInfo->uiDC, menu, key, down) )
+        if ( UI_KeyEvent_AutoJoinButtonPressed(localClientNum, &uiInfo->uiDC, menu, inputKey, down) )
             Live_AcceptLastInvite_f();
-        if ( Key_IsCatcherActive(localClientNum, 336)
-            && !(down && controller && Directory_HandleControllerKey(localClientNum, &uiInfo->uiDC, menu, key)) )
-            Menu_HandleKey(localClientNum, &uiInfo->uiDC, menu, key, down);
+        if (Key_IsCatcherActive(localClientNum, 336)
+            && !(down && controller
+#ifdef KISAK_NX
+                && !UI_NX_IsServerBrowserMenu(menu)
+#endif
+                && Directory_HandleControllerKey(localClientNum, &uiInfo->uiDC, menu, key)))
+            Menu_HandleKey(localClientNum, &uiInfo->uiDC, menu, key, down, inputKey);
         if ( !Menu_GetFocused(&uiInfo->uiDC) )
         {
 LABEL_24:
@@ -3895,7 +3912,11 @@ LABEL_24:
 
 bool __cdecl UI_KeyEvent_CancelButtonPressed(UiContext *dc, menuDef_t *menu, int key, int down)
 {
+#ifdef KISAK_NX
+    return false;
+#else
     return (key == 2 || key == 27) && down && !Menus_AnyFullScreenVisible(dc) && !Menus_DoesEventExist(menu, "onESC");
+#endif
 }
 
 void __cdecl UI_CloseAllMenus(int localClientNum)

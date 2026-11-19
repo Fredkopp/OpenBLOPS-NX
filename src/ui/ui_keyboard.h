@@ -10,6 +10,34 @@ struct keyBoardUtitlity // sizeof=0x8
     int keyboardType;                   // XREF: UI_GetActiveKeyboardType(void)+3/r
 };
 
+#ifdef KISAK_NX
+#include <stddef.h>
+
+enum UiNxTextFilter
+{
+    UI_NX_TEXT_ANY,
+    UI_NX_TEXT_PLAIN,
+    UI_NX_TEXT_SAFE,
+    UI_NX_TEXT_FILENAME,
+    UI_NX_TEXT_ALNUM,
+    UI_NX_TEXT_DIGITS,
+    UI_NX_TEXT_DECIMAL,
+};
+
+struct UiNxTextRequest
+{
+    const char *header = nullptr;
+    bool headerIsUtf8 = false;
+    const char *initialText = "";
+    int maxChars = 255;
+    bool password = false;
+    UiNxTextFilter filter = UI_NX_TEXT_ANY;
+    bool nativeText = false;
+};
+
+bool UI_NX_EditText(const UiNxTextRequest &request, char *out, size_t outSize);
+#endif
+
 int __cdecl UI_GetActiveKeyboardType();
 void __cdecl UI_SetActiveKeyboardType(int keyboardType);
 void __cdecl UI_ClearKeyboardActive();

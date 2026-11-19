@@ -204,6 +204,7 @@ int CL_CampaignProgress_SP()
 }
 
 cmd_function_s CL_LoadGameContinue_VAR;
+cmd_function_s CL_UpdateSaveGameAvailable_VAR;
 void __cdecl CL_LoadGameContinue_SP()
 {
     const int progress = CL_CampaignProgress_SP();
@@ -239,6 +240,9 @@ void __cdecl CL_RegisterCommands()
     CL_Platform_RegisterCommands();
 #ifdef KISAK_SP
     Cmd_AddCommandInternal("loadgame_continue", CL_LoadGameContinue_SP, &CL_LoadGameContinue_VAR);
+    // The campaign menus run "update_sv_savegameavailable" when they open:
+    // refresh RESUME GAME from the saved campaign progress.
+    Cmd_AddCommandInternal("update_sv_savegameavailable", CL_UpdateCampaignResume_SP, &CL_UpdateSaveGameAvailable_VAR);
 #endif
     Cmd_AddCommandInternal("updategamerprofile", CL_UpdateGamerProfile, &CL_UpdateGamerProfile_VAR);
     Cmd_AddCommandInternal("select_save_device", CL_SelectSaveDevice_f, &CL_SelectSaveDevice_VAR);

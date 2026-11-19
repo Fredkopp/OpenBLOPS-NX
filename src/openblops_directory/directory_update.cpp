@@ -11,6 +11,7 @@
 #include <qcommon/common.h>
 #include <win32/win_shared.h>
 #include <ui/ui_main.h>
+#include <stringed/stringed_hooks.h>
 #include <ui/ui_shared.h>
 #include <ui/ui_utils.h>
 #include <ui/keycodes.h>
@@ -170,7 +171,7 @@ bool Build(UiContext *dc)
     Control(m, text, "update_release", s_releaseLine, 64, 146, 512, 24, 1, .3f);
     for (int i = 0; i < 5; ++i)
         Control(m, text, "update_note", s_notes[i], 64, 182 + 22.0f * i, 512, 22, 1, .25f);
-    Control(m, text, "update_status", s_status, 64, 304, 512, 24, 1, .3f);
+    Control(m, text, "update_status", s_status, 64, 304, 512, 62, 1, .3f).item.window.staticFlags |= 0x800000;
     Control(m, text, "update_primary", s_primary, 64, 380, 220, 28, 3, .3f);
     Control(m, text, "update_secondary", s_secondary, 356, 380, 220, 28, 3, .3f);
     m.menu.items = m.items.data();
@@ -180,9 +181,21 @@ bool Build(UiContext *dc)
     return true;
 }
 
-// The release notes as a few short lines: Markdown marks dropped, wrapped.
+std::string CleanGitHubText(const std::string &text)
+{
+    std::string clean;
+    for (char c : text)
+    {
+        const unsigned char byte = static_cast<unsigned char>(c);
+        if ((byte >= 0x20 && byte != 0x7f && c != '*' && c != '`' && c != '^') || byte >= 0x80)
+            clean += c;
+    }
+    return clean;
+}
+
 void FillNotes(const char *notes)
 {
+    constexpr size_t lineChars = 80;
     for (auto &line : s_notes) line[0] = 0;
     int row = 0;
     std::string text(notes);
@@ -194,16 +207,26 @@ void FillNotes(const char *notes)
         at = end == std::string::npos ? text.size() : end + 1;
         size_t start = line.find_first_not_of(" #*->\t");
         if (start == std::string::npos) continue;
-        line = line.substr(start);
-        std::string clean;
-        for (char c : line)
-            if ((unsigned char)c >= 0x20 && (unsigned char)c < 0x7f && c != '*' && c != '`' && c != '^') clean += c;
+        std::string clean = CleanGitHubText(line.substr(start));
         while (!clean.empty() && row < 5)
         {
-            size_t cut = clean.size() <= 80 ? clean.size() : clean.rfind(' ', 80);
-            if (cut == std::string::npos || cut == 0) cut = clean.size() < 80 ? clean.size() : 80;
-            std::snprintf(s_notes[row++], sizeof(s_notes[0]), "%s", clean.substr(0, cut).c_str());
-            clean = cut < clean.size() ? clean.substr(cut + 1) : std::string();
+            size_t cut = clean.size(), lastSpace = std::string::npos, chars = 0;
+            for (const char *ch = clean.c_str(); *ch;)
+            {
+                if (chars == lineChars)
+                {
+                    cut = ch - clean.c_str();
+                    break;
+                }
+                if (*ch == ' ')
+                    lastSpace = ch - clean.c_str();
+                SEH_ReadUtf8Char(&ch);
+                ++chars;
+            }
+            if (cut < clean.size() && lastSpace != std::string::npos && lastSpace > 0)
+                cut = lastSpace;
+            SEH_Utf8ToGameText(clean.substr(0, cut).c_str(), s_notes[row++], sizeof(s_notes[0]));
+            clean = cut < clean.size() ? clean.substr(clean[cut] == ' ' ? cut + 1 : cut) : std::string();
         }
     }
 }
@@ -212,52 +235,52 @@ void Refresh()
 {
     NxUpdateInfo info;
     NX_UpdateGetInfo(info);
-    std::snprintf(s_versionLine, sizeof(s_versionLine), "OpenBLOPS-NX %s is available. This copy is version %s.",
+    std::snprintf(s_versionLine, sizeof(s_versionLine), SEH_GetPortString("OPENBLOPS_UPDATE_VERSION"),
                   info.version[0] ? info.version : "?", info.current);
-    std::snprintf(s_releaseLine, sizeof(s_releaseLine), "%s", info.title);
+    SEH_Utf8ToGameText(CleanGitHubText(info.title).c_str(), s_releaseLine, sizeof(s_releaseLine));
     FillNotes(info.notes);
     const double mb = 1.0 / (1024.0 * 1024.0);
     s_secondary[0] = 0;
     switch (info.phase)
     {
     // Button prompts: glyph 2 draws as the Switch's A (confirm) and glyph 1 as
-    // its B (back), as nx_switchglyphs labels them.
+    // its B (back).
     case NxUpdatePhase::Downloading:
-        std::snprintf(s_title, sizeof(s_title), "DOWNLOADING UPDATE");
+        std::snprintf(s_title, sizeof(s_title), SEH_GetPortString("OPENBLOPS_UPDATE_DOWNLOADING"));
         if (info.total)
-            std::snprintf(s_status, sizeof(s_status), "Downloading: %.1f of %.1f MB", info.done * mb, info.total * mb);
+            std::snprintf(s_status, sizeof(s_status), SEH_GetPortString("OPENBLOPS_UPDATE_PROGRESS_TOTAL"), info.done * mb, info.total * mb);
         else
-            std::snprintf(s_status, sizeof(s_status), "Downloading: %.1f MB", info.done * mb);
-        std::snprintf(s_primary, sizeof(s_primary), "\x02 CANCEL");
+            std::snprintf(s_status, sizeof(s_status), SEH_GetPortString("OPENBLOPS_UPDATE_PROGRESS_UNKNOWN"), info.done * mb);
+        std::snprintf(s_primary, sizeof(s_primary), "%c %s", K_BUTTON_B, UI_SafeTranslateString("MENU_CANCEL_CAPS"));
         break;
     case NxUpdatePhase::Extracting:
-        std::snprintf(s_title, sizeof(s_title), "INSTALLING UPDATE");
-        std::snprintf(s_status, sizeof(s_status), "Installing: %.0f%%  (do not turn off the console)",
+        std::snprintf(s_title, sizeof(s_title), SEH_GetPortString("OPENBLOPS_UPDATE_INSTALLING"));
+        std::snprintf(s_status, sizeof(s_status), SEH_GetPortString("OPENBLOPS_UPDATE_INSTALL_PROGRESS"),
                       info.total ? 100.0 * (double)info.done / (double)info.total : 0.0);
         s_primary[0] = 0;
         break;
     case NxUpdatePhase::Installed:
     {
-        std::snprintf(s_title, sizeof(s_title), "UPDATE INSTALLED");
+        std::snprintf(s_title, sizeof(s_title), SEH_GetPortString("OPENBLOPS_UPDATE_INSTALLED"));
         const int left = s_installedAt ? (UPDATE_CLOSE_MS - (Sys_Milliseconds() - s_installedAt) + 999) / 1000 : 3;
-        std::snprintf(s_status, sizeof(s_status), "Version %s is installed. The game closes in %d s; start it again to play.",
+        std::snprintf(s_status, sizeof(s_status), SEH_GetPortString("OPENBLOPS_UPDATE_RESTART"),
                       info.version, left > 0 ? left : 0);
         s_primary[0] = 0;
         break;
     }
     case NxUpdatePhase::Failed:
-        std::snprintf(s_title, sizeof(s_title), "UPDATE FAILED");
+        std::snprintf(s_title, sizeof(s_title), SEH_GetPortString("OPENBLOPS_UPDATE_FAILED"));
         std::snprintf(s_status, sizeof(s_status), "%s", info.error);
-        std::snprintf(s_primary, sizeof(s_primary), "\x02 RETRY");
-        std::snprintf(s_secondary, sizeof(s_secondary), s_gate ? "\x01 BACK" : "\x01 LATER");
+        std::snprintf(s_primary, sizeof(s_primary), "%c %s", K_BUTTON_B, SEH_GetPortString("OPENBLOPS_UPDATE_RETRY"));
+        std::snprintf(s_secondary, sizeof(s_secondary), "%c %s", K_BUTTON_A, s_gate ? UI_SafeTranslateString("MENU_BACK") : SEH_GetPortString("OPENBLOPS_UPDATE_LATER"));
         break;
     default:
-        std::snprintf(s_title, sizeof(s_title), s_gate ? "UPDATE REQUIRED" : "UPDATE AVAILABLE");
+        std::snprintf(s_title, sizeof(s_title), s_gate ? SEH_GetPortString("OPENBLOPS_UPDATE_REQUIRED") : SEH_GetPortString("OPENBLOPS_UPDATE_AVAILABLE"));
         std::snprintf(s_status, sizeof(s_status), "%s", s_gate
-            ? "Online play needs the current version. Update now?"
-            : "Update now? The game closes when it is done.");
-        std::snprintf(s_primary, sizeof(s_primary), "\x02 UPDATE");
-        std::snprintf(s_secondary, sizeof(s_secondary), s_gate ? "\x01 BACK" : "\x01 LATER");
+            ? SEH_GetPortString("OPENBLOPS_UPDATE_ONLINE_PROMPT")
+            : SEH_GetPortString("OPENBLOPS_UPDATE_PROMPT"));
+        std::snprintf(s_primary, sizeof(s_primary), "%c %s", K_BUTTON_B, SEH_GetPortString("OPENBLOPS_UPDATE_ACTION"));
+        std::snprintf(s_secondary, sizeof(s_secondary), "%c %s", K_BUTTON_A, s_gate ? UI_SafeTranslateString("MENU_BACK") : SEH_GetPortString("OPENBLOPS_UPDATE_LATER"));
         break;
     }
 }
