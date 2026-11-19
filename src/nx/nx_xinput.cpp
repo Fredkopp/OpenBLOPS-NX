@@ -264,3 +264,20 @@ extern "C" bool NX_GyroRate(unsigned userIndex, float *yawRate, float *pitchRate
     g.pitchRate = *pitchRate = pitch;
     return true;
 }
+
+// Before exit: the next program runs in this process, so the six-axis sensors
+// stop, which HID would keep updating.
+extern "C" void NX_InputExit(void)
+{
+    for (DWORD userIndex = 0; userIndex < NX_PAD_COUNT; ++userIndex) {
+        NxGyro &g = s_gyro[userIndex];
+        if (!g.started)
+            continue;
+        if (!userIndex)
+            hidStopSixAxisSensor(g.handheld);
+        hidStopSixAxisSensor(g.fullKey);
+        hidStopSixAxisSensor(g.dual[0]);
+        hidStopSixAxisSensor(g.dual[1]);
+        g.started = false;
+    }
+}

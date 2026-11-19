@@ -13778,7 +13778,7 @@ static bool UI_NX_AddMotionAimRow(menuDef_t *menu, const itemDef_s *invert, cons
 
     const int first = addedCount;
     addedCount += UI_NX_CloneInvertRow(menu, invert, label, dy, "options_gamepad_nx_gyroaim",
-        "options_gamepad_nx_gyroaim_hl", "options_gamepad_nx_gyroaim_row", "nx_gyroAim", "MOTION AIM",
+        "options_gamepad_nx_gyroaim_hl", "options_gamepad_nx_gyroaim_row", "nx_gyroAim", "@OPENBLOPS_MOTION_AIM",
         added + addedCount, capacity - addedCount);
     for ( int i = first; i < addedCount; ++i )
     {
@@ -13786,7 +13786,7 @@ static bool UI_NX_AddMotionAimRow(menuDef_t *menu, const itemDef_s *invert, cons
         if ( !UI_NX_ItemNamed(choice, "options_gamepad_nx_gyroaim") || !choice->typeData.textDef )
             continue;
         // The copied textDef still shares the inversion row's focus data.
-        focusItemDef_s *focus = (focusItemDef_s *)malloc(sizeof(focusItemDef_s));
+        focusItemDef_s *focus = (focusItemDef_s *)UI_NX_MenuAlloc(menu, sizeof(focusItemDef_s));
         if ( !focus )
             return false;
         memcpy(focus, invertFocus, sizeof(*focus));

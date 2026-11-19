@@ -99,7 +99,7 @@ for zone in ('code_post_gfx','ui_mp','common_mp'):
  assert(onOff.count==2&&invertFocus.focusTypeData.multi==&onOff);   // the inversion row keeps its own choices
  int gyroLabels=0;
  for(int i=0;i<menu.itemCount;++i){const auto*it=menu.items[i];
-  if(it->window.name&&!strcmp(it->window.name,"options_gamepad_nx_gyroaim_row")&&it->typeData.textDef&&!strcmp(it->typeData.textDef->text,"MOTION AIM"))++gyroLabels;}
+  if(it->window.name&&!strcmp(it->window.name,"options_gamepad_nx_gyroaim_row")&&it->typeData.textDef&&!strcmp(it->typeData.textDef->text,"@OPENBLOPS_MOTION_AIM"))++gyroLabels;}
  assert(gyroLabels>=1);
 '''
  code+=f' assert(near(assist->window.rect.y,{sens["rect"][1]+step}f)&&near(accel->window.rect.y,{sens["rect"][1]+2*step}f)'

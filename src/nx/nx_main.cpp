@@ -900,6 +900,8 @@ static void nxStallStop(void)
     s_stallRunning = false;
 }
 
+extern "C" void NX_InputExit(void);   // nx_xinput.cpp
+
 extern "C" void NX_PrepareExit(void)
 {
     if (s_exitPrepared)
@@ -912,6 +914,7 @@ extern "C" void NX_PrepareExit(void)
         s_exitWatchdogRunning = true;
     NX_SaltyNXStop();
     NX_LoadBoostExit();
+    NX_InputExit();
     nxExitStep("SD_Shutdown");
     SD_Shutdown();
     nxExitStep("stopping texture readers");
