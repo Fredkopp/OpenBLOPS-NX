@@ -5,6 +5,8 @@
 // interfaces those modules touch.
 #include <windows.h>
 
+#include <switch.h>
+
 #include <stdio.h>
 #include <string.h>
 
@@ -47,11 +49,25 @@ void __cdecl Conbuf_AppendTextInMainThread(char *msg)
     Conbuf_AppendText(msg);
 }
 
+// Sys_Error's last step before the game exits. The PC build shows the error
+// in a message box; here the system's error dialog shows it, so the player
+// sees why the game closed (missing game files, for one) instead of it just
+// returning to the Homebrew Menu. The dialog is only allowed in application
+// mode, which the game requires anyway.
 void __cdecl Sys_SetErrorText(const char *buf)
 {
     if (buf) {
         strncpy(s_errorText, buf, sizeof(s_errorText) - 1);
         fprintf(stderr, "SYS ERROR: %s\n", buf);
+        fflush(stderr);
+        const AppletType type = appletGetAppletType();
+        if (type == AppletType_Application || type == AppletType_SystemApplication) {
+            char message[0x800];
+            snprintf(message, sizeof(message), "%s", buf);
+            ErrorApplicationConfig config;
+            if (R_SUCCEEDED(errorApplicationCreate(&config, message, nullptr)))
+                errorApplicationShow(&config);
+        }
     }
 }
 

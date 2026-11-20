@@ -4337,6 +4337,27 @@ int __cdecl DB_TryLoadXFileInternal(const char *zoneName, int zoneFlags)
         }
         g_loadingZone = 0;
         g_mayRecoverLostAssets = 1;
+#ifdef KISAK_64BIT
+        // A zone whose .ff is there but whose .kbz is missing or damaged means
+        // the game files were not converted, or their conversion did not
+        // finish (the installer writes the .ff placeholders first). Loading
+        // on without the zone's assets ends in a crash, so stop here with a
+        // message that says what to do, as the game does for a missing zone.
+        // A map's loading-screen zone only holds its loading image.
+        if ( nxKbz <= 0 && !strstr(g_zoneNames[g_zoneIndex].name, "_load") )
+        {
+            Sys_DatabaseCompleted();
+            Com_Error(
+                ERR_DROP,
+                "%s game file: %s/kbz/%s.kbz\n\n"
+                "Convert your Black Ops game files at hderick.github.io/OpenBLOPS-NX/ "
+                "and copy the result to the SD card.",
+                nxKbz == 0 ? "Missing" : "Damaged",
+                Sys_KbzInstallDir(),
+                g_zoneNames[g_zoneIndex].name);
+            return 0;
+        }
+#endif
         return 1;
     }
 }
