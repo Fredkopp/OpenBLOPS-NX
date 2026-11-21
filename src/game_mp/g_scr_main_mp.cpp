@@ -21098,14 +21098,45 @@ static void __cdecl GScr_SetMissionDvar_SP()
             return;
         }
 
+        // The campaign progress saved in config.cfg only moves forward here:
+        // finishing a mission replayed from mission select would otherwise
+        // set mis_01 back to that mission's next level, and mis_difficulty's
+        // per-level digit to an easier difficulty. Only NEW GAME starts the
+        // progress over (SV_ResetCampaignOnNewGame_SP).
         switch (dvar->type)
         {
         case DVAR_TYPE_INT:
-            Dvar_SetIntByName(dvarName, Scr_GetInt(1, SCRIPTINSTANCE_SERVER));
+        {
+            const int value = Scr_GetInt(1, SCRIPTINSTANCE_SERVER);
+            if (!I_strcmp(dvarName, "mis_01") && value < dvar->current.integer)
+            {
+                Com_Printf(16, " * SetMissionDvar(): keeping \"mis_01\" at %i (mission replayed, %i not saved).\n",
+                           dvar->current.integer, value);
+                return;
+            }
+            Dvar_SetIntByName(dvarName, value);
             break;
+        }
         case DVAR_TYPE_STRING:
-            Dvar_SetStringByName(dvarName, Scr_GetString(1, SCRIPTINSTANCE_SERVER));
+        {
+            char *value = Scr_GetString(1, SCRIPTINSTANCE_SERVER);
+            if (!I_strcmp(dvarName, "mis_difficulty"))
+            {
+                // One digit per level: the best difficulty it was beaten on.
+                char merged[64];
+                I_strncpyz(merged, value, sizeof(merged));
+                const char *saved = dvar->current.string;
+                for (size_t i = 0; merged[i] && saved[i]; ++i)
+                {
+                    if (merged[i] >= '0' && merged[i] <= '9' && saved[i] > merged[i] && saved[i] <= '9')
+                        merged[i] = saved[i];
+                }
+                Dvar_SetStringByName(dvarName, merged);
+                break;
+            }
+            Dvar_SetStringByName(dvarName, value);
             break;
+        }
         default:
             Scr_Error(va("Mission dvar has valid name, but invalid type: %s is of type %i\n", dvarName, dvar->type), 0);
             return;
