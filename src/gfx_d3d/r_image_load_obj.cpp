@@ -50,15 +50,59 @@ char __cdecl Image_ValidateHeader(GfxImageFileHeader *imageFile, const char *fil
     }
 }
 
+// Some community texture packs carry .iwi files made from DX10-style .dds
+// files by a tool that did not know that layout: the image format is left 0
+// and the .dds's 20-byte DX10 header (DXGI format, dimension, misc flags,
+// array size, misc flags 2) precedes the block-compressed pixels. Reads the
+// image's real format from it, and skips it, when it describes a single 2D
+// BC1-BC3 texture whose pixels fill the rest of the file.
+static unsigned int Image_FormatFromDx10Header(GfxImage *image, const GfxImageFileHeader *fileHeader, const unsigned __int8 *data)
+{
+    const unsigned int headerSize = 20;
+    if ( image->loadedSize < headerSize )
+        return 0;
+    unsigned int dx10[5];
+    memcpy(dx10, data, sizeof(dx10));
+    if ( dx10[1] != 3 || dx10[3] != 1 )
+        return 0;
+    unsigned int format, bytesPerBlock;
+    if ( dx10[0] >= 70 && dx10[0] <= 72 )
+        format = 0xBu, bytesPerBlock = 8;      // BC1: DXT1
+    else if ( dx10[0] >= 73 && dx10[0] <= 75 )
+        format = 0xCu, bytesPerBlock = 16;     // BC2: DXT3
+    else if ( dx10[0] >= 76 && dx10[0] <= 78 )
+        format = 0xDu, bytesPerBlock = 16;     // BC3: DXT5
+    else
+        return 0;
+    // The bytes Image_LoadDxtc reads.
+    const unsigned int faceCount = image->mapType == 5 ? 6 : 1;
+    const int picmip = image->picmip.platform[!useFastFile->current.enabled];
+    unsigned int needed = 0;
+    for ( int mipLevel = (int)Image_CountMipmapsForFile(fileHeader) - 1; mipLevel >= picmip; --mipLevel )
+    {
+        const unsigned int width = (unsigned int)fileHeader->dimensions[0] >> mipLevel;
+        const unsigned int height = (unsigned int)fileHeader->dimensions[1] >> mipLevel;
+        needed += faceCount * bytesPerBlock * (((width > 1 ? width : 1) + 3) >> 2) * (((height > 1 ? height : 1) + 3) >> 2);
+    }
+    if ( needed > image->loadedSize - headerSize )
+        return 0;
+    return format;
+}
+
 void __cdecl Image_LoadFromData(GfxImage *image, GfxImageFileHeader *fileHeader, unsigned __int8 *srcData)
 {
-    const char *v3; // eax
-
     image->loadedSize = fileHeader->fileSizeForPicmip[image->skippedMipLevels] - 48;
     image->baseSize = fileHeader->fileSizeForPicmip[0] - 48;
     Image_TrackBytes += image->loadedSize;
     image->texture.basemap = 0;
-    switch ( fileHeader->format )
+    unsigned int format = fileHeader->format;
+    if ( !format )
+    {
+        format = Image_FormatFromDx10Header(image, fileHeader, srcData);
+        if ( format )
+            srcData += 20;
+    }
+    switch ( format )
     {
         case 1u:
             Image_LoadBitmap(image, fileHeader, srcData, D3DFMT_A8R8G8B8, 4);
@@ -103,9 +147,10 @@ void __cdecl Image_LoadFromData(GfxImage *image, GfxImageFileHeader *fileHeader,
             Image_LoadDxtc(image, fileHeader, srcData, D3DFMT_A16B16G16R16F, 128);
             break;
         default:
-            v3 = va("unhandled case: %d", fileHeader->format);
-            if ( !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\gfx_d3d\\r_image_load_obj.cpp", 620, 1, v3) )
-                __debugbreak();
+            // An image format the game does not know, from a modified .iwi:
+            // the image is left without a texture, as the retail game leaves it.
+            Com_PrintWarning(8, "WARNING: image '%s' has unknown format %u; skipping it\n",
+                             image->name ? image->name : "", fileHeader->format);
             break;
     }
 }
