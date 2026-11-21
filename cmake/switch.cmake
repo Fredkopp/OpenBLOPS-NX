@@ -383,7 +383,7 @@ file(MAKE_DIRECTORY "${OPENBLOPS_NX_OUTPUT_DIR}")
 # were ignored here before), so the title goes in through an explicit NACP.
 # The version is also the updater's (src/nx/nx_update.cpp): a GitHub release
 # whose tag differs from it is offered at start.
-set(NX_APP_VERSION "1.0.0")
+set(NX_APP_VERSION "1.1.0")
 set_property(SOURCE "${NX_DIR}/nx_update.cpp" APPEND PROPERTY
     COMPILE_DEFINITIONS "NX_APP_VERSION=\"${NX_APP_VERSION}\"")
 nx_generate_nacp("${NX_NRO_NAME}.nacp"
