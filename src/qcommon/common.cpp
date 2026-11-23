@@ -2668,6 +2668,14 @@ void Com_InitDvars()
     arcademode = _Dvar_RegisterBool("arcademode", 0, 0x100u, "Current game is an arcade mode game");
     zombiemode = _Dvar_RegisterBool("zombiemode", 0, 0x40u, "Current game is an zombie game");
     legacy_zombiemode = _Dvar_RegisterBool("legacy_zombiemode", 0, 0x40u, "Current game is a legacy zombie game");
+#ifdef KISAK_SP
+    // The zombie patch scripts place Mule Kick on every map but remove it
+    // unless scr_zm_extra_perk_<map> or scr_zm_extra_perk_all is set
+    // (_zombiemode_ffotd.gsc), which retail only received online. Each map's
+    // patch zone carries the machine, so offer it in every match. Without the
+    // patch zones the game's scripts have no Mule Kick and ignore this.
+    _Dvar_RegisterInt("scr_zm_extra_perk_all", 1, 0, 1, 0, "Place Mule Kick on every zombie map");
+#endif
     zombieStopSplitScreen = _Dvar_RegisterBool(
                                                         "zombieStopSplitScreen",
                                                         0,
