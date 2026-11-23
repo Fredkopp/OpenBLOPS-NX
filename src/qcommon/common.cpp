@@ -1719,7 +1719,7 @@ void __cdecl Com_CheckSetRecommended(int localClientNum)
 // a choice made in the options afterwards stands.
 static void Com_NX_ApplySettingsRevisions()
 {
-    const int latestRevision = 3;
+    const int latestRevision = 4;
     const dvar_s *nx_settingsRevision = _Dvar_RegisterInt(
         "nx_settingsRevision", 0, 0, 1000, 1u, "Last revision of the Switch default settings applied to config.cfg");
     const int appliedRevision = nx_settingsRevision->current.integer;
@@ -1751,6 +1751,13 @@ static void Com_NX_ApplySettingsRevisions()
             Dvar_SetIntByName("nx_fpsLimit", 60);
     }
 #endif
+    if ( appliedRevision < 4 )
+    {
+        // r_allow_intz 0 was the way to bring water and mud back while floatz
+        // shared the scene's depth buffer; it has its own copy again
+        // (r_intzSharedDepth), so turn INTZ back on.
+        Dvar_SetBoolByName("r_allow_intz", true);
+    }
 
     Dvar_SetInt((dvar_s *)nx_settingsRevision, latestRevision);
     Com_Printf(16, "[nx] Updated the saved settings to Switch defaults revision %i\n", latestRevision);
