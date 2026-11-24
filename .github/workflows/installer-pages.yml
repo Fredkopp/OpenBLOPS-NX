@@ -7,6 +7,9 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+  actions: read
 
 jobs:
   refresh:
@@ -57,8 +60,12 @@ jobs:
           fi
           cp installer/index.html installer/style.css installer/app.js installer/release.mjs installer/zip-writer.mjs installer/sw.js installer/converter-worker.js _site/
           cp -r installer/generated _site/generated
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
+
+      - name: Wait for artifact
+        run: sleep 10
+
       - id: deployment
         uses: actions/deploy-pages@v4
