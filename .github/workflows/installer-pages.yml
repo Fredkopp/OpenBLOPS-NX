@@ -48,7 +48,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download --repo "$GITHUB_REPOSITORY" --pattern 'OpenBLOPS-NX.zip' --dir _site/release
+          gh release download --repo "HDErick/OpenBLOPS-NX" --pattern 'OpenBLOPS-NX.zip' --dir _site/release
           node installer/check-release.mjs _site/release/OpenBLOPS-NX.zip
           if gh release download --repo "$GITHUB_REPOSITORY" --pattern 'OpenBLOPS-NX2.zip' --dir _site/release; then
             node installer/check-release.mjs _site/release/OpenBLOPS-NX2.zip
